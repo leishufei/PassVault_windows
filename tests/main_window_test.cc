@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QLabel>
 #include <QLineEdit>
+#include <QLayout>
 #include <QList>
 #include <QListWidget>
 #include <QPushButton>
@@ -158,6 +159,10 @@ TEST_F(MainWindowTest, WorkspaceHeaderSpansListAndDetail) {
     window_->show();
     QApplication::processEvents();
 
+    auto* root = window_->findChild<QWidget*>(
+        QStringLiteral("WorkspaceRoot"));
+    auto* container = window_->findChild<QWidget*>(
+        QStringLiteral("WorkspaceContainer"));
     auto* workspace = window_->findChild<QWidget*>(
         QStringLiteral("VaultWorkspace"));
     auto* header = window_->findChild<QWidget*>(
@@ -170,14 +175,24 @@ TEST_F(MainWindowTest, WorkspaceHeaderSpansListAndDetail) {
         QStringLiteral("VaultWorkspaceHeaderDivider"));
     auto* search_container = window_->findChild<QWidget*>(
         QStringLiteral("SearchBarContainer"));
+    auto* separator = window_->findChild<QWidget*>(
+        QStringLiteral("HeaderSeparator"));
+    auto* more_button = window_->findChild<QToolButton*>(
+        QStringLiteral("HeaderMoreButton"));
+    ASSERT_NE(root, nullptr);
+    ASSERT_NE(container, nullptr);
     ASSERT_NE(workspace, nullptr);
     ASSERT_NE(header, nullptr);
     ASSERT_NE(content, nullptr);
     ASSERT_NE(list_column, nullptr);
     ASSERT_NE(divider, nullptr);
     ASSERT_NE(search_container, nullptr);
+    ASSERT_NE(separator, nullptr);
+    ASSERT_NE(more_button, nullptr);
     ASSERT_NE(detail(), nullptr);
 
+    EXPECT_TRUE(root->layout()->contentsMargins().isNull());
+    EXPECT_EQ(container->geometry(), root->rect());
     EXPECT_EQ(header->parentWidget(), workspace);
     EXPECT_EQ(content->parentWidget(), workspace);
     EXPECT_EQ(header->height(), 68);
@@ -188,6 +203,12 @@ TEST_F(MainWindowTest, WorkspaceHeaderSpansListAndDetail) {
     EXPECT_EQ(search_container->size(), QSize(390, 36));
     EXPECT_EQ(search_container->x(), 28);
     EXPECT_GT(lockButton()->x(), search_container->geometry().right());
+    EXPECT_EQ(lockButton()->geometry().center().y(),
+              search_container->geometry().center().y());
+    EXPECT_EQ(separator->geometry().center().y(),
+              search_container->geometry().center().y());
+    EXPECT_EQ(more_button->geometry().center().y(),
+              search_container->geometry().center().y());
     EXPECT_EQ(list_column->y(), detail()->y());
     EXPECT_EQ(list_column->height(), detail()->height());
 }
