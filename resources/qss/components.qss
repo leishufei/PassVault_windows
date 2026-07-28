@@ -1,0 +1,596 @@
+/* PassVault reusable components (Figma redesign). */
+
+QWidget {
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+QToolTip {
+    background-color: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    border-radius: 8px;
+}
+
+/* Buttons - Figma pill buttons at radius-md 10px, accent solid + neutral outlined. */
+QPushButton {
+    background-color: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 14px;
+    min-height: 22px;
+    font-weight: 500;
+}
+QPushButton:hover {
+    background-color: var(--bg-hover);
+    border-color: var(--border-strong);
+}
+QPushButton:pressed {
+    background-color: var(--bg-muted);
+    border-color: var(--border-strong);
+}
+QPushButton:disabled {
+    color: var(--text-quaternary);
+    background-color: var(--bg-muted);
+    border-color: var(--border);
+}
+QPushButton[accent="true"] {
+    background-color: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
+}
+QPushButton[accent="true"]:hover {
+    background-color: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+QPushButton[accent="true"]:pressed {
+    background-color: var(--accent-pressed);
+    border-color: var(--accent-pressed);
+}
+QPushButton[accent="true"]:disabled {
+    background-color: var(--accent-soft);
+    border-color: var(--accent-soft);
+    color: var(--accent-fg);
+}
+QPushButton[soft="true"] {
+    background-color: var(--accent-soft);
+    color: var(--accent);
+    border-color: transparent;
+}
+QPushButton[soft="true"]:hover {
+    background-color: var(--accent-soft-hover);
+    border-color: transparent;
+}
+QPushButton[danger="true"] {
+    color: var(--danger);
+    border-color: var(--border);
+    background-color: var(--bg-elevated);
+}
+QPushButton[danger="true"]:hover {
+    background-color: var(--danger-soft);
+    border-color: var(--danger);
+}
+QPushButton[flat="true"] {
+    background-color: transparent;
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+}
+QPushButton[flat="true"]:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+QPushButton[flat="true"]:pressed {
+    background-color: var(--bg-muted);
+}
+
+/* Icon-only tool buttons - square 32px, rounded 10px, ghost background. */
+QToolButton {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+    border-radius: 10px;
+    padding: 6px;
+    font-weight: 500;
+}
+QToolButton:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+QToolButton:pressed {
+    background: var(--bg-muted);
+}
+QToolButton:checked {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+QToolButton[accent="true"] {
+    background: var(--accent);
+    color: var(--accent-fg);
+}
+QToolButton[accent="true"]:hover {
+    background: var(--accent-hover);
+}
+QToolButton[soft="true"] {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+QToolButton[soft="true"]:hover {
+    background: var(--accent-soft-hover);
+}
+
+/* Text inputs - Figma inputs at radius-sm 8px, tinted surface. */
+QLineEdit, QPlainTextEdit, QTextEdit, QSpinBox, QDoubleSpinBox {
+    background-color: var(--bg-search);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    selection-background-color: var(--accent);
+    selection-color: var(--accent-fg);
+}
+QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus,
+QSpinBox:focus, QDoubleSpinBox:focus {
+    border-color: var(--focus-ring);
+    background-color: var(--bg-elevated);
+}
+QLineEdit:disabled, QPlainTextEdit:disabled, QTextEdit:disabled {
+    color: var(--text-quaternary);
+    background-color: var(--bg-muted);
+}
+QLineEdit[error="true"] {
+    border-color: var(--danger);
+    background-color: var(--danger-soft);
+}
+
+/* Combo box */
+QComboBox {
+    background-color: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 30px 8px 12px;
+    min-height: 22px;
+}
+QComboBox:hover { border-color: var(--border-strong); }
+QComboBox:focus { border-color: var(--focus-ring); }
+QComboBox::drop-down { width: 26px; border: none; }
+QComboBox::down-arrow { image: url(:/icons/chevron-down.svg); width: 14px; height: 14px; }
+QComboBox QAbstractItemView {
+    background-color: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    outline: 0;
+    padding: 4px;
+    selection-background-color: var(--accent-soft);
+    selection-color: var(--accent);
+}
+QComboBox QAbstractItemView::item {
+    background-color: transparent;
+    color: var(--text-primary);
+    padding: 8px 12px;
+    border: 0;
+    border-radius: 8px;
+    min-height: 24px;
+}
+QComboBox QAbstractItemView::item:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+QComboBox QAbstractItemView::item:selected {
+    background-color: var(--accent-soft);
+    color: var(--accent);
+}
+
+/* Check box / Radio */
+QCheckBox, QRadioButton { spacing: 8px; color: var(--text-primary); }
+QCheckBox::indicator, QRadioButton::indicator {
+    width: 16px; height: 16px;
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+}
+QRadioButton::indicator { border-radius: 8px; }
+QCheckBox::indicator:hover, QRadioButton::indicator:hover {
+    border-color: var(--accent);
+}
+QCheckBox::indicator:checked, QRadioButton::indicator:checked {
+    background-color: var(--accent);
+    border-color: var(--accent);
+    image: url(:/icons/check.svg);
+}
+
+/* Group box */
+QGroupBox {
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-top: 12px;
+    padding: 16px;
+    color: var(--text-primary);
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 12px;
+    padding: 0 6px;
+    color: var(--text-secondary);
+    background: transparent;
+}
+
+/* Tabs (settings dialog fallback, superseded by PreferencesPage in Page 3) */
+QTabWidget::pane {
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    top: -1px;
+}
+QTabBar { qproperty-drawBase: 0; background: transparent; }
+QTabBar::tab {
+    background: transparent;
+    color: var(--text-tertiary);
+    padding: 8px 14px;
+    border: 1px solid transparent;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    font-weight: 500;
+}
+QTabBar::tab:selected {
+    color: var(--accent);
+    background: var(--bg-elevated);
+    border-color: var(--border);
+    border-bottom-color: var(--bg-elevated);
+}
+QTabBar::tab:hover:!selected { color: var(--text-primary); }
+
+/* List / Tree / Table - rounded surface, hairline hover, accent-soft selection. */
+QListView, QTreeView, QTableView {
+    background-color: transparent;
+    color: var(--text-primary);
+    border: none;
+    outline: none;
+    selection-background-color: var(--accent-soft);
+    selection-color: var(--accent);
+}
+QListView::item, QTreeView::item {
+    padding: 8px 12px;
+    border-radius: 8px;
+}
+QListView::item:hover, QTreeView::item:hover {
+    background-color: var(--bg-hover);
+}
+QListView::item:selected, QTreeView::item:selected {
+    background-color: var(--accent-soft);
+    color: var(--accent);
+}
+QHeaderView::section {
+    background-color: transparent;
+    color: var(--text-tertiary);
+    border: none;
+    border-bottom: 1px solid var(--border);
+    padding: 6px 10px;
+}
+
+/* Scroll bar - hair-thin, only visible on hover. */
+QScrollBar:vertical, QScrollBar:horizontal {
+    background: transparent;
+    border: none;
+    width: 10px;
+    height: 10px;
+    margin: 0;
+}
+QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
+    background: var(--border-strong);
+    border-radius: 5px;
+    min-height: 30px;
+    min-width: 30px;
+}
+QScrollBar::handle:hover { background: var(--text-tertiary); }
+QScrollBar::add-line, QScrollBar::sub-line { height: 0; width: 0; }
+QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+
+/* Menu */
+QMenu {
+    background-color: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    padding: 4px;
+}
+QMenu::item {
+    padding: 6px 22px;
+    border-radius: 8px;
+}
+QMenu::item:selected { background-color: var(--accent-soft); color: var(--accent); }
+QMenu::separator { height: 1px; background: var(--border); margin: 4px 8px; }
+
+/* Progress bar */
+QProgressBar {
+    background-color: var(--bg-muted);
+    color: var(--text-primary);
+    border: none;
+    border-radius: 4px;
+    text-align: center;
+    height: 6px;
+}
+QProgressBar::chunk {
+    background-color: var(--accent);
+    border-radius: 4px;
+}
+
+/* Status bar (hidden in Figma workspace, still styled for other dialogs). */
+QStatusBar {
+    background-color: transparent;
+    color: var(--text-tertiary);
+    border-top: 1px solid var(--border);
+}
+
+/* Menu bar (system menu on macOS - unused on Windows, still styled). */
+QMenuBar {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border);
+}
+QMenuBar::item { padding: 6px 12px; background: transparent; }
+QMenuBar::item:selected { background: var(--bg-hover); }
+
+/* Legacy tool bar (unused on the Figma workspace, kept for other dialogs). */
+QToolBar {
+    background: transparent;
+    border: none;
+    spacing: 6px;
+    padding: 6px 12px;
+}
+
+/* Splitter (workspace uses fixed layouts; retained for legacy dialogs). */
+QSplitter::handle { background: var(--border); }
+QSplitter::handle:horizontal { width: 1px; }
+QSplitter::handle:vertical { height: 1px; }
+
+/* Slider */
+QSlider::groove:horizontal {
+    height: 4px;
+    background: var(--bg-muted);
+    border-radius: 2px;
+}
+QSlider::sub-page:horizontal { background: var(--accent); border-radius: 2px; }
+QSlider::handle:horizontal {
+    background: var(--accent-fg);
+    border: 2px solid var(--accent);
+    width: 12px;
+    height: 12px;
+    margin: -6px 0;
+    border-radius: 8px;
+}
+
+/* Dialog */
+QDialog { background-color: var(--bg-elevated); }
+
+/* ============================================================
+ * Figma component variants (Phase 2 - property-based selectors)
+ * Used by EditorPanel / PreferencesPage / legacy dialogs.
+ * ============================================================ */
+
+/* ---------- Badges ---------- */
+QLabel[variant="tag"] {
+    background-color: var(--primary-tint);
+    color: var(--primary-text-on-tint);
+    border-radius: var(--radius-full);
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 500;
+}
+QLabel[variant="count"] {
+    color: var(--primary-accent-text);
+    font-size: 12px;
+    font-weight: 500;
+    background: transparent;
+}
+QLabel[variant="status"] {
+    background-color: var(--success-tint);
+    color: var(--success-text);
+    border-radius: var(--radius-sm);
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 500;
+}
+QLabel[variant="status"][tone="warn"] {
+    background-color: var(--warn-tint);
+    color: var(--warn-text);
+}
+QLabel[variant="status"][tone="danger"] {
+    background-color: var(--danger-soft);
+    color: var(--danger-text);
+}
+QLabel[variant="kbd"] {
+    background-color: var(--bg-elevated);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    padding: 1px 6px;
+    font-family: "DM Mono", "JetBrains Mono", "Cascadia Mono", "Consolas", monospace;
+    font-size: 10px;
+}
+
+/* ---------- Cards (generic) ---------- */
+QFrame[card="info"], QWidget[card="info"] {
+    background-color: var(--card);
+    border: 1px solid var(--border-panel-4);
+    border-radius: var(--radius-xl);
+    padding: 16px;
+}
+QFrame[card="timestamp"], QWidget[card="timestamp"] {
+    background-color: var(--soft-bg);
+    border: 1px solid var(--border-section);
+    border-radius: var(--radius-xl);
+    padding: 16px;
+}
+QFrame[card="setting-outer"], QWidget[card="setting-outer"] {
+    background-color: var(--card);
+    border: 1px solid var(--border-panel);
+    border-radius: var(--radius-2xl);
+}
+QFrame[card="setting-row"], QWidget[card="setting-row"] {
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border-divider-hair);
+}
+QFrame[card="risky-banner"], QWidget[card="risky-banner"] {
+    background-color: var(--warn-tint);
+    color: var(--warn-text);
+    border: 1px solid var(--warn-border);
+    border-radius: var(--radius-xl);
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* ---------- Underline tabs (PreferencesPage) ---------- */
+QTabBar[variant="underline"] {
+    qproperty-drawBase: 0;
+    background: transparent;
+    border-bottom: 1px solid var(--border-section);
+}
+QTabBar[variant="underline"]::tab {
+    background: transparent;
+    color: var(--muted);
+    padding: 12px 4px;
+    margin-right: 32px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: 13px;
+    font-weight: 500;
+}
+QTabBar[variant="underline"]::tab:hover:!selected {
+    color: var(--text-primary);
+}
+QTabBar[variant="underline"]::tab:selected {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+    font-weight: 600;
+}
+QTabWidget[variant="underline"]::pane {
+    background: transparent;
+    border: none;
+    top: 0;
+}
+
+/* ---------- Editor vertical nav (EditorPanel) ---------- */
+QListWidget[variant="editor-nav"] {
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--border-section);
+    padding: 12px 8px;
+    outline: none;
+    min-width: 98px;
+    max-width: 98px;
+}
+QListWidget[variant="editor-nav"]::item {
+    padding: 10px 12px;
+    margin: 2px 0;
+    border-radius: var(--radius-md);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+}
+QListWidget[variant="editor-nav"]::item:hover:!selected {
+    background-color: var(--primary-hover-surface);
+    color: var(--text-primary);
+}
+QListWidget[variant="editor-nav"]::item:selected {
+    background-color: var(--primary-tab-active-bg);
+    color: var(--primary-text-on-tint);
+    font-weight: 600;
+}
+
+/* ---------- Strength indicator (4 segments) ---------- */
+QFrame[strength-segment="true"] {
+    background-color: var(--bg-muted);
+    border: none;
+    border-radius: 2px;
+    min-height: 4px;
+    max-height: 4px;
+}
+QFrame[strength-segment="true"][filled="true"][level="1"] {
+    background-color: var(--strength-weak);
+}
+QFrame[strength-segment="true"][filled="true"][level="2"] {
+    background-color: var(--strength-medium);
+}
+QFrame[strength-segment="true"][filled="true"][level="3"] {
+    background-color: var(--strength-strong);
+}
+QLabel[strength-label="true"] {
+    color: var(--primary-strength-text);
+    font-size: 11px;
+    font-weight: 500;
+    background: transparent;
+}
+
+/* ---------- Toggle switch (fallback via QCheckBox indicator) ---------- */
+/* MVP: indicator becomes a colored pill; if a real sliding knob is required
+   Phase 5 falls back to a custom QAbstractButton. */
+QCheckBox[variant="switch"] { spacing: 8px; }
+QCheckBox[variant="switch"]::indicator {
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+    background-color: var(--toggle-off);
+    border: none;
+    image: none;
+}
+QCheckBox[variant="switch"]::indicator:hover {
+    background-color: var(--hint);
+}
+QCheckBox[variant="switch"]::indicator:checked {
+    background-color: var(--primary);
+}
+QCheckBox[variant="switch"]::indicator:checked:hover {
+    background-color: var(--primary-pressed);
+}
+QCheckBox[variant="switch"]:disabled { color: var(--text-quaternary); }
+QCheckBox[variant="switch"]:disabled::indicator {
+    background-color: var(--bg-muted);
+}
+
+/* ---------- Mono line edit (password/secret fields) ---------- */
+QLineEdit[mono="true"] {
+    font-family: "DM Mono", "JetBrains Mono", "Cascadia Mono", "Consolas", monospace;
+    letter-spacing: 1.4px;
+}
+
+/* ---------- Avatar (rounded icon square, brand-color variants) ---------- */
+QLabel[avatar="true"] {
+    background-color: var(--primary-tint);
+    color: var(--primary);
+    border-radius: var(--radius-2xl);
+    font-size: 18px;
+    font-weight: 700;
+    qproperty-alignment: AlignCenter;
+}
+QLabel[avatar="true"][size="sm"] {
+    border-radius: var(--radius-lg);
+    font-size: 13px;
+    min-width: 36px;
+    max-width: 36px;
+    min-height: 36px;
+    max-height: 36px;
+}
+QLabel[avatar="true"][size="md"] {
+    min-width: 48px;
+    max-width: 48px;
+    min-height: 48px;
+    max-height: 48px;
+}
+QLabel[avatar="true"][brand="google"]    { background-color: var(--brand-google-bg);    color: var(--brand-google-fg); }
+QLabel[avatar="true"][brand="github"]    { background-color: var(--brand-github-bg);    color: var(--brand-github-fg); }
+QLabel[avatar="true"][brand="microsoft"] { background-color: var(--brand-microsoft-bg); color: var(--brand-microsoft-fg); }
+QLabel[avatar="true"][brand="alipay"]    { background-color: var(--brand-alipay-bg);    color: var(--brand-alipay-fg); }
+QLabel[avatar="true"][brand="wechat"]    { background-color: var(--brand-wechat-bg);    color: var(--brand-wechat-fg); }
+QLabel[avatar="true"][brand="amazon"]    { background-color: var(--brand-amazon-bg);    color: var(--brand-amazon-fg); }
+QLabel[avatar="true"][brand="notion"] {
+    background-color: var(--brand-notion-bg);
+    color: var(--brand-notion-fg);
+    border: 1px solid var(--border-section);
+}

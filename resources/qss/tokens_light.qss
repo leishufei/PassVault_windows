@@ -1,0 +1,184 @@
+/* PassVault design tokens - light theme. */
+/* Full palette mirrored from design.md (Figma "Redesign Password Manager UI" */
+/* light theme). Names use kebab-case; every hex kept lowercase. */
+/* Existing semantic aliases (--bg-*, --text-*, --border-*, --accent-*, */
+/* --danger-*, --success-*, --strength-*, --toast-*, --focus-ring, --shadow) */
+/* are preserved so downstream QSS keeps working. */
+
+* {
+    /* ---- Brand / primary family (唯一结构色, Notion 蓝) ---- */
+    --primary: #276cf0;
+    --primary-pressed: #1d60df;
+    --primary-tint: #e8f0ff;
+    --primary-tint-2: #dbe9ff;
+    --primary-text-on-tint: #2369ee;
+    --primary-accent-text: #3777e7;
+    --primary-accent-alt: #3675de;
+    --primary-focus-border: #8ab3ff;
+    --primary-hover-surface: #eaf0f8;
+    --primary-hover-surface-2: #eaf2ff;
+    --primary-hover-surface-3: #eef4ff;
+    --primary-hover-surface-4: #eff4fa;
+    --primary-hover-surface-5: #edf2f8;
+    --primary-hover-surface-6: #f4f7fb;
+    --primary-tab-active-bg: #e4efff;
+    --primary-strength-bar: #2771ef;
+    --primary-strength-text: #3979e7;
+    --primary-icon-cloud: #4281f2;
+    --primary-icon-lock: #3b78df;
+    --primary-setting-icon: #3174e6;
+    --link: #2771ed;
+
+    /* ---- Surfaces / backgrounds ---- */
+    --canvas: #eef2f7;
+    --shell: #fbfcfe;
+    --detail-bg: #fcfdff;
+    --card: #ffffff;
+    --card-selected: #f4f8ff;
+    --card-hover: #fbfcff;
+    --soft-bg: #f9fbfd;
+    --soft-bg-sync: #f7faff;
+    --soft-bg-select: #fafcff;
+
+    /* Legacy aliases (used across components.qss / app.qss). */
+    --bg-primary: #eef2f7;
+    --bg-canvas: #fbfcfe;
+    --bg-elevated: #ffffff;
+    --bg-sidebar: #f5f8fc;
+    --bg-search: #f7f9fc;
+    --bg-hover: #eaf0f8;
+    --bg-muted: #edf1f6;
+    --bg-secondary: #f5f8fc;
+    --bg-tertiary: #edf1f6;
+
+    /* ---- Text ---- */
+    --ink: #1e2a38;
+    --ink-2: #334354;
+    --body: #435466;
+    --body-2: #506174;
+    --muted: #59687a;
+    --muted-2: #5f7186;
+    --muted-3: #5d6d80;
+    --muted-4: #597087;
+    --muted-5: #617084;
+    --muted-6: #637488;
+    --muted-7: #65778b;
+    --muted-8: #667587;
+    --muted-9: #6b7b8f;
+    --muted-10: #6d7e91;
+    --muted-11: #6e7d8e;
+    --muted-12: #708094;
+    --muted-13: #718197;
+    --muted-14: #51677e;
+    --muted-15: #42617f;
+    --hint: #7b899a;
+    --hint-2: #7b8b9e;
+    --hint-3: #7c8a9b;
+    --hint-4: #7c8b9d;
+    --hint-5: #7e8c9b;
+    --hint-6: #758499;
+    --hint-7: #768599;
+    --hint-8: #73859b;
+    --hint-9: #79889a;
+    --hint-10: #627489;
+    --placeholder: #8a98aa;
+    --placeholder-2: #8491a1;
+    --placeholder-3: #8694a5;
+    --placeholder-4: #8b98a8;
+    --info-value: #33465c;
+    --detail-copy: #537292;
+    --detail-copy-2: #648099;
+    --external-icon: #5681bd;
+
+    /* Legacy text aliases. */
+    --text-primary: #1e2a38;
+    --text-secondary: #59687a;
+    --text-tertiary: #7b899a;
+    --text-quaternary: #8491a1;
+    --text-inverse: #ffffff;
+
+    /* ---- Borders ---- */
+    --border-shell: #d9e1eb;
+    --border-section: #e4e9ef;
+    --border-section-2: #e5eaf0;
+    --border-section-3: #e6ebf1;
+    --border-section-4: #e8edf3;
+    --border-panel: #dce4ee;
+    --border-panel-2: #dfe6ee;
+    --border-panel-3: #e1e8f0;
+    --border-panel-4: #e3e9f0;
+    --border-sidebar: #e3e8ef;
+    --border-sidebar-2: #e2e8f0;
+    --border-nav-hover: #e1eaf7;
+    --border-drawer-inner: #e5ebf1;
+    --border-card: #edf0f4;
+    --border-card-hover: #dce6f4;
+    --border-card-selected: #79a9ff;
+    --border-divider-hair: #e1e6ed;
+
+    /* Legacy border aliases. */
+    --border: #d9e1eb;
+    --border-strong: #dce4ee;
+    --border-soft: #e3e8ef;
+    --border-tertiary: #edf0f4;
+
+    /* ---- Accent (mapped from primary for legacy references) ---- */
+    --accent: #276cf0;
+    --accent-hover: #1d60df;
+    --accent-pressed: #1955c8;
+    --accent-soft: #e8f0ff;
+    --accent-soft-hover: #d9e5ff;
+    --accent-fg: #ffffff;
+
+    /* ---- Semantic ---- */
+    --success: #34a36a;
+    --success-text: #2e9d5b;
+    --success-tint: #e6f8ed;
+    --success-soft: #e2f2ea;
+    --warn: #d27d45;
+    --warn-text: #9d643c;
+    --warn-tint: #fff8f2;
+    --warn-border: #f1d9c5;
+    --warning: #d27d45;
+    --danger-text: #bd5b57;
+    --danger: #b7463e;
+    --danger-hover: #a03830;
+    --danger-soft: #fbe9e6;
+    --toggle-off: #cbd5e1;
+
+    --strength-weak: #b7463e;
+    --strength-medium: #d27d45;
+    --strength-strong: #34a36a;
+
+    --toast-bg: #1e2a38;
+    --toast-fg: #ffffff;
+
+    --focus-ring: #8ab3ff;
+    --shadow: rgba(52, 72, 99, 32);
+
+    /* ---- Brand tiles (password-card icon square) ---- */
+    --brand-google-bg: #f7f8fa;
+    --brand-google-fg: #4285f4;
+    --brand-github-bg: #202725;
+    --brand-github-fg: #ffffff;
+    --brand-microsoft-bg: #ebf3ff;
+    --brand-microsoft-fg: #2577ce;
+    --brand-alipay-bg: #1677ff;
+    --brand-alipay-fg: #ffffff;
+    --brand-wechat-bg: #20b85a;
+    --brand-wechat-fg: #ffffff;
+    --brand-amazon-bg: #1e2930;
+    --brand-amazon-fg: #f7ad2d;
+    --brand-notion-bg: #ffffff;
+    --brand-notion-fg: #171717;
+
+    /* ---- Radii (design.md rounded scale) ---- */
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+    --radius-xl: 12px;
+    --radius-2xl: 16px;
+    --radius-shell: 22px;
+    --radius-full: 9999px;
+}

@@ -1,0 +1,183 @@
+/* PassVault design tokens - dark theme. */
+/* Accent family (#276cf0) unified with light theme; surfaces use conservative */
+/* dark neutrals. Every kebab-case name from design.md has a value here so the */
+/* substituted stylesheet never leaks a literal var(--foo) in dark mode. */
+/* Fine-tuning of dark palette is out of scope for this pass. */
+
+* {
+    /* ---- Brand / primary family (accent unified with light theme) ---- */
+    --primary: #276cf0;
+    --primary-pressed: #1d60df;
+    --primary-tint: #172a4d;
+    --primary-tint-2: #1e3866;
+    --primary-text-on-tint: #6ea1ff;
+    --primary-accent-text: #6ea1ff;
+    --primary-accent-alt: #6ea1ff;
+    --primary-focus-border: #276cf0;
+    --primary-hover-surface: #18191a;
+    --primary-hover-surface-2: #172a4d;
+    --primary-hover-surface-3: #172a4d;
+    --primary-hover-surface-4: #18191a;
+    --primary-hover-surface-5: #18191a;
+    --primary-hover-surface-6: #18191a;
+    --primary-tab-active-bg: #172a4d;
+    --primary-strength-bar: #276cf0;
+    --primary-strength-text: #6ea1ff;
+    --primary-icon-cloud: #4281f2;
+    --primary-icon-lock: #6ea1ff;
+    --primary-setting-icon: #6ea1ff;
+    --link: #6ea1ff;
+
+    /* ---- Surfaces / backgrounds ---- */
+    --canvas: #010102;
+    --shell: #0f1011;
+    --detail-bg: #0f1011;
+    --card: #191a1b;
+    --card-selected: #212a33;
+    --card-hover: #1a2029;
+    --soft-bg: #141516;
+    --soft-bg-sync: #141516;
+    --soft-bg-select: #141516;
+
+    /* Legacy aliases. */
+    --bg-primary: #010102;
+    --bg-canvas: #0f1011;
+    --bg-elevated: #191a1b;
+    --bg-sidebar: #0f1011;
+    --bg-search: #141516;
+    --bg-hover: #18191a;
+    --bg-muted: #141516;
+    --bg-secondary: #0f1011;
+    --bg-tertiary: #141516;
+
+    /* ---- Text ---- */
+    --ink: #f7f8f8;
+    --ink-2: #e0e5ec;
+    --body: #d0d6e0;
+    --body-2: #b8bfc9;
+    --muted: #8a8f98;
+    --muted-2: #8a8f98;
+    --muted-3: #8a8f98;
+    --muted-4: #8a8f98;
+    --muted-5: #8a8f98;
+    --muted-6: #8a8f98;
+    --muted-7: #8a8f98;
+    --muted-8: #8a8f98;
+    --muted-9: #8a8f98;
+    --muted-10: #8a8f98;
+    --muted-11: #8a8f98;
+    --muted-12: #8a8f98;
+    --muted-13: #8a8f98;
+    --muted-14: #a0a4ad;
+    --muted-15: #a0a4ad;
+    --hint: #8a8f98;
+    --hint-2: #8a8f98;
+    --hint-3: #8a8f98;
+    --hint-4: #8a8f98;
+    --hint-5: #8a8f98;
+    --hint-6: #8a8f98;
+    --hint-7: #8a8f98;
+    --hint-8: #8a8f98;
+    --hint-9: #8a8f98;
+    --hint-10: #8a8f98;
+    --placeholder: #62666d;
+    --placeholder-2: #62666d;
+    --placeholder-3: #62666d;
+    --placeholder-4: #62666d;
+    --info-value: #d0d6e0;
+    --detail-copy: #8a8f98;
+    --detail-copy-2: #8a8f98;
+    --external-icon: #6ea1ff;
+
+    /* Legacy text aliases. */
+    --text-primary: #f7f8f8;
+    --text-secondary: #d0d6e0;
+    --text-tertiary: #8a8f98;
+    --text-quaternary: #62666d;
+    --text-inverse: #000000;
+
+    /* ---- Borders ---- */
+    --border-shell: #23252a;
+    --border-section: #23252a;
+    --border-section-2: #23252a;
+    --border-section-3: #23252a;
+    --border-section-4: #23252a;
+    --border-panel: #34343a;
+    --border-panel-2: #34343a;
+    --border-panel-3: #34343a;
+    --border-panel-4: #34343a;
+    --border-sidebar: #1a1c20;
+    --border-sidebar-2: #1a1c20;
+    --border-nav-hover: #1e3866;
+    --border-drawer-inner: #23252a;
+    --border-card: #3e3e44;
+    --border-card-hover: #4a4a52;
+    --border-card-selected: #276cf0;
+    --border-divider-hair: #23252a;
+
+    /* Legacy border aliases. */
+    --border: #23252a;
+    --border-strong: #34343a;
+    --border-soft: #1a1c20;
+    --border-tertiary: #3e3e44;
+
+    /* ---- Accent (mapped from primary for legacy references) ---- */
+    --accent: #276cf0;
+    --accent-hover: #4581f3;
+    --accent-pressed: #1d60df;
+    --accent-soft: #172a4d;
+    --accent-soft-hover: #1e3866;
+    --accent-fg: #ffffff;
+
+    /* ---- Semantic ---- */
+    --success: #34a36a;
+    --success-text: #4bb680;
+    --success-tint: #14301f;
+    --success-soft: #14301f;
+    --warn: #f5a623;
+    --warn-text: #d68f1f;
+    --warn-tint: #2a1e0c;
+    --warn-border: #4a3618;
+    --warning: #f5a623;
+    --danger-text: #e5484d;
+    --danger: #e5484d;
+    --danger-hover: #ec5d61;
+    --danger-soft: #3a1a1c;
+    --toggle-off: #34343a;
+
+    --strength-weak: #e5484d;
+    --strength-medium: #f5a623;
+    --strength-strong: #34a36a;
+
+    --toast-bg: #141516;
+    --toast-fg: #f7f8f8;
+
+    --focus-ring: #276cf0;
+    --shadow: rgba(0, 0, 0, 128);
+
+    /* ---- Brand tiles (brand-fixed, identical across themes) ---- */
+    --brand-google-bg: #f7f8fa;
+    --brand-google-fg: #4285f4;
+    --brand-github-bg: #202725;
+    --brand-github-fg: #ffffff;
+    --brand-microsoft-bg: #ebf3ff;
+    --brand-microsoft-fg: #2577ce;
+    --brand-alipay-bg: #1677ff;
+    --brand-alipay-fg: #ffffff;
+    --brand-wechat-bg: #20b85a;
+    --brand-wechat-fg: #ffffff;
+    --brand-amazon-bg: #1e2930;
+    --brand-amazon-fg: #f7ad2d;
+    --brand-notion-bg: #ffffff;
+    --brand-notion-fg: #171717;
+
+    /* ---- Radii (unified with light theme) ---- */
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+    --radius-xl: 12px;
+    --radius-2xl: 16px;
+    --radius-shell: 22px;
+    --radius-full: 9999px;
+}

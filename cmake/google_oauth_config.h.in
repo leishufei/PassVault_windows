@@ -1,0 +1,8 @@
+#pragma once
+
+namespace passvault::oauth {
+
+inline constexpr const char* kGoogleDesktopClientId = "@GOOGLE_DESKTOP_CLIENT_ID@";
+inline constexpr const char* kGoogleDesktopClientSecret = "@GOOGLE_DESKTOP_CLIENT_SECRET@";
+
+}  // namespace passvault::oauth
