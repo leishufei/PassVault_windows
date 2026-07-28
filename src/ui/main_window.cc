@@ -92,7 +92,7 @@ MainWindow::MainWindow(const Deps& deps, QWidget* parent)
     auto* root = new QWidget(this);
     root->setObjectName(QStringLiteral("WorkspaceRoot"));
     auto* root_layout = new QVBoxLayout(root);
-    root_layout->setContentsMargins(16, 16, 16, 16);
+    root_layout->setContentsMargins(0, 0, 0, 0);
     root_layout->setSpacing(0);
 
     auto* container = new QWidget(root);
@@ -328,7 +328,7 @@ QWidget* MainWindow::BuildWorkspaceHeader() {
     shortcut->setObjectName(QStringLiteral("SearchShortcut"));
     shortcut->setAlignment(Qt::AlignCenter);
     search_layout->addWidget(shortcut);
-    controls_layout->addWidget(search_container);
+    controls_layout->addWidget(search_container, 0, Qt::AlignVCenter);
     controls_layout->addStretch(1);
 
     auto* lock_button = new QToolButton(controls);
@@ -343,13 +343,13 @@ QWidget* MainWindow::BuildWorkspaceHeader() {
     lock_button->setIconSize(QSize(18, 18));
     connect(lock_button, &QToolButton::clicked, this,
             &MainWindow::LockRequested);
-    controls_layout->addWidget(lock_button);
+    controls_layout->addWidget(lock_button, 0, Qt::AlignVCenter);
 
     auto* sep = new QFrame(controls);
     sep->setObjectName(QStringLiteral("HeaderSeparator"));
     sep->setFrameShape(QFrame::VLine);
     sep->setFixedSize(1, 20);
-    controls_layout->addWidget(sep);
+    controls_layout->addWidget(sep, 0, Qt::AlignVCenter);
 
     auto* more_button = new QToolButton(controls);
     more_button->setObjectName(QStringLiteral("HeaderMoreButton"));
@@ -361,7 +361,7 @@ QWidget* MainWindow::BuildWorkspaceHeader() {
         QColor(QStringLiteral("#6b7b8f")),
         18));
     more_button->setIconSize(QSize(18, 18));
-    controls_layout->addWidget(more_button);
+    controls_layout->addWidget(more_button, 0, Qt::AlignVCenter);
 
     header_layout->addWidget(controls, 1);
 

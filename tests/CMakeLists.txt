@@ -103,6 +103,15 @@ if(WIN32)
     target_link_libraries(passvault_tests PRIVATE bcrypt crypt32)
 endif()
 
+# Qt Test is only linked by the test target, so the application deployment
+# step does not copy it. Test discovery runs the executable immediately after
+# linking and therefore needs the DLL beside the executable.
+add_custom_command(TARGET passvault_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:Qt6::Test>"
+        "$<TARGET_FILE_DIR:passvault_tests>/"
+    VERBATIM)
+
 # GUI tests run under QApplication with the offscreen platform. Deploy the
 # offscreen plugin next to the test binary so it can start headless during
 # both test discovery and execution.
