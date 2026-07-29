@@ -478,25 +478,24 @@ QTabWidget[variant="underline"]::pane {
 
 /* ---------- Editor vertical nav (EditorPanel) ---------- */
 QListWidget[variant="editor-nav"] {
-    background: transparent;
+    background-color: var(--bg-sidebar);
     border: none;
-    border-right: 1px solid var(--border-section);
-    padding: 12px 8px;
+    padding: 16px 8px 0 8px;
     outline: none;
     min-width: 98px;
     max-width: 98px;
 }
 QListWidget[variant="editor-nav"]::item {
-    padding: 10px 12px;
-    margin: 2px 0;
+    padding: 8px;
+    margin: 0 0 4px 0;
     border-radius: var(--radius-md);
-    color: var(--muted);
-    font-size: 12px;
+    color: var(--muted-12);
+    font-size: 11px;
     font-weight: 500;
 }
 QListWidget[variant="editor-nav"]::item:hover:!selected {
-    background-color: var(--primary-hover-surface);
-    color: var(--text-primary);
+    background-color: var(--primary-hover-surface-5);
+    color: var(--muted-12);
 }
 QListWidget[variant="editor-nav"]::item:selected {
     background-color: var(--primary-tab-active-bg);

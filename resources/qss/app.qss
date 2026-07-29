@@ -607,56 +607,64 @@ QMainWindow, #WorkspaceRoot {
 #BadgeWarning { background: var(--warning); color: var(--text-inverse); }
 #BadgeDanger { background: var(--danger); }
 
-/* ---------- Editor drawer (Phase 4) ---------- */
+/* ---------- Editor drawer ---------- */
 
 #EditorPanel {
     background-color: var(--card);
-    border-left: 1px solid var(--border-section);
+    border-left: 1px solid var(--border-panel-2);
     border-top-right-radius: var(--radius-shell);
     border-bottom-right-radius: var(--radius-shell);
 }
 
 #EditorHeader {
-    border-bottom: 1px solid var(--border-section);
+    border-bottom: 1px solid var(--border-section-3);
     min-height: 68px;
     max-height: 68px;
 }
 #EditorHeaderTitle {
     color: var(--text-primary);
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 700;
     letter-spacing: -0.2px;
 }
+#EditorHeaderBackIcon {
+    background: transparent;
+}
 #EditorHeaderClose {
     background: transparent;
-    color: var(--muted-2);
+    color: var(--muted-7);
     border: 1px solid transparent;
     border-radius: var(--radius-md);
+    padding: 0;
 }
 #EditorHeaderClose:hover {
     background: var(--primary-hover-surface);
     color: var(--text-primary);
 }
 
-#EditorBody { background: transparent; }
+#EditorContent,
+#EditorBody,
+#EditorScroll {
+    background: transparent;
+}
 
 #EditorFooter {
-    border-top: 1px solid var(--border-section);
+    border-top: 1px solid var(--border-drawer-inner);
     background-color: var(--card);
 }
 
 #EditorFooter QPushButton {
-    min-width: 84px;
-    min-height: 34px;
-    padding: 6px 18px;
+    min-height: 36px;
+    max-height: 36px;
+    padding: 0 12px;
     border-radius: var(--radius-md);
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
 }
 #EditorFooter QPushButton[flat="true"] {
     background-color: transparent;
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
+    color: var(--muted-3);
+    border: 1px solid var(--border-panel);
 }
 #EditorFooter QPushButton[flat="true"]:hover {
     background-color: var(--bg-hover);
@@ -678,35 +686,77 @@ QMainWindow, #WorkspaceRoot {
 }
 
 #EditorGenerateButton {
-    background-color: var(--accent-soft);
+    background-color: transparent;
     color: var(--accent);
-    border: 1px solid transparent;
-    border-radius: var(--radius-md);
-    padding: 0 12px;
-    font-size: 12px;
+    border: none;
+    padding: 0;
+    font-size: 11px;
     font-weight: 600;
 }
 #EditorGenerateButton:hover {
-    background-color: var(--accent-soft-hover);
+    background-color: transparent;
     color: var(--accent);
 }
 #EditorGenerateButton:pressed {
-    background-color: var(--accent-soft-hover);
+    background-color: transparent;
 }
 
 #EditorFieldLabel {
-    color: var(--hint);
+    color: var(--muted-11);
     font-size: 11px;
     font-weight: 500;
-    margin-bottom: 4px;
+    margin: 0;
 }
 
-/* Compact inputs inside the editor drawer so the form fits without scrolling. */
 #EditorBody QLineEdit,
 #EditorBody QComboBox {
-    padding-top: 6px;
-    padding-bottom: 6px;
-    min-height: 16px;
+    background-color: var(--bg-canvas);
+    color: var(--ink-2);
+    border-color: var(--border-panel);
+    min-height: 36px;
+    max-height: 36px;
+    padding: 0 8px;
+    border-radius: 8px;
+    font-size: 12px;
+}
+
+#EditorBody QTextEdit {
+    background-color: var(--bg-canvas);
+    color: var(--body);
+    border-color: var(--border-panel);
+    padding: 8px;
+    border-radius: 8px;
+    font-size: 12px;
+}
+
+#EditorPasswordField {
+    background-color: var(--bg-canvas);
+    border: 1px solid var(--border-panel);
+    border-radius: 8px;
+}
+#EditorPasswordField[error="true"] {
+    background-color: var(--danger-soft);
+    border-color: var(--danger);
+}
+
+#EditorPasswordField #EditorPasswordInput {
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+
+#EditorPreviewToggle {
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 0;
+}
+#EditorPreviewToggle:hover {
+    background-color: var(--primary-hover-surface);
+}
+
+#EditorBody QFrame[strength-segment="true"][filled="true"] {
+    background-color: var(--primary-strength-bar);
 }
 
 #EditorPlaceholder {

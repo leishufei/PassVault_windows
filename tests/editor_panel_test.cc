@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <QBoxLayout>
 #include <QComboBox>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QTextEdit>
@@ -82,7 +84,13 @@ TEST_F(EditorPanelTest, OpenForEditFillsFields) {
     EXPECT_EQ(websiteInput()->text(), QStringLiteral("https://github.com"));
     EXPECT_EQ(passwordInput()->text(), QStringLiteral("s3cr3tPass!"));
     EXPECT_EQ(notesInput()->toPlainText(), QStringLiteral("work account"));
-    EXPECT_EQ(headerTitle()->text(), QStringLiteral("编辑密码"));
+    EXPECT_EQ(headerTitle()->text(), QStringLiteral("编辑密码 · GitHub"));
+    EXPECT_EQ(saveButton()->text(), QStringLiteral("保存更改"));
+}
+
+TEST_F(EditorPanelTest, CreateModeUsesFigmaActionText) {
+    panel_.OpenForCreate();
+    EXPECT_EQ(saveButton()->text(), QStringLiteral("创建密码"));
 }
 
 TEST_F(EditorPanelTest, ResultReflectsEditedFields) {
@@ -142,7 +150,56 @@ TEST_F(EditorPanelTest, ApplyGeneratedPasswordSetsField) {
 TEST_F(EditorPanelTest, PasswordChangeUpdatesStrengthLabel) {
     panel_.OpenForCreate();
     passwordInput()->setText(QStringLiteral("A1b!c9D#eF2xY"));
-    EXPECT_EQ(strengthLabel()->text(), QStringLiteral("强度：强"));
+    EXPECT_EQ(strengthLabel()->text(), QStringLiteral("强"));
+}
+
+TEST_F(EditorPanelTest, MatchesFigmaDrawerSkeleton) {
+    QWidget parent;
+    parent.resize(1200, 800);
+    EditorPanel panel(&parent);
+    panel.OpenForCreate();
+
+    auto* header = panel.findChild<QWidget*>(QStringLiteral("EditorHeader"));
+    auto* navigation =
+        panel.findChild<QListWidget*>(QStringLiteral("EditorNavigation"));
+    auto* back_icon =
+        panel.findChild<QLabel*>(QStringLiteral("EditorHeaderBackIcon"));
+    auto* notes =
+        panel.findChild<QTextEdit*>(QStringLiteral("EditorNotesInput"));
+    auto* footer = panel.findChild<QWidget*>(QStringLiteral("EditorFooter"));
+    auto* footer_layout =
+        qobject_cast<QBoxLayout*>(footer ? footer->layout() : nullptr);
+
+    ASSERT_NE(header, nullptr);
+    ASSERT_NE(navigation, nullptr);
+    ASSERT_NE(back_icon, nullptr);
+    ASSERT_NE(notes, nullptr);
+    ASSERT_NE(footer_layout, nullptr);
+    EXPECT_EQ(panel.width(), 372);
+    EXPECT_EQ(header->height(), 68);
+    EXPECT_EQ(navigation->width(), 98);
+    EXPECT_EQ(navigation->count(), 3);
+    EXPECT_EQ(navigation->currentRow(), 0);
+    EXPECT_EQ(notes->height(), 96);
+    EXPECT_EQ(footer_layout->stretch(0), 1);
+    EXPECT_EQ(footer_layout->stretch(1), 1);
+}
+
+TEST_F(EditorPanelTest, FieldsFollowFigmaOrder) {
+    auto* body = panel_.findChild<QWidget*>(QStringLiteral("EditorBody"));
+    ASSERT_NE(body, nullptr);
+
+    const auto layout_index = [body](QWidget* widget) {
+        while (widget->parentWidget() != body) {
+            widget = widget->parentWidget();
+        }
+        return body->layout()->indexOf(widget);
+    };
+    EXPECT_LT(layout_index(titleInput()), layout_index(usernameInput()));
+    EXPECT_LT(layout_index(usernameInput()), layout_index(passwordInput()));
+    EXPECT_LT(layout_index(passwordInput()), layout_index(websiteInput()));
+    EXPECT_LT(layout_index(websiteInput()), layout_index(categoryCombo()));
+    EXPECT_LT(layout_index(categoryCombo()), layout_index(notesInput()));
 }
 
 TEST_F(EditorPanelTest, PreviewToggleSwitchesEchoMode) {
