@@ -10,6 +10,7 @@
 class QComboBox;
 class QLabel;
 class QLineEdit;
+class QListWidget;
 class QPropertyAnimation;
 class QPushButton;
 class QTextEdit;
@@ -75,11 +76,13 @@ class EditorPanel : public QFrame {
 
     QLabel* header_title_ = nullptr;
     QToolButton* header_close_ = nullptr;
+    QListWidget* navigation_ = nullptr;
 
     QLineEdit* title_input_ = nullptr;
     QLineEdit* website_input_ = nullptr;
     QLineEdit* username_input_ = nullptr;
     QLineEdit* password_input_ = nullptr;
+    QWidget* password_field_ = nullptr;
     QToolButton* preview_toggle_ = nullptr;
     QToolButton* generate_button_ = nullptr;
     QComboBox* category_combo_ = nullptr;
