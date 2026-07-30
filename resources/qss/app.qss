@@ -616,71 +616,110 @@ QMainWindow, #WorkspaceRoot {
     border-bottom-right-radius: var(--radius-shell);
 }
 
-#EditorHeader {
+#EditorPage,
+#EditorGeneratorPage,
+#EditorPages {
+    background-color: var(--card);
+}
+
+#EditorHeader,
+#EditorGeneratorHeader {
     border-bottom: 1px solid var(--border-section-3);
     min-height: 68px;
     max-height: 68px;
 }
-#EditorHeaderTitle {
+#EditorHeaderTitle,
+#EditorGeneratorHeaderTitle {
     color: var(--text-primary);
     font-size: 14px;
     font-weight: 700;
     letter-spacing: -0.2px;
 }
-#EditorHeaderBackIcon {
-    background: transparent;
-}
-#EditorHeaderClose {
+#EditorHeaderBack,
+#EditorGeneratorBack,
+#EditorHeaderClose,
+#EditorGeneratorClose {
     background: transparent;
     color: var(--muted-7);
     border: 1px solid transparent;
     border-radius: var(--radius-md);
     padding: 0;
 }
-#EditorHeaderClose:hover {
+#EditorHeaderBack:hover,
+#EditorGeneratorBack:hover,
+#EditorHeaderClose:hover,
+#EditorGeneratorClose:hover {
     background: var(--primary-hover-surface);
-    color: var(--text-primary);
+    color: var(--primary);
 }
 
 #EditorContent,
 #EditorBody,
-#EditorScroll {
+#EditorScroll,
+#EditorGeneratorContent,
+#EditorGeneratorBody,
+#EditorGeneratorScroll {
     background: transparent;
 }
 
-#EditorFooter {
+#EditorSectionTitle {
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+#EditorSectionDescription,
+#EditorGeneratorDescription {
+    color: var(--muted-13);
+    font-size: 12px;
+}
+
+#EditorSectionDivider,
+#EditorGeneratorDivider {
+    background-color: var(--border-card);
+    border: none;
+}
+
+#EditorFooter,
+#EditorGeneratorFooter {
     border-top: 1px solid var(--border-drawer-inner);
     background-color: var(--card);
 }
 
-#EditorFooter QPushButton {
+#EditorFooter QPushButton,
+#EditorGeneratorFooter QPushButton {
     min-height: 36px;
     max-height: 36px;
-    padding: 0 12px;
+    padding: 0 20px;
     border-radius: var(--radius-md);
     font-size: 12px;
     font-weight: 500;
 }
-#EditorFooter QPushButton[flat="true"] {
+#EditorFooter QPushButton[flat="true"],
+#EditorGeneratorFooter QPushButton[flat="true"] {
     background-color: transparent;
     color: var(--muted-3);
     border: 1px solid var(--border-panel);
 }
-#EditorFooter QPushButton[flat="true"]:hover {
+#EditorFooter QPushButton[flat="true"]:hover,
+#EditorGeneratorFooter QPushButton[flat="true"]:hover {
     background-color: var(--bg-hover);
     color: var(--text-primary);
     border-color: var(--border-strong);
 }
-#EditorFooter QPushButton[accent="true"] {
+#EditorFooter QPushButton[accent="true"],
+#EditorGeneratorFooter QPushButton[accent="true"] {
     background-color: var(--primary);
     color: var(--accent-fg);
     border: 1px solid var(--primary);
 }
-#EditorFooter QPushButton[accent="true"]:hover {
+#EditorFooter QPushButton[accent="true"]:hover,
+#EditorGeneratorFooter QPushButton[accent="true"]:hover {
     background-color: var(--primary-pressed);
     border-color: var(--primary-pressed);
 }
-#EditorFooter QPushButton[accent="true"]:pressed {
+#EditorFooter QPushButton[accent="true"]:pressed,
+#EditorGeneratorFooter QPushButton[accent="true"]:pressed {
     background-color: var(--primary-pressed);
     border-color: var(--primary-pressed);
 }
@@ -757,6 +796,90 @@ QMainWindow, #WorkspaceRoot {
 
 #EditorBody QFrame[strength-segment="true"][filled="true"] {
     background-color: var(--primary-strength-bar);
+}
+
+#EditorGeneratorTitle,
+#EditorGeneratorGroupTitle,
+#EditorGeneratorOptionsTitle {
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+#EditorGeneratorTitle {
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+#EditorGeneratorDescription {
+    margin-bottom: 20px;
+}
+
+#EditorGeneratorPreviewCard {
+    background-color: var(--soft-bg-sync);
+    border: 1px solid var(--border-panel);
+    border-radius: 12px;
+    margin-bottom: 24px;
+}
+
+#EditorGeneratorPreview {
+    background: transparent;
+    color: var(--ink-2);
+    border: none;
+    padding: 0;
+    font-size: 14px;
+}
+
+#EditorGeneratorRefresh {
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 0;
+}
+
+#EditorGeneratorRefresh:hover {
+    background-color: var(--primary-hover-surface);
+}
+
+#EditorGeneratorLengthValue {
+    background-color: var(--primary-tint);
+    color: var(--primary);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 11px;
+}
+
+#EditorGeneratorLengthSlider {
+    margin-top: 12px;
+}
+
+#EditorGeneratorHint {
+    color: var(--hint);
+    font-size: 10px;
+}
+
+#EditorGeneratorDivider {
+    margin-top: 24px;
+    margin-bottom: 16px;
+}
+
+#EditorGeneratorOptionsTitle {
+    margin-bottom: 8px;
+}
+
+#EditorGeneratorOption {
+    background: transparent;
+    border-radius: 8px;
+}
+
+#EditorGeneratorOption:hover {
+    background-color: var(--bg-hover);
+}
+
+#EditorGeneratorError {
+    color: var(--danger);
+    font-size: 11px;
+    margin-top: 8px;
 }
 
 #EditorPlaceholder {

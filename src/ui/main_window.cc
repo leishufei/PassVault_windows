@@ -31,7 +31,6 @@
 #include "ui/clipboard_manager.h"
 #include "ui/detail_panel.h"
 #include "ui/editor_panel.h"
-#include "ui/generator_dialog.h"
 #include "ui/icon_loader.h"
 #include "ui/preferences_page.h"
 #include "ui/theme_manager.h"
@@ -133,8 +132,6 @@ MainWindow::MainWindow(const Deps& deps, QWidget* parent)
             &MainWindow::OnEditorSaveRequested);
     connect(editor_panel_, &EditorPanel::CancelRequested, this,
             &MainWindow::OnEditorCancelRequested);
-    connect(editor_panel_, &EditorPanel::GenerateRequested, this,
-            &MainWindow::OnEditorGenerateRequested);
 
     preferences_page_ = new PreferencesPage(central_stack_);
     connect(preferences_page_, &PreferencesPage::BackRequested, this,
@@ -806,14 +803,6 @@ void MainWindow::OnEditorCancelRequested() {
     if (!editor_panel_) return;
     editor_entry_id_ = -1;
     editor_panel_->Close();
-}
-
-void MainWindow::OnEditorGenerateRequested() {
-    if (!editor_panel_) return;
-    GeneratorDialog g(this);
-    if (g.exec() == QDialog::Accepted) {
-        editor_panel_->ApplyGeneratedPassword(g.password());
-    }
 }
 
 void MainWindow::OnEditRequested(std::int64_t entry_id) {

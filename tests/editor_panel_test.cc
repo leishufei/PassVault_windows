@@ -4,9 +4,10 @@
 #include <QComboBox>
 #include <QLabel>
 #include <QLineEdit>
-#include <QListWidget>
 #include <QPushButton>
 #include <QSignalSpy>
+#include <QSlider>
+#include <QStackedWidget>
 #include <QTextEdit>
 #include <QToolButton>
 
@@ -134,11 +135,16 @@ TEST_F(EditorPanelTest, CancelButtonEmitsSignal) {
     EXPECT_EQ(spy.count(), 1);
 }
 
-TEST_F(EditorPanelTest, GenerateButtonEmitsSignal) {
+TEST_F(EditorPanelTest, GenerateButtonOpensEmbeddedGenerator) {
     panel_.OpenForCreate();
-    QSignalSpy spy(&panel_, &EditorPanel::GenerateRequested);
+    auto* pages =
+        panel_.findChild<QStackedWidget*>(QStringLiteral("EditorPages"));
+    auto* generator =
+        panel_.findChild<QWidget*>(QStringLiteral("EditorGeneratorPage"));
+    ASSERT_NE(pages, nullptr);
+    ASSERT_NE(generator, nullptr);
     generateButton()->click();
-    EXPECT_EQ(spy.count(), 1);
+    EXPECT_EQ(pages->currentWidget(), generator);
 }
 
 TEST_F(EditorPanelTest, ApplyGeneratedPasswordSetsField) {
@@ -160,29 +166,79 @@ TEST_F(EditorPanelTest, MatchesFigmaDrawerSkeleton) {
     panel.OpenForCreate();
 
     auto* header = panel.findChild<QWidget*>(QStringLiteral("EditorHeader"));
-    auto* navigation =
-        panel.findChild<QListWidget*>(QStringLiteral("EditorNavigation"));
-    auto* back_icon =
-        panel.findChild<QLabel*>(QStringLiteral("EditorHeaderBackIcon"));
+    auto* back =
+        panel.findChild<QToolButton*>(QStringLiteral("EditorHeaderBack"));
+    auto* body = panel.findChild<QWidget*>(QStringLiteral("EditorBody"));
+    auto* content = panel.findChild<QWidget*>(QStringLiteral("EditorContent"));
     auto* notes =
         panel.findChild<QTextEdit*>(QStringLiteral("EditorNotesInput"));
     auto* footer = panel.findChild<QWidget*>(QStringLiteral("EditorFooter"));
     auto* footer_layout =
         qobject_cast<QBoxLayout*>(footer ? footer->layout() : nullptr);
+    auto* header_layout =
+        qobject_cast<QBoxLayout*>(header ? header->layout() : nullptr);
 
     ASSERT_NE(header, nullptr);
-    ASSERT_NE(navigation, nullptr);
-    ASSERT_NE(back_icon, nullptr);
+    ASSERT_NE(back, nullptr);
+    ASSERT_NE(body, nullptr);
+    ASSERT_NE(content, nullptr);
     ASSERT_NE(notes, nullptr);
     ASSERT_NE(footer_layout, nullptr);
-    EXPECT_EQ(panel.width(), 372);
+    ASSERT_NE(header_layout, nullptr);
+    EXPECT_EQ(panel.width(), 400);
     EXPECT_EQ(header->height(), 68);
-    EXPECT_EQ(navigation->width(), 98);
-    EXPECT_EQ(navigation->count(), 3);
-    EXPECT_EQ(navigation->currentRow(), 0);
+    EXPECT_EQ(panel.findChild<QWidget*>(QStringLiteral("EditorNavigation")),
+              nullptr);
+    EXPECT_EQ(back->iconSize(), QSize(18, 18));
+    EXPECT_EQ(header_layout->contentsMargins(), QMargins(28, 0, 28, 0));
+    EXPECT_EQ(content->layout()->contentsMargins(), QMargins(28, 24, 28, 24));
+    EXPECT_EQ(body->maximumWidth(), 340);
     EXPECT_EQ(notes->height(), 96);
     EXPECT_EQ(footer_layout->stretch(0), 1);
-    EXPECT_EQ(footer_layout->stretch(1), 1);
+    EXPECT_EQ(footer_layout->stretch(1), 0);
+    EXPECT_EQ(footer_layout->stretch(2), 0);
+    EXPECT_EQ(footer_layout->contentsMargins(), QMargins(28, 16, 28, 16));
+}
+
+TEST_F(EditorPanelTest, EmbeddedGeneratorMatchesFigmaFlow) {
+    panel_.OpenForCreate();
+    generateButton()->click();
+
+    auto* pages =
+        panel_.findChild<QStackedWidget*>(QStringLiteral("EditorPages"));
+    auto* generator =
+        panel_.findChild<QWidget*>(QStringLiteral("EditorGeneratorPage"));
+    auto* slider = panel_.findChild<QSlider*>(
+        QStringLiteral("EditorGeneratorLengthSlider"));
+    auto* preview = panel_.findChild<QLineEdit*>(
+        QStringLiteral("EditorGeneratorPreview"));
+    auto* apply = panel_.findChild<QPushButton*>(
+        QStringLiteral("EditorGeneratorApply"));
+    auto* back = panel_.findChild<QToolButton*>(
+        QStringLiteral("EditorGeneratorBack"));
+
+    ASSERT_NE(pages, nullptr);
+    ASSERT_NE(generator, nullptr);
+    ASSERT_NE(slider, nullptr);
+    ASSERT_NE(preview, nullptr);
+    ASSERT_NE(apply, nullptr);
+    ASSERT_NE(back, nullptr);
+    EXPECT_EQ(pages->currentWidget(), generator);
+    EXPECT_EQ(slider->minimum(), 8);
+    EXPECT_EQ(slider->maximum(), 32);
+    EXPECT_FALSE(preview->text().isEmpty());
+
+    const QString generated = preview->text();
+    apply->click();
+    EXPECT_EQ(passwordInput()->text(), generated);
+    EXPECT_EQ(pages->currentWidget(),
+              panel_.findChild<QWidget*>(QStringLiteral("EditorPage")));
+
+    generateButton()->click();
+    back->click();
+    EXPECT_TRUE(panel_.IsOpen());
+    EXPECT_EQ(pages->currentWidget(),
+              panel_.findChild<QWidget*>(QStringLiteral("EditorPage")));
 }
 
 TEST_F(EditorPanelTest, FieldsFollowFigmaOrder) {
