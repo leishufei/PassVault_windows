@@ -82,7 +82,6 @@ class MainWindow : public QMainWindow {
     void OnFavoriteToggleRequested(std::int64_t entry_id, bool desired);
     void OnEditorSaveRequested();
     void OnEditorCancelRequested();
-    void OnEditorGenerateRequested();
 
  private:
     QWidget* BuildSidebar();

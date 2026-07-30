@@ -10,7 +10,7 @@ set(_qss_files
     qss/app.qss
 )
 
-file(GLOB _icon_files RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+file(GLOB _icon_files CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
      "${CMAKE_CURRENT_SOURCE_DIR}/icons/*.svg")
 
 set(_resource_files ${_qss_files} ${_icon_files})

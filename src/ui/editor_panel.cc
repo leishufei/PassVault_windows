@@ -1,5 +1,6 @@
 #include "ui/editor_panel.h"
 
+#include <QCheckBox>
 #include <QColor>
 #include <QComboBox>
 #include <QEvent>
@@ -9,19 +10,21 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
-#include <QListWidget>
 #include <QPropertyAnimation>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
 #include <QShortcut>
 #include <QSizePolicy>
+#include <QSlider>
+#include <QStackedWidget>
 #include <QStyledItemDelegate>
 #include <QTextEdit>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QVariant>
 
+#include "generator/password_generator.h"
 #include "generator/password_strength.h"
 #include "ui/icon_loader.h"
 #include "ui/theme_manager.h"
@@ -30,8 +33,7 @@ namespace passvault::ui {
 
 namespace {
 
-constexpr int kPanelWidth = 372;
-constexpr int kNavigationWidth = 98;
+constexpr int kPanelWidth = 400;
 constexpr int kAnimationMs = 220;
 
 QIcon LoadEditorIcon(const QString& name, const QString& color_token, int size) {
@@ -79,7 +81,13 @@ EditorPanel::EditorPanel(QWidget* parent) : QFrame(parent) {
 
     auto* esc = new QShortcut(QKeySequence(Qt::Key_Escape), this);
     esc->setContext(Qt::WidgetWithChildrenShortcut);
-    connect(esc, &QShortcut::activated, this, &EditorPanel::OnCancelClicked);
+    connect(esc, &QShortcut::activated, this, [this]() {
+        if (pages_ && pages_->currentWidget() == generator_page_) {
+            OnHideGenerator();
+            return;
+        }
+        OnCancelClicked();
+    });
 
     if (parent) parent->installEventFilter(this);
 }
@@ -91,19 +99,39 @@ void EditorPanel::BuildUi() {
     root->setContentsMargins(0, 0, 0, 0);
     root->setSpacing(0);
 
-    auto* header = new QWidget(this);
+    pages_ = new QStackedWidget(this);
+    pages_->setObjectName(QStringLiteral("EditorPages"));
+    editor_page_ = BuildEditorPage();
+    generator_page_ = BuildGeneratorPage();
+    pages_->addWidget(editor_page_);
+    pages_->addWidget(generator_page_);
+    pages_->setCurrentWidget(editor_page_);
+    root->addWidget(pages_);
+}
+
+QWidget* EditorPanel::BuildEditorPage() {
+    auto* page = new QWidget(this);
+    page->setObjectName(QStringLiteral("EditorPage"));
+    auto* root = new QVBoxLayout(page);
+    root->setContentsMargins(0, 0, 0, 0);
+    root->setSpacing(0);
+
+    auto* header = new QWidget(page);
     header->setObjectName(QStringLiteral("EditorHeader"));
     header->setFixedHeight(68);
     auto* header_layout = new QHBoxLayout(header);
-    header_layout->setContentsMargins(20, 0, 20, 0);
-    header_layout->setSpacing(8);
+    header_layout->setContentsMargins(28, 0, 28, 0);
+    header_layout->setSpacing(12);
 
-    auto* header_back = new QLabel(header);
-    header_back->setObjectName(QStringLiteral("EditorHeaderBackIcon"));
-    header_back->setFixedSize(16, 16);
-    header_back->setPixmap(LoadEditorIcon(QStringLiteral("arrow-left"),
-                                         QStringLiteral("text-primary"), 16)
-                               .pixmap(16, 16));
+    auto* header_back = new QToolButton(header);
+    header_back->setObjectName(QStringLiteral("EditorHeaderBack"));
+    header_back->setIcon(LoadEditorIcon(QStringLiteral("arrow-left"),
+                                       QStringLiteral("muted-7"), 18));
+    header_back->setIconSize(QSize(18, 18));
+    header_back->setToolTip(QStringLiteral("返回"));
+    header_back->setFixedSize(24, 24);
+    connect(header_back, &QToolButton::clicked, this,
+            &EditorPanel::OnCancelClicked);
     header_layout->addWidget(header_back, 0, Qt::AlignVCenter);
 
     header_title_ = new QLabel(QStringLiteral("新建密码"), header);
@@ -122,31 +150,12 @@ void EditorPanel::BuildUi() {
     header_layout->addWidget(header_close_);
     root->addWidget(header);
 
-    auto* content = new QWidget(this);
-    content->setObjectName(QStringLiteral("EditorContent"));
-    auto* content_layout = new QHBoxLayout(content);
-    content_layout->setContentsMargins(0, 0, 0, 0);
-    content_layout->setSpacing(0);
+    root->addWidget(BuildOverviewPage(), 1);
 
-    navigation_ = new QListWidget(content);
-    navigation_->setObjectName(QStringLiteral("EditorNavigation"));
-    navigation_->setProperty("variant", QStringLiteral("editor-nav"));
-    navigation_->setFixedWidth(kNavigationWidth);
-    navigation_->setFocusPolicy(Qt::NoFocus);
-    navigation_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    navigation_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    navigation_->addItems({QStringLiteral("基本信息"),
-                           QStringLiteral("更多信息"),
-                           QStringLiteral("高级设置")});
-    navigation_->setCurrentRow(0);
-    content_layout->addWidget(navigation_);
-    content_layout->addWidget(BuildOverviewPage(), 1);
-    root->addWidget(content, 1);
-
-    auto* footer = new QWidget(this);
+    auto* footer = new QWidget(page);
     footer->setObjectName(QStringLiteral("EditorFooter"));
     auto* footer_layout = new QHBoxLayout(footer);
-    footer_layout->setContentsMargins(16, 16, 16, 16);
+    footer_layout->setContentsMargins(28, 16, 28, 16);
     footer_layout->setSpacing(8);
     cancel_button_ = new QPushButton(QStringLiteral("取消"), footer);
     cancel_button_->setObjectName(QStringLiteral("EditorCancelButton"));
@@ -160,9 +169,11 @@ void EditorPanel::BuildUi() {
     save_button_->setFixedHeight(36);
     connect(save_button_, &QPushButton::clicked, this,
             &EditorPanel::OnSaveClicked);
-    footer_layout->addWidget(cancel_button_, 1);
-    footer_layout->addWidget(save_button_, 1);
+    footer_layout->addStretch(1);
+    footer_layout->addWidget(cancel_button_);
+    footer_layout->addWidget(save_button_);
     root->addWidget(footer);
+    return page;
 }
 
 QWidget* EditorPanel::BuildOverviewPage() {
@@ -175,11 +186,37 @@ QWidget* EditorPanel::BuildOverviewPage() {
     // hide the panel's card background; keep it transparent for consistency.
     scroll->viewport()->setStyleSheet(QStringLiteral("background: transparent;"));
 
-    auto* container = new QWidget;
+    auto* content = new QWidget;
+    content->setObjectName(QStringLiteral("EditorContent"));
+    auto* content_layout = new QHBoxLayout(content);
+    content_layout->setContentsMargins(28, 24, 28, 24);
+    content_layout->setSpacing(0);
+
+    auto* container = new QWidget(content);
     container->setObjectName(QStringLiteral("EditorBody"));
+    container->setMaximumWidth(340);
     auto* v = new QVBoxLayout(container);
-    v->setContentsMargins(16, 16, 16, 16);
+    v->setContentsMargins(0, 0, 0, 0);
     v->setSpacing(16);
+
+    auto* section_header = new QWidget(container);
+    section_header->setObjectName(QStringLiteral("EditorSectionHeader"));
+    auto* section_layout = new QVBoxLayout(section_header);
+    section_layout->setContentsMargins(0, 0, 0, 16);
+    section_layout->setSpacing(4);
+    auto* section_title = new QLabel(QStringLiteral("基本信息"), section_header);
+    section_title->setObjectName(QStringLiteral("EditorSectionTitle"));
+    section_layout->addWidget(section_title);
+    auto* section_description = new QLabel(
+        QStringLiteral("保存登录所需的账号与网站信息"), section_header);
+    section_description->setObjectName(
+        QStringLiteral("EditorSectionDescription"));
+    section_layout->addWidget(section_description);
+    auto* section_divider = new QFrame(section_header);
+    section_divider->setObjectName(QStringLiteral("EditorSectionDivider"));
+    section_divider->setFixedHeight(1);
+    section_layout->addWidget(section_divider);
+    v->addWidget(section_header);
 
     auto add_field = [&](const QString& label_text, QWidget* editor) {
         auto* field = new QWidget(container);
@@ -211,9 +248,28 @@ QWidget* EditorPanel::BuildOverviewPage() {
     auto* password_group_layout = new QVBoxLayout(password_group);
     password_group_layout->setContentsMargins(0, 0, 0, 0);
     password_group_layout->setSpacing(6);
-    auto* password_label = new QLabel(QStringLiteral("密码"), password_group);
+
+    auto* password_header = new QWidget(password_group);
+    auto* password_header_layout = new QHBoxLayout(password_header);
+    password_header_layout->setContentsMargins(0, 0, 0, 0);
+    password_header_layout->setSpacing(8);
+    auto* password_label = new QLabel(QStringLiteral("密码"), password_header);
     password_label->setObjectName(QStringLiteral("EditorFieldLabel"));
-    password_group_layout->addWidget(password_label);
+    password_header_layout->addWidget(password_label);
+    password_header_layout->addStretch(1);
+    generate_button_ = new QToolButton(password_header);
+    generate_button_->setObjectName(QStringLiteral("EditorGenerateButton"));
+    generate_button_->setText(QStringLiteral("生成密码"));
+    generate_button_->setIcon(LoadEditorIcon(QStringLiteral("refresh-cw"),
+                                             QStringLiteral("accent"), 12));
+    generate_button_->setIconSize(QSize(12, 12));
+    generate_button_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    generate_button_->setToolTip(QStringLiteral("生成密码"));
+    generate_button_->setFixedHeight(18);
+    connect(generate_button_, &QToolButton::clicked, this,
+            &EditorPanel::OnShowGenerator);
+    password_header_layout->addWidget(generate_button_);
+    password_group_layout->addWidget(password_header);
 
     password_field_ = new QWidget(password_group);
     password_field_->setObjectName(QStringLiteral("EditorPasswordField"));
@@ -256,15 +312,11 @@ QWidget* EditorPanel::BuildOverviewPage() {
     strength_title->setObjectName(QStringLiteral("EditorFieldLabel"));
     strength_header_layout->addWidget(strength_title);
     strength_header_layout->addStretch(1);
-    generate_button_ = new QToolButton(strength_header);
-    generate_button_->setObjectName(QStringLiteral("EditorGenerateButton"));
-    generate_button_->setText(QStringLiteral("生成"));
-    generate_button_->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    generate_button_->setToolTip(QStringLiteral("生成随机密码"));
-    generate_button_->setFixedHeight(18);
-    connect(generate_button_, &QToolButton::clicked, this,
-            &EditorPanel::GenerateRequested);
-    strength_header_layout->addWidget(generate_button_);
+    strength_label_ = new QLabel(StrengthText(1), strength_header);
+    strength_label_->setObjectName(QStringLiteral("EditorStrengthLabel"));
+    strength_label_->setProperty("strength-label", true);
+    strength_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    strength_header_layout->addWidget(strength_label_);
     strength_group_layout->addWidget(strength_header);
 
     auto* strength_row = new QWidget(strength_group);
@@ -279,11 +331,6 @@ QWidget* EditorPanel::BuildOverviewPage() {
         strength_layout->addWidget(seg, 1);
     }
     strength_group_layout->addWidget(strength_row);
-    strength_label_ = new QLabel(StrengthText(1), strength_group);
-    strength_label_->setObjectName(QStringLiteral("EditorStrengthLabel"));
-    strength_label_->setProperty("strength-label", true);
-    strength_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    strength_group_layout->addWidget(strength_label_);
     v->addWidget(strength_group);
 
     website_input_ = new QLineEdit(container);
@@ -307,8 +354,218 @@ QWidget* EditorPanel::BuildOverviewPage() {
     add_field(QStringLiteral("备注"), notes_input_);
 
     v->addStretch(1);
-    scroll->setWidget(container);
+    content_layout->addWidget(container, 1, Qt::AlignHCenter | Qt::AlignTop);
+    scroll->setWidget(content);
     return scroll;
+}
+
+QWidget* EditorPanel::BuildGeneratorPage() {
+    auto* page = new QWidget(this);
+    page->setObjectName(QStringLiteral("EditorGeneratorPage"));
+    auto* root = new QVBoxLayout(page);
+    root->setContentsMargins(0, 0, 0, 0);
+    root->setSpacing(0);
+
+    auto* header = new QWidget(page);
+    header->setObjectName(QStringLiteral("EditorGeneratorHeader"));
+    header->setFixedHeight(68);
+    auto* header_layout = new QHBoxLayout(header);
+    header_layout->setContentsMargins(28, 0, 28, 0);
+    header_layout->setSpacing(12);
+
+    auto* back = new QToolButton(header);
+    back->setObjectName(QStringLiteral("EditorGeneratorBack"));
+    back->setIcon(LoadEditorIcon(QStringLiteral("arrow-left"),
+                                QStringLiteral("muted-7"), 18));
+    back->setIconSize(QSize(18, 18));
+    back->setToolTip(QStringLiteral("返回编辑"));
+    back->setFixedSize(24, 24);
+    connect(back, &QToolButton::clicked, this, &EditorPanel::OnHideGenerator);
+    header_layout->addWidget(back, 0, Qt::AlignVCenter);
+
+    auto* title = new QLabel(QStringLiteral("生成密码"), header);
+    title->setObjectName(QStringLiteral("EditorGeneratorHeaderTitle"));
+    header_layout->addWidget(title, 1);
+
+    auto* close = new QToolButton(header);
+    close->setObjectName(QStringLiteral("EditorGeneratorClose"));
+    close->setIcon(
+        LoadEditorIcon(QStringLiteral("x"), QStringLiteral("muted-7"), 20));
+    close->setIconSize(QSize(20, 20));
+    close->setToolTip(QStringLiteral("关闭"));
+    close->setFixedSize(32, 32);
+    connect(close, &QToolButton::clicked, this, &EditorPanel::OnHideGenerator);
+    header_layout->addWidget(close);
+    root->addWidget(header);
+
+    auto* scroll = new QScrollArea(page);
+    scroll->setObjectName(QStringLiteral("EditorGeneratorScroll"));
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->viewport()->setStyleSheet(QStringLiteral("background: transparent;"));
+
+    auto* content = new QWidget;
+    content->setObjectName(QStringLiteral("EditorGeneratorContent"));
+    auto* content_layout = new QHBoxLayout(content);
+    content_layout->setContentsMargins(28, 24, 28, 24);
+    content_layout->setSpacing(0);
+
+    auto* body = new QWidget(content);
+    body->setObjectName(QStringLiteral("EditorGeneratorBody"));
+    body->setMaximumWidth(340);
+    auto* body_layout = new QVBoxLayout(body);
+    body_layout->setContentsMargins(0, 0, 0, 0);
+    body_layout->setSpacing(0);
+
+    auto* body_title = new QLabel(QStringLiteral("创建高强度密码"), body);
+    body_title->setObjectName(QStringLiteral("EditorGeneratorTitle"));
+    body_layout->addWidget(body_title);
+    auto* description = new QLabel(
+        QStringLiteral("为每个账号使用唯一密码，降低泄露风险。"), body);
+    description->setObjectName(QStringLiteral("EditorGeneratorDescription"));
+    body_layout->addWidget(description);
+
+    auto* preview_card = new QFrame(body);
+    preview_card->setObjectName(QStringLiteral("EditorGeneratorPreviewCard"));
+    auto* preview_layout = new QHBoxLayout(preview_card);
+    preview_layout->setContentsMargins(12, 8, 8, 8);
+    preview_layout->setSpacing(8);
+    generator_preview_ = new QLineEdit(preview_card);
+    generator_preview_->setObjectName(QStringLiteral("EditorGeneratorPreview"));
+    generator_preview_->setReadOnly(true);
+    generator_preview_->setProperty("mono", true);
+    preview_layout->addWidget(generator_preview_, 1);
+    auto* refresh = new QToolButton(preview_card);
+    refresh->setObjectName(QStringLiteral("EditorGeneratorRefresh"));
+    refresh->setIcon(LoadEditorIcon(QStringLiteral("refresh-cw"),
+                                   QStringLiteral("accent"), 16));
+    refresh->setIconSize(QSize(16, 16));
+    refresh->setToolTip(QStringLiteral("重新生成"));
+    refresh->setFixedSize(28, 28);
+    connect(refresh, &QToolButton::clicked, this,
+            &EditorPanel::RegeneratePassword);
+    preview_layout->addWidget(refresh);
+    body_layout->addWidget(preview_card);
+
+    auto* length_header = new QWidget(body);
+    auto* length_header_layout = new QHBoxLayout(length_header);
+    length_header_layout->setContentsMargins(0, 0, 0, 0);
+    auto* length_title = new QLabel(QStringLiteral("密码长度"), length_header);
+    length_title->setObjectName(QStringLiteral("EditorGeneratorGroupTitle"));
+    length_header_layout->addWidget(length_title);
+    length_header_layout->addStretch(1);
+    generator_length_value_ = new QLabel(QStringLiteral("16"), length_header);
+    generator_length_value_->setObjectName(
+        QStringLiteral("EditorGeneratorLengthValue"));
+    generator_length_value_->setProperty("mono", true);
+    length_header_layout->addWidget(generator_length_value_);
+    body_layout->addWidget(length_header);
+
+    generator_length_ = new QSlider(Qt::Horizontal, body);
+    generator_length_->setObjectName(
+        QStringLiteral("EditorGeneratorLengthSlider"));
+    generator_length_->setRange(8, 32);
+    generator_length_->setValue(16);
+    connect(generator_length_, &QSlider::valueChanged, this, [this](int value) {
+        generator_length_value_->setText(QString::number(value));
+        RegeneratePassword();
+    });
+    body_layout->addWidget(generator_length_);
+
+    auto* length_limits = new QWidget(body);
+    auto* length_limits_layout = new QHBoxLayout(length_limits);
+    length_limits_layout->setContentsMargins(0, 0, 0, 0);
+    auto* minimum = new QLabel(QStringLiteral("8"), length_limits);
+    minimum->setObjectName(QStringLiteral("EditorGeneratorHint"));
+    length_limits_layout->addWidget(minimum);
+    length_limits_layout->addStretch(1);
+    auto* maximum = new QLabel(QStringLiteral("32"), length_limits);
+    maximum->setObjectName(QStringLiteral("EditorGeneratorHint"));
+    length_limits_layout->addWidget(maximum);
+    body_layout->addWidget(length_limits);
+
+    auto* divider = new QFrame(body);
+    divider->setObjectName(QStringLiteral("EditorGeneratorDivider"));
+    divider->setFixedHeight(1);
+    body_layout->addWidget(divider);
+
+    auto* options_title = new QLabel(QStringLiteral("包含字符"), body);
+    options_title->setObjectName(QStringLiteral("EditorGeneratorOptionsTitle"));
+    body_layout->addWidget(options_title);
+
+    auto add_option = [this, body, body_layout](const QString& object_name,
+                                                const QString& label,
+                                                const QString& detail,
+                                                QCheckBox** target) {
+        auto* row = new QWidget(body);
+        row->setObjectName(QStringLiteral("EditorGeneratorOption"));
+        auto* row_layout = new QHBoxLayout(row);
+        row_layout->setContentsMargins(8, 6, 8, 6);
+        row_layout->setSpacing(12);
+        auto* option = new QCheckBox(label, row);
+        option->setObjectName(object_name);
+        option->setProperty("variant", QStringLiteral("generator-option"));
+        option->setChecked(true);
+        connect(option, &QCheckBox::toggled, this,
+                &EditorPanel::RegeneratePassword);
+        row_layout->addWidget(option, 1);
+        auto* detail_label = new QLabel(detail, row);
+        detail_label->setObjectName(QStringLiteral("EditorGeneratorHint"));
+        detail_label->setProperty("mono", true);
+        row_layout->addWidget(detail_label);
+        body_layout->addWidget(row);
+        *target = option;
+    };
+    add_option(QStringLiteral("EditorGeneratorUppercase"),
+               QStringLiteral("大写字母"), QStringLiteral("A-Z"),
+               &generator_uppercase_);
+    add_option(QStringLiteral("EditorGeneratorLowercase"),
+               QStringLiteral("小写字母"), QStringLiteral("a-z"),
+               &generator_lowercase_);
+    add_option(QStringLiteral("EditorGeneratorNumbers"), QStringLiteral("数字"),
+               QStringLiteral("0-9"), &generator_numbers_);
+    add_option(QStringLiteral("EditorGeneratorSymbols"),
+               QStringLiteral("特殊符号"), QStringLiteral("!@#"),
+               &generator_symbols_);
+
+    generator_error_ = new QLabel(body);
+    generator_error_->setObjectName(QStringLiteral("EditorGeneratorError"));
+    generator_error_->setVisible(false);
+    body_layout->addWidget(generator_error_);
+    body_layout->addStretch(1);
+
+    content_layout->addWidget(body, 1, Qt::AlignHCenter | Qt::AlignTop);
+    scroll->setWidget(content);
+    root->addWidget(scroll, 1);
+
+    auto* footer = new QWidget(page);
+    footer->setObjectName(QStringLiteral("EditorGeneratorFooter"));
+    auto* footer_layout = new QHBoxLayout(footer);
+    footer_layout->setContentsMargins(28, 16, 28, 16);
+    footer_layout->setSpacing(8);
+    footer_layout->addStretch(1);
+    auto* regenerate = new QPushButton(QStringLiteral("重新生成"), footer);
+    regenerate->setObjectName(QStringLiteral("EditorGeneratorRegenerate"));
+    regenerate->setProperty("flat", true);
+    regenerate->setIcon(LoadEditorIcon(QStringLiteral("refresh-cw"),
+                                      QStringLiteral("muted-3"), 14));
+    regenerate->setIconSize(QSize(14, 14));
+    regenerate->setFixedHeight(36);
+    connect(regenerate, &QPushButton::clicked, this,
+            &EditorPanel::RegeneratePassword);
+    footer_layout->addWidget(regenerate);
+    auto* apply = new QPushButton(QStringLiteral("使用此密码"), footer);
+    apply->setObjectName(QStringLiteral("EditorGeneratorApply"));
+    apply->setProperty("accent", true);
+    apply->setFixedHeight(36);
+    connect(apply, &QPushButton::clicked, this,
+            &EditorPanel::OnApplyGeneratedPassword);
+    footer_layout->addWidget(apply);
+    root->addWidget(footer);
+
+    RegeneratePassword();
+    return page;
 }
 
 void EditorPanel::SetCategories(QList<model::Category> categories) {
@@ -365,6 +622,7 @@ void EditorPanel::OpenForEdit(const DecryptedEntry& entry) {
 void EditorPanel::Close() {
     if (!is_open_) return;
     is_open_ = false;
+    if (pages_) pages_->setCurrentWidget(editor_page_);
     AnimateOut();
 }
 
@@ -405,7 +663,7 @@ void EditorPanel::FillFromEntry(const DecryptedEntry& entry) {
 }
 
 void EditorPanel::RefreshMode() {
-    if (navigation_) navigation_->setCurrentRow(0);
+    if (pages_) pages_->setCurrentWidget(editor_page_);
     if (mode_ == Mode::kCreate) {
         header_title_->setText(QStringLiteral("新建密码"));
         save_button_->setText(QStringLiteral("创建密码"));
@@ -445,6 +703,53 @@ void EditorPanel::OnTogglePasswordPreview() {
         QStringLiteral("hint-8"), 14));
 }
 
+void EditorPanel::OnShowGenerator() {
+    if (!pages_) return;
+    if (password_input_ && !password_input_->text().isEmpty()) {
+        generator_preview_->setText(password_input_->text());
+        generator_error_->setVisible(false);
+    } else {
+        RegeneratePassword();
+    }
+    pages_->setCurrentWidget(generator_page_);
+}
+
+void EditorPanel::OnHideGenerator() {
+    if (!pages_) return;
+    pages_->setCurrentWidget(editor_page_);
+    if (generate_button_) generate_button_->setFocus();
+}
+
+void EditorPanel::RegeneratePassword() {
+    if (!generator_preview_ || !generator_length_ || !generator_uppercase_ ||
+        !generator_lowercase_ || !generator_numbers_ || !generator_symbols_) {
+        return;
+    }
+
+    generator::PasswordConfig config;
+    config.length = generator_length_->value();
+    config.include_uppercase = generator_uppercase_->isChecked();
+    config.include_lowercase = generator_lowercase_->isChecked();
+    config.include_numbers = generator_numbers_->isChecked();
+    config.include_symbols = generator_symbols_->isChecked();
+    const auto generated = generator::PasswordGenerator::Generate(config);
+    if (!generated.has_value()) {
+        generator_preview_->clear();
+        generator_error_->setText(QStringLiteral("至少选择一类字符。"));
+        generator_error_->setVisible(true);
+        return;
+    }
+
+    generator_preview_->setText(*generated);
+    generator_error_->setVisible(false);
+}
+
+void EditorPanel::OnApplyGeneratedPassword() {
+    if (!generator_preview_ || generator_preview_->text().isEmpty()) return;
+    ApplyGeneratedPassword(generator_preview_->text());
+    OnHideGenerator();
+}
+
 void EditorPanel::UpdateStrength(int level) {
     for (int i = 0; i < 4; ++i) {
         auto* seg = strength_segments_[i];
@@ -479,6 +784,11 @@ void EditorPanel::OnCancelClicked() { emit CancelRequested(); }
 
 void EditorPanel::keyPressEvent(QKeyEvent* event) {
     if (event->key() == Qt::Key_Escape) {
+        if (pages_ && pages_->currentWidget() == generator_page_) {
+            OnHideGenerator();
+            event->accept();
+            return;
+        }
         OnCancelClicked();
         event->accept();
         return;

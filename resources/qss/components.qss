@@ -476,33 +476,6 @@ QTabWidget[variant="underline"]::pane {
     top: 0;
 }
 
-/* ---------- Editor vertical nav (EditorPanel) ---------- */
-QListWidget[variant="editor-nav"] {
-    background-color: var(--bg-sidebar);
-    border: none;
-    padding: 16px 8px 0 8px;
-    outline: none;
-    min-width: 98px;
-    max-width: 98px;
-}
-QListWidget[variant="editor-nav"]::item {
-    padding: 8px;
-    margin: 0 0 4px 0;
-    border-radius: var(--radius-md);
-    color: var(--muted-12);
-    font-size: 11px;
-    font-weight: 500;
-}
-QListWidget[variant="editor-nav"]::item:hover:!selected {
-    background-color: var(--primary-hover-surface-5);
-    color: var(--muted-12);
-}
-QListWidget[variant="editor-nav"]::item:selected {
-    background-color: var(--primary-tab-active-bg);
-    color: var(--primary-text-on-tint);
-    font-weight: 600;
-}
-
 /* ---------- Strength indicator (4 segments) ---------- */
 QFrame[strength-segment="true"] {
     background-color: var(--bg-muted);

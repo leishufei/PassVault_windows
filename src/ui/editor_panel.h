@@ -7,12 +7,14 @@
 #include "model/category.h"
 #include "model/password_entry.h"
 
+class QCheckBox;
 class QComboBox;
 class QLabel;
 class QLineEdit;
-class QListWidget;
 class QPropertyAnimation;
 class QPushButton;
+class QSlider;
+class QStackedWidget;
 class QTextEdit;
 class QToolButton;
 class QWidget;
@@ -45,7 +47,6 @@ class EditorPanel : public QFrame {
  signals:
     void SaveRequested();
     void CancelRequested();
-    void GenerateRequested();
 
  protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -56,10 +57,16 @@ class EditorPanel : public QFrame {
     void OnCancelClicked();
     void OnPasswordTextChanged(const QString& value);
     void OnTogglePasswordPreview();
+    void OnShowGenerator();
+    void OnHideGenerator();
+    void RegeneratePassword();
+    void OnApplyGeneratedPassword();
 
  private:
     void BuildUi();
+    QWidget* BuildEditorPage();
     QWidget* BuildOverviewPage();
+    QWidget* BuildGeneratorPage();
     void FillCategoryCombo();
     void FillFromEntry(const DecryptedEntry& entry);
     void ResetFields();
@@ -74,9 +81,11 @@ class EditorPanel : public QFrame {
     DecryptedEntry entry_;
     bool is_open_ = false;
 
+    QStackedWidget* pages_ = nullptr;
+    QWidget* editor_page_ = nullptr;
+    QWidget* generator_page_ = nullptr;
     QLabel* header_title_ = nullptr;
     QToolButton* header_close_ = nullptr;
-    QListWidget* navigation_ = nullptr;
 
     QLineEdit* title_input_ = nullptr;
     QLineEdit* website_input_ = nullptr;
@@ -93,6 +102,15 @@ class EditorPanel : public QFrame {
 
     QPushButton* cancel_button_ = nullptr;
     QPushButton* save_button_ = nullptr;
+
+    QLineEdit* generator_preview_ = nullptr;
+    QSlider* generator_length_ = nullptr;
+    QLabel* generator_length_value_ = nullptr;
+    QCheckBox* generator_uppercase_ = nullptr;
+    QCheckBox* generator_lowercase_ = nullptr;
+    QCheckBox* generator_numbers_ = nullptr;
+    QCheckBox* generator_symbols_ = nullptr;
+    QLabel* generator_error_ = nullptr;
 
     QPropertyAnimation* anim_ = nullptr;
 };
