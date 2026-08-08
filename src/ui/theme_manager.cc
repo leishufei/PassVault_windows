@@ -9,6 +9,8 @@
 #include <QStyleHints>
 #include <QTextStream>
 
+#include "ui/icon_loader.h"
+
 namespace passvault::ui {
 
 namespace {
@@ -64,6 +66,19 @@ QString SubstituteTokens(QString css,
     return out;
 }
 
+QColor ParseColorValue(const QString& value) {
+    const QColor color(value);
+    if (color.isValid()) return color;
+
+    static const QRegularExpression rgba(
+        QStringLiteral(
+            R"(^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$)"));
+    const auto match = rgba.match(value);
+    if (!match.hasMatch()) return {};
+    return QColor(match.captured(1).toInt(), match.captured(2).toInt(),
+                  match.captured(3).toInt(), match.captured(4).toInt());
+}
+
 }  // namespace
 
 ThemeManager* ThemeManager::Instance() {
@@ -78,7 +93,9 @@ ThemeManager::ThemeManager() {
     RefreshPalette();
     if (auto* hints = QGuiApplication::styleHints()) {
         connect(hints, &QStyleHints::colorSchemeChanged, this, [this](auto) {
-            if (theme_ == Theme::kSystem) ApplyTheme(Theme::kSystem);
+            if (theme_ == Theme::kSystem && !applying_theme_) {
+                ApplyTheme(Theme::kSystem);
+            }
         });
     }
 }
@@ -86,13 +103,17 @@ ThemeManager::ThemeManager() {
 ThemeManager::~ThemeManager() = default;
 
 void ThemeManager::ApplyTheme(Theme theme) {
+    if (applying_theme_) return;
+    applying_theme_ = true;
     theme_ = theme;
     QSettings().setValue(kSettingsKey, StringFromTheme(theme));
     RefreshPalette();
+    IconLoader::ClearCache();
     if (auto* app = qobject_cast<QApplication*>(QCoreApplication::instance())) {
         app->setStyleSheet(LoadStyleSheet());
     }
     emit ThemeChanged(effective_theme_);
+    applying_theme_ = false;
 }
 
 Theme ThemeManager::DetectSystemTheme() const {
@@ -131,7 +152,7 @@ QColor ThemeManager::Color(const QString& token) const {
             ? QStringLiteral(":/qss/tokens_light.qss")
             : QStringLiteral(":/qss/tokens_dark.qss");
     const auto tokens = ParseTokens(ReadResource(tokens_path));
-    return QColor(tokens.value(token));
+    return ParseColorValue(tokens.value(token));
 }
 
 QString ThemeManager::ColorHex(const QString& token) const {

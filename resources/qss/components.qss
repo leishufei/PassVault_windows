@@ -500,30 +500,32 @@ QLabel[strength-label="true"] {
     background: transparent;
 }
 
-/* ---------- Toggle switch (fallback via QCheckBox indicator) ---------- */
-/* MVP: indicator becomes a colored pill; if a real sliding knob is required
-   Phase 5 falls back to a custom QAbstractButton. */
+/* ---------- Toggle switch (QCheckBox indicator swaps SVG track) ---------- */
 QCheckBox[variant="switch"] { spacing: 8px; }
 QCheckBox[variant="switch"]::indicator {
-    width: 40px;
-    height: 22px;
-    border-radius: 11px;
-    background-color: var(--toggle-off);
+    width: 36px;
+    height: 20px;
     border: none;
-    image: none;
-}
-QCheckBox[variant="switch"]::indicator:hover {
-    background-color: var(--hint);
+    background: transparent;
+    image: url(:/icons/switch-off.svg);
 }
 QCheckBox[variant="switch"]::indicator:checked {
-    background-color: var(--primary);
+    image: url(:/icons/switch-on.svg);
 }
-QCheckBox[variant="switch"]::indicator:checked:hover {
-    background-color: var(--primary-pressed);
+QCheckBox[variant="switch"]::indicator:hover,
+QCheckBox[variant="switch"]::indicator:focus {
+    image: url(:/icons/switch-off-active.svg);
+}
+QCheckBox[variant="switch"]::indicator:checked:hover,
+QCheckBox[variant="switch"]::indicator:checked:focus {
+    image: url(:/icons/switch-on-active.svg);
 }
 QCheckBox[variant="switch"]:disabled { color: var(--text-quaternary); }
-QCheckBox[variant="switch"]:disabled::indicator {
-    background-color: var(--bg-muted);
+QCheckBox[variant="switch"]::indicator:disabled {
+    image: url(:/icons/switch-off-disabled.svg);
+}
+QCheckBox[variant="switch"]::indicator:checked:disabled {
+    image: url(:/icons/switch-on-disabled.svg);
 }
 
 /* ---------- Mono line edit (password/secret fields) ---------- */

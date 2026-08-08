@@ -45,6 +45,7 @@ class PreferencesPage : public QWidget {
     QWidget* BuildGeneralTab();
     QWidget* BuildSyncTab();
     QWidget* BuildSecurityTab();
+    void RefreshThemeAssets();
 
     QComboBox* theme_combo_ = nullptr;
     QSpinBox* auto_lock_spin_ = nullptr;

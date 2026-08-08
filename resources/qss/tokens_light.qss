@@ -129,6 +129,18 @@
     --accent-soft: #e8f0ff;
     --accent-soft-hover: #d9e5ff;
     --accent-fg: #ffffff;
+    --avatar-0-bg: #ebf3ff;
+    --avatar-0-fg: #2577ce;
+    --avatar-1-bg: #e9f7ef;
+    --avatar-1-fg: #247a49;
+    --avatar-2-bg: #fff3df;
+    --avatar-2-fg: #9a5a00;
+    --avatar-3-bg: #f3edff;
+    --avatar-3-fg: #7051b5;
+    --avatar-4-bg: #ffedf0;
+    --avatar-4-fg: #ad3f55;
+    --avatar-5-bg: #edf1f6;
+    --avatar-5-fg: #4d5e70;
 
     /* ---- Semantic ---- */
     --success: #34a36a;

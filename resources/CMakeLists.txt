@@ -13,7 +13,10 @@ set(_qss_files
 file(GLOB _icon_files CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
      "${CMAKE_CURRENT_SOURCE_DIR}/icons/*.svg")
 
-set(_resource_files ${_qss_files} ${_icon_files})
+file(GLOB _font_files CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+     "${CMAKE_CURRENT_SOURCE_DIR}/fonts/*.ttf")
+
+set(_resource_files ${_qss_files} ${_icon_files} ${_font_files})
 
 qt_add_resources(passvault "passvault_resources"
     PREFIX "/"
@@ -24,3 +27,5 @@ qt_add_resources(passvault "passvault_resources"
 message(STATUS "PassVault resources: ${_qss_files}")
 list(LENGTH _icon_files _icon_count)
 message(STATUS "PassVault icons packed: ${_icon_count}")
+list(LENGTH _font_files _font_count)
+message(STATUS "PassVault fonts packed: ${_font_count}")
