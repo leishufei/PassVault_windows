@@ -26,8 +26,8 @@ QMainWindow, #WorkspaceRoot {
 }
 #Sidebar QLabel { background: transparent; }
 
-#SidebarBrand { background: transparent; margin-bottom: 32px; }
-#SidebarBrandBadge {
+#SidebarBrand { background: transparent; }
+#Sidebar #SidebarBrandBadge {
     background-color: var(--accent);
     border-radius: var(--radius-lg);
     min-width: 34px;
@@ -55,7 +55,7 @@ QMainWindow, #WorkspaceRoot {
     padding: 0 14px;
     min-height: 40px;
     font-weight: 600;
-    font-size: 13px;
+    font-size: 14px;
     margin-bottom: 20px;
 }
 #NewPasswordButton:hover {
@@ -98,7 +98,6 @@ QMainWindow, #WorkspaceRoot {
     border: none;
     min-height: 1px;
     max-height: 1px;
-    margin: 20px 0;
 }
 
 #SidebarSectionHeader {
@@ -108,7 +107,6 @@ QMainWindow, #WorkspaceRoot {
     letter-spacing: 1.3px;
     text-transform: uppercase;
     padding: 0 4px;
-    margin-bottom: 8px;
 }
 
 #SidebarAddCategoryButton {
@@ -186,7 +184,7 @@ QMainWindow, #WorkspaceRoot {
     border-radius: var(--radius-md);
     border: 1px solid var(--border-panel);
 }
-#SearchBarContainer:focus-within {
+#SearchBarContainer[focused="true"] {
     border-color: var(--focus-ring);
     background-color: var(--bg-elevated);
 }
@@ -211,7 +209,7 @@ QMainWindow, #WorkspaceRoot {
     font-size: 9px;
 }
 
-#HeaderLockButton {
+#HeaderLockButton, #HeaderNavigationButton, #HeaderBackToListButton {
     background: transparent;
     border: 1px solid transparent;
     border-radius: var(--radius-md);
@@ -220,7 +218,8 @@ QMainWindow, #WorkspaceRoot {
     min-width: 34px;
     min-height: 34px;
 }
-#HeaderLockButton:hover {
+#HeaderLockButton:hover, #HeaderNavigationButton:hover,
+#HeaderBackToListButton:hover {
     background: var(--primary-hover-surface-2);
 }
 
@@ -271,12 +270,13 @@ QMainWindow, #WorkspaceRoot {
 #PasswordList {
     background: transparent;
     border: none;
-    padding: 6px 20px 20px 20px;
+    /* QListWidget spacing also contributes 6px to the outer item inset. */
+    padding: 6px 22px 20px 22px;
     outline: none;
 }
 #PasswordList::item {
     padding: 0;
-    margin: 3px 0;
+    margin: 0;
     border-radius: var(--radius-xl);
     border: 1px solid var(--border-card);
     background: var(--card);
@@ -289,14 +289,15 @@ QMainWindow, #WorkspaceRoot {
     background-color: var(--card-selected);
     border-color: var(--border-card-selected);
 }
+#PasswordList::item:focus {
+    border: 2px solid var(--focus-ring);
+}
 
 #PasswordCard {
     background: transparent;
     border-radius: var(--radius-xl);
 }
 #PasswordCardIcon {
-    background-color: var(--accent-soft);
-    color: var(--accent);
     border-radius: var(--radius-lg);
     font-size: 13px;
     font-weight: 700;
@@ -304,6 +305,30 @@ QMainWindow, #WorkspaceRoot {
     max-width: 36px;
     min-height: 36px;
     max-height: 36px;
+}
+#PasswordCardIcon[colorIndex="0"] {
+    background-color: var(--avatar-0-bg);
+    color: var(--avatar-0-fg);
+}
+#PasswordCardIcon[colorIndex="1"] {
+    background-color: var(--avatar-1-bg);
+    color: var(--avatar-1-fg);
+}
+#PasswordCardIcon[colorIndex="2"] {
+    background-color: var(--avatar-2-bg);
+    color: var(--avatar-2-fg);
+}
+#PasswordCardIcon[colorIndex="3"] {
+    background-color: var(--avatar-3-bg);
+    color: var(--avatar-3-fg);
+}
+#PasswordCardIcon[colorIndex="4"] {
+    background-color: var(--avatar-4-bg);
+    color: var(--avatar-4-fg);
+}
+#PasswordCardIcon[colorIndex="5"] {
+    background-color: var(--avatar-5-bg);
+    color: var(--avatar-5-fg);
 }
 #PasswordCardTitle {
     color: var(--text-primary);
@@ -380,7 +405,8 @@ QMainWindow, #WorkspaceRoot {
     font-size: 12px;
     background: transparent;
 }
-#DetailHeaderButton {
+#DetailHeaderButton,
+#DetailHeaderDeleteButton {
     background: transparent;
     color: var(--muted-2);
     border: none;
@@ -393,6 +419,10 @@ QMainWindow, #WorkspaceRoot {
 #DetailHeaderButton:hover {
     background: var(--primary-hover-surface-3);
     color: var(--muted-2);
+}
+
+#DetailHeaderDeleteButton:hover {
+    background: var(--danger-soft);
 }
 
 #DetailRiskyBanner {
@@ -565,7 +595,10 @@ QMainWindow, #WorkspaceRoot {
 #StrengthBar[level="3"]::chunk { background-color: var(--strength-strong); }
 
 /* ---------- Toast ---------- */
-#Toast {
+#Toast,
+#ToastSuccess,
+#ToastWarning,
+#ToastError {
     background-color: var(--toast-bg);
     color: var(--toast-fg);
     border-radius: var(--radius-xl);
@@ -625,8 +658,6 @@ QMainWindow, #WorkspaceRoot {
 #EditorHeader,
 #EditorGeneratorHeader {
     border-bottom: 1px solid var(--border-section-3);
-    min-height: 68px;
-    max-height: 68px;
 }
 #EditorHeaderTitle,
 #EditorGeneratorHeaderTitle {
@@ -757,6 +788,16 @@ QMainWindow, #WorkspaceRoot {
     padding: 0 8px;
     border-radius: 8px;
     font-size: 12px;
+}
+
+#EditorBody QLineEdit[error="true"] {
+    background-color: var(--danger-soft);
+    border-color: var(--danger);
+}
+
+#EditorBody QLabel[validation-error="true"] {
+    color: var(--danger);
+    font-size: 10px;
 }
 
 #EditorBody QTextEdit {
@@ -897,13 +938,17 @@ QMainWindow, #WorkspaceRoot {
 
 #PreferencesHeader {
     background: transparent;
-    border-bottom: 1px solid var(--border-section);
     min-height: 68px;
     max-height: 68px;
 }
+#PreferencesHeaderControls { background: transparent; }
+#PreferencesHeaderDivider {
+    background-color: var(--border-section);
+    border: none;
+}
 #PreferencesHeaderTitle {
     color: var(--text-primary);
-    font-size: 22px;
+    font-size: 16px;
     font-weight: 700;
     letter-spacing: -0.3px;
 }

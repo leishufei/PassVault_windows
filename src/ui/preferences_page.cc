@@ -37,6 +37,17 @@ void SaveInt(const char* key, int value) {
     QSettings().setValue(QString::fromLatin1(key), value);
 }
 
+void SetThemeIcon(QLabel* label, const QString& icon_name,
+                  const QString& token = QStringLiteral("primary"),
+                  int size = kIconGlyphSize) {
+    label->setProperty("themeIconName", icon_name);
+    label->setProperty("themeIconToken", token);
+    label->setProperty("themeIconSize", size);
+    label->setPixmap(
+        IconLoader::Load(icon_name, ThemeManager::Instance()->Color(token), size)
+            .pixmap(size, size));
+}
+
 QWidget* MakeSettingRow(const QString& icon_name, const QString& title,
                         const QString& desc, QWidget* control,
                         QWidget* parent) {
@@ -51,10 +62,7 @@ QWidget* MakeSettingRow(const QString& icon_name, const QString& title,
     icon->setObjectName(QStringLiteral("SettingRowIcon"));
     icon->setFixedSize(kIconBoxSize, kIconBoxSize);
     icon->setAlignment(Qt::AlignCenter);
-    icon->setPixmap(IconLoader::Load(icon_name,
-                                       QColor(0x31, 0x74, 0xe6),
-                                       kIconGlyphSize)
-                        .pixmap(kIconGlyphSize, kIconGlyphSize));
+    SetThemeIcon(icon, icon_name);
     h->addWidget(icon);
 
     auto* texts = new QWidget(row);
@@ -129,6 +137,9 @@ PreferencesPage::PreferencesPage(QWidget* parent) : QWidget(parent) {
 
     scroll->setWidget(scroll_body);
     root->addWidget(scroll, 1);
+
+    connect(ThemeManager::Instance(), &ThemeManager::ThemeChanged, this,
+            [this](Theme) { RefreshThemeAssets(); });
 }
 
 QWidget* PreferencesPage::BuildHeader() {
@@ -136,24 +147,39 @@ QWidget* PreferencesPage::BuildHeader() {
     header->setObjectName(QStringLiteral("PreferencesHeader"));
     header->setFixedHeight(kHeaderHeight);
 
-    auto* h = new QHBoxLayout(header);
+    auto* header_layout = new QVBoxLayout(header);
+    header_layout->setContentsMargins(0, 0, 0, 0);
+    header_layout->setSpacing(0);
+
+    auto* controls = new QWidget(header);
+    controls->setObjectName(QStringLiteral("PreferencesHeaderControls"));
+    auto* h = new QHBoxLayout(controls);
     h->setContentsMargins(24, 0, 24, 0);
     h->setSpacing(12);
 
-    auto* back = new QToolButton(header);
+    auto* back = new QToolButton(controls);
     back->setObjectName(QStringLiteral("PreferencesBack"));
-    back->setIcon(IconLoader::Load(QStringLiteral("arrow-left")));
-    back->setIconSize(QSize(20, 20));
-    back->setFixedSize(36, 36);
+    back->setIcon(IconLoader::Load(
+        QStringLiteral("arrow-left"),
+        ThemeManager::Instance()->Color(QStringLiteral("text-primary")), 16));
+    back->setIconSize(QSize(16, 16));
+    back->setFixedSize(32, 32);
     back->setCursor(Qt::PointingHandCursor);
     back->setToolTip(QStringLiteral("返回"));
     connect(back, &QToolButton::clicked, this, &PreferencesPage::BackRequested);
     h->addWidget(back);
 
-    auto* title = new QLabel(QStringLiteral("设置"), header);
+    auto* title = new QLabel(QStringLiteral("设置"), controls);
     title->setObjectName(QStringLiteral("PreferencesHeaderTitle"));
     h->addWidget(title);
     h->addStretch(1);
+
+    header_layout->addWidget(controls, 1);
+
+    auto* divider = new QFrame(header);
+    divider->setObjectName(QStringLiteral("PreferencesHeaderDivider"));
+    divider->setFixedHeight(1);
+    header_layout->addWidget(divider);
     return header;
 }
 
@@ -268,10 +294,7 @@ QWidget* PreferencesPage::BuildSyncTab() {
     drive_icon->setObjectName(QStringLiteral("SettingRowIcon"));
     drive_icon->setFixedSize(kIconBoxSize, kIconBoxSize);
     drive_icon->setAlignment(Qt::AlignCenter);
-    drive_icon->setPixmap(IconLoader::Load(QStringLiteral("cloud"),
-                                             QColor(0x31, 0x74, 0xe6),
-                                             kIconGlyphSize)
-                              .pixmap(kIconGlyphSize, kIconGlyphSize));
+    SetThemeIcon(drive_icon, QStringLiteral("cloud"));
     wrap_row->addWidget(drive_icon);
 
     auto* drive_texts = new QWidget(drive_wrap);
@@ -328,19 +351,20 @@ QWidget* PreferencesPage::BuildSecurityTab() {
     v->setContentsMargins(28, 20, 28, 24);
     v->setSpacing(0);
 
-    auto* change_master = new QPushButton(QStringLiteral("修改..."));
+    auto* change_master = new QPushButton(QStringLiteral("暂不可用"));
     change_master->setObjectName(QStringLiteral("ChangeMasterButton"));
-    connect(change_master, &QPushButton::clicked, this,
-            &PreferencesPage::ChangeMasterPasswordRequested);
+    change_master->setEnabled(false);
+    change_master->setToolTip(
+        QStringLiteral("完整重加密与失败回滚完成前暂不可用"));
     v->addWidget(MakeSettingRow(
         QStringLiteral("key-round"), QStringLiteral("主密码"),
-        QStringLiteral("修改主密码后本地及云端备份将使用新密码重新加密"),
+        QStringLiteral("完整重加密与失败回滚完成前暂不支持修改主密码"),
         change_master, page));
     v->addWidget(MakeRowSeparator(page));
 
     hello_toggle_ = new QCheckBox;
     hello_toggle_->setObjectName(QStringLiteral("HelloToggle"));
-    hello_toggle_->setProperty("class", "toggle-switch");
+    hello_toggle_->setProperty("variant", "switch");
     hello_toggle_->setEnabled(false);
     connect(hello_toggle_, &QCheckBox::toggled, this, [this](bool on) {
         if (on) {
@@ -362,10 +386,7 @@ QWidget* PreferencesPage::BuildSecurityTab() {
     hello_icon->setObjectName(QStringLiteral("SettingRowIcon"));
     hello_icon->setFixedSize(kIconBoxSize, kIconBoxSize);
     hello_icon->setAlignment(Qt::AlignCenter);
-    hello_icon->setPixmap(IconLoader::Load(QStringLiteral("shield-check"),
-                                             QColor(0x31, 0x74, 0xe6),
-                                             kIconGlyphSize)
-                              .pixmap(kIconGlyphSize, kIconGlyphSize));
+    SetThemeIcon(hello_icon, QStringLiteral("shield-check"));
     hello_row->addWidget(hello_icon);
 
     auto* hello_texts = new QWidget(hello_wrap);
@@ -382,6 +403,27 @@ QWidget* PreferencesPage::BuildSecurityTab() {
 
     v->addStretch(1);
     return page;
+}
+
+void PreferencesPage::RefreshThemeAssets() {
+    if (auto* back = findChild<QToolButton*>(
+            QStringLiteral("PreferencesBack"))) {
+        back->setIcon(IconLoader::Load(
+            QStringLiteral("arrow-left"),
+            ThemeManager::Instance()->Color(QStringLiteral("text-primary")),
+            16));
+    }
+    const auto icons =
+        findChildren<QLabel*>(QStringLiteral("SettingRowIcon"));
+    for (auto* icon : icons) {
+        const QString name = icon->property("themeIconName").toString();
+        const QString token = icon->property("themeIconToken").toString();
+        const int size = icon->property("themeIconSize").toInt();
+        if (name.isEmpty() || token.isEmpty() || size <= 0) continue;
+        icon->setPixmap(IconLoader::Load(
+                            name, ThemeManager::Instance()->Color(token), size)
+                            .pixmap(size, size));
+    }
 }
 
 void PreferencesPage::SetHelloAvailable(bool available) {

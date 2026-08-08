@@ -43,6 +43,7 @@ class ThemeManager : public QObject {
 
     Theme theme_ = Theme::kSystem;
     Theme effective_theme_ = Theme::kDark;
+    bool applying_theme_ = false;
 };
 
 }  // namespace passvault::ui
