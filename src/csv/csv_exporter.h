@@ -5,6 +5,16 @@
 #include <QString>
 
 #include <cstdint>
+#include <optional>
+
+namespace passvault::crypto {
+class SessionKey;
+}
+
+namespace passvault::storage {
+class CategoryDao;
+class PasswordDao;
+}
 
 namespace passvault::csv {
 
@@ -23,6 +33,11 @@ struct ExportEntry {
 
 class CsvExporter {
  public:
+    static std::optional<QList<ExportEntry>> CollectEntries(
+        storage::PasswordDao& password_dao,
+        storage::CategoryDao& category_dao,
+        const crypto::SessionKey& session_key);
+
     static bool Export(QIODevice* device, QList<ExportEntry> entries);
 };
 

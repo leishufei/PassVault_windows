@@ -3,8 +3,11 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDebug>
 #include <QDir>
 #include <QFileDialog>
+#include <QFont>
+#include <QFontDatabase>
 #include <QMessageBox>
 #include <QSaveFile>
 #include <QSettings>
@@ -67,7 +70,24 @@ class Application::Impl {
 
     int Run() {
         auto* theme = ui::ThemeManager::Instance();
+        static constexpr const char* kFontResources[] = {
+            ":/fonts/NotoSansSC-VariableFont_wght.ttf",
+            ":/fonts/DMMono-Regular.ttf",
+            ":/fonts/DMMono-Medium.ttf",
+        };
+        for (const char* path : kFontResources) {
+            if (QFontDatabase::addApplicationFont(
+                    QString::fromLatin1(path)) < 0) {
+                qWarning() << "failed to load font" << path;
+            }
+        }
         if (auto* q = qApp) {
+            QFont app_font;
+            app_font.setFamilies({QStringLiteral("Noto Sans SC"),
+                                  QStringLiteral("Microsoft YaHei UI"),
+                                  QStringLiteral("Segoe UI")});
+            app_font.setPixelSize(13);
+            q->setFont(app_font);
             q->setStyleSheet(theme->LoadStyleSheet());
         }
 
@@ -309,25 +329,10 @@ class Application::Impl {
     }
 
     void ChangeMasterPassword(QWidget* parent) {
-        ui::MasterPasswordDialog dlg(ui::MasterPasswordDialog::Mode::kChange,
-                                     parent);
-        if (dlg.exec() != QDialog::Accepted) return;
-        auto payload = master_manager_->ChangePassword(
-            dlg.OldPassword().toStdString(),
-            dlg.NewPassword().toStdString());
-        if (!payload.has_value()) {
-            QMessageBox::warning(parent, QStringLiteral("修改失败"),
-                                  QStringLiteral("当前主密码不正确。"));
-            return;
-        }
-        // TODO(task-20b): re-encrypt all password rows with the new session key
-        //                 inside a transaction, then push to cloud via
-        //                 SyncManager::ChangeCloudMasterPassword.
-        session::SessionManager::Instance()->Unlock(
-            std::move(payload->session_key),
-            std::move(payload->master_password));
-        ui::Toast::Show(parent, QStringLiteral("主密码已更新"),
-                        ui::Toast::Level::kSuccess);
+        QMessageBox::information(
+            parent, QStringLiteral("暂不可用"),
+            QStringLiteral("完成本地与云端数据重加密及失败回滚前，"
+                           "暂不支持修改主密码。"));
     }
 
     void ImportCsv(QWidget* parent) {
@@ -389,24 +394,42 @@ class Application::Impl {
             parent, QStringLiteral("保存 CSV 到"), QString(),
             QStringLiteral("CSV (*.csv)"));
         if (path.isEmpty()) return;
+
+        const auto* session_key =
+            session::SessionManager::Instance()->session_key();
+        if (!session_key) {
+            QMessageBox::warning(parent, QStringLiteral("导出失败"),
+                                  QStringLiteral("保险库当前未解锁。"));
+            return;
+        }
+        auto entries = csv::CsvExporter::CollectEntries(
+            *password_dao_, *category_dao_, *session_key);
+        if (!entries.has_value()) {
+            QMessageBox::warning(
+                parent, QStringLiteral("导出失败"),
+                QStringLiteral("存在无法解密的密码，未生成导出文件。"));
+            return;
+        }
+
         QSaveFile f(path);
         if (!f.open(QIODevice::WriteOnly)) {
             QMessageBox::warning(parent, QStringLiteral("导出失败"),
                                   QStringLiteral("无法写入文件。"));
             return;
         }
-        QList<csv::ExportEntry> entries;
-        // TODO(task-20b): decrypt password and resolve category name per row.
-        //                 minimal stub keeps CSV structure but leaves password
-        //                 column empty — full impl lives with password re-encrypt
-        //                 story alongside ChangeMasterPassword.
-        if (!csv::CsvExporter::Export(&f, std::move(entries))) {
+        const int exported_count = entries->size();
+        if (!csv::CsvExporter::Export(&f, std::move(*entries))) {
             QMessageBox::warning(parent, QStringLiteral("导出失败"),
                                   QStringLiteral("写入过程中出错。"));
             return;
         }
-        f.commit();
-        ui::Toast::Show(parent, QStringLiteral("已导出"),
+        if (!f.commit()) {
+            QMessageBox::warning(parent, QStringLiteral("导出失败"),
+                                  QStringLiteral("无法提交导出文件。"));
+            return;
+        }
+        ui::Toast::Show(parent,
+                        QStringLiteral("已导出 %1 条密码").arg(exported_count),
                         ui::Toast::Level::kSuccess);
     }
 
