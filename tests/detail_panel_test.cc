@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
 #include <QApplication>
+#include <QCryptographicHash>
+#include <QImage>
 #include <QLabel>
 #include <QList>
 #include <QPushButton>
@@ -9,15 +11,34 @@
 
 #include "model/password_entry.h"
 #include "ui/detail_panel.h"
+#include "ui/theme_manager.h"
 
 namespace {
 
 using passvault::ui::DetailPanel;
 using passvault::model::PasswordEntry;
 
-// The header and field buttons share QSS objectNames ("DetailHeaderButton",
-// "DetailFieldButton") so findChild can't target one; locate by type + name +
-// creation-order index (findChildren preserves depth-first construction order).
+QByteArray IconPixels(const QIcon& icon) {
+    const QImage image = icon.pixmap(32, 32).toImage().convertToFormat(
+        QImage::Format_ARGB32);
+    return QCryptographicHash::hash(
+        QByteArray(reinterpret_cast<const char*>(image.constBits()),
+                   static_cast<qsizetype>(image.sizeInBytes())),
+        QCryptographicHash::Sha256);
+}
+
+class ThemeGuard {
+ public:
+    ThemeGuard() : previous_(passvault::ui::ThemeManager::Instance()->theme()) {}
+    ~ThemeGuard() {
+        passvault::ui::ThemeManager::Instance()->ApplyTheme(previous_);
+    }
+
+ private:
+    passvault::ui::Theme previous_;
+};
+
+// Field buttons share one QSS objectName, so locate them by creation order.
 template <typename T>
 T* NthNamed(const DetailPanel& p, const char* name, int n) {
     const QList<T*> list = p.findChildren<T*>(QString::fromLatin1(name));
@@ -26,8 +47,7 @@ T* NthNamed(const DetailPanel& p, const char* name, int n) {
 
 // DetailFieldButton QToolButtons in order: [0] username-copy, [1] password-toggle,
 // [2] password-copy, [3] website-open.
-// DetailHeaderButton QToolButtons in order: [0] more(=delete), [1] favorite.
-// header-edit is the only QPushButton named DetailHeaderButton.
+// The favorite action is the only QToolButton named DetailHeaderButton.
 
 PasswordEntry MakeEntry() {
     PasswordEntry e;
@@ -66,11 +86,12 @@ class DetailPanelTest : public ::testing::Test {
         return panel_.findChild<QPushButton*>(
             QStringLiteral("DetailPrimaryButton"));
     }
-    QToolButton* moreButton() {
-        return NthNamed<QToolButton>(panel_, "DetailHeaderButton", 0);
+    QToolButton* deleteButton() {
+        return panel_.findChild<QToolButton*>(
+            QStringLiteral("DetailHeaderDeleteButton"));
     }
     QToolButton* favoriteButton() {
-        return NthNamed<QToolButton>(panel_, "DetailHeaderButton", 1);
+        return NthNamed<QToolButton>(panel_, "DetailHeaderButton", 0);
     }
     QToolButton* usernameCopy() {
         return NthNamed<QToolButton>(panel_, "DetailFieldButton", 0);
@@ -89,6 +110,30 @@ TEST_F(DetailPanelTest, SetEntryPopulatesAndHasEntry) {
     EXPECT_EQ(websiteValue()->text(), QStringLiteral("https://github.com"));
 }
 
+TEST(DetailPanelThemeTest, ThemeRefreshPreservesEntryAndPasswordVisibility) {
+    ThemeGuard guard;
+    auto* theme = passvault::ui::ThemeManager::Instance();
+    theme->ApplyTheme(passvault::ui::Theme::kLight);
+    DetailPanel panel;
+    PasswordEntry entry = MakeEntry();
+    panel.SetEntry(entry, QStringLiteral("secret-value"));
+
+    auto* toggle = NthNamed<QToolButton>(panel, "DetailFieldButton", 1);
+    ASSERT_NE(toggle, nullptr);
+    toggle->click();
+    auto* password = panel.findChild<QLabel*>(
+        QStringLiteral("DetailFieldValueMono"));
+    ASSERT_NE(password, nullptr);
+    EXPECT_EQ(password->text(), QStringLiteral("secret-value"));
+    const QByteArray light_icon = IconPixels(toggle->icon());
+
+    theme->ApplyTheme(passvault::ui::Theme::kDark);
+
+    EXPECT_NE(IconPixels(toggle->icon()), light_icon);
+    EXPECT_EQ(panel.entry_id(), entry.id);
+    EXPECT_EQ(password->text(), QStringLiteral("secret-value"));
+}
+
 TEST_F(DetailPanelTest, HeaderAlignsIdentityAndActionsOnOneRow) {
     panel_.SetEntry(MakeEntry(), QStringLiteral("secret"));
     panel_.resize(400, 700);
@@ -104,7 +149,9 @@ TEST_F(DetailPanelTest, HeaderAlignsIdentityAndActionsOnOneRow) {
     ASSERT_NE(actions, nullptr);
     EXPECT_EQ(header->y(), 28);
     EXPECT_EQ(icon->y(), actions->y());
-    EXPECT_FALSE(favoriteButton()->isVisible());
+    ASSERT_NE(favoriteButton(), nullptr);
+    EXPECT_TRUE(favoriteButton()->isVisible());
+    EXPECT_EQ(favoriteButton()->parentWidget(), actions);
 }
 
 TEST_F(DetailPanelTest, ClearEntryResetsState) {
@@ -122,11 +169,12 @@ TEST_F(DetailPanelTest, EditButtonEmitsWithId) {
     EXPECT_EQ(spy.at(0).at(0).toLongLong(), 77);
 }
 
-TEST_F(DetailPanelTest, MoreButtonEmitsDeleteWithId) {
+TEST_F(DetailPanelTest, ExplicitDeleteButtonEmitsDeleteWithId) {
     panel_.SetEntry(MakeEntry(), QStringLiteral("secret"));
     QSignalSpy spy(&panel_, &DetailPanel::DeleteRequested);
-    ASSERT_NE(moreButton(), nullptr);
-    moreButton()->click();
+    ASSERT_NE(deleteButton(), nullptr);
+    EXPECT_EQ(deleteButton()->toolTip(), QStringLiteral("删除密码"));
+    deleteButton()->click();
     ASSERT_EQ(spy.count(), 1);
     EXPECT_EQ(spy.at(0).at(0).toLongLong(), 77);
 }
@@ -160,6 +208,8 @@ TEST_F(DetailPanelTest, FavoriteToggleEmitsWithDesired) {
     panel_.SetEntry(MakeEntry(), QStringLiteral("secret"));  // not favorite
     QSignalSpy spy(&panel_, &DetailPanel::FavoriteToggleRequested);
     ASSERT_NE(favoriteButton(), nullptr);
+    EXPECT_FALSE(favoriteButton()->isHidden());
+    EXPECT_EQ(favoriteButton()->accessibleName(), QStringLiteral("收藏"));
     favoriteButton()->click();  // toggles unchecked -> checked
     ASSERT_EQ(spy.count(), 1);
     EXPECT_EQ(spy.at(0).at(0).toLongLong(), 77);
