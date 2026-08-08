@@ -8,6 +8,7 @@
 #include <QWidget>
 
 #include "ui/toast.h"
+#include "ui/theme_manager.h"
 
 namespace {
 
@@ -35,6 +36,17 @@ TEST(ToastTest, LevelSelectsObjectName) {
 
     Toast::Show(&parent, QStringLiteral("bad"), Toast::Level::kError, 2400);
     EXPECT_NE(parent.findChild<QFrame*>(QStringLiteral("ToastError")), nullptr);
+
+    Toast::Show(&parent, QStringLiteral("warn"), Toast::Level::kWarning, 2400);
+    EXPECT_NE(parent.findChild<QFrame*>(QStringLiteral("ToastWarning")), nullptr);
+}
+
+TEST(ToastTest, StyleSheetCoversAllToastLevels) {
+    const QString css =
+        passvault::ui::ThemeManager::Instance()->LoadStyleSheet();
+    EXPECT_NE(css.indexOf(QStringLiteral("#ToastSuccess")), -1);
+    EXPECT_NE(css.indexOf(QStringLiteral("#ToastWarning")), -1);
+    EXPECT_NE(css.indexOf(QStringLiteral("#ToastError")), -1);
 }
 
 TEST(ToastTest, AutoDismissDestroysToast) {

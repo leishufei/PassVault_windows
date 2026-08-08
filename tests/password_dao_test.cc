@@ -183,7 +183,7 @@ TEST_F(PasswordDaoTest, DeleteAllClearsRows) {
     EXPECT_EQ(dao_->ListIncludingDeleted().size(), 0u);
 }
 
-TEST_F(PasswordDaoTest, SearchMatchesTitleUsernameOrWebsite) {
+TEST_F(PasswordDaoTest, SearchMatchesTitleUsernameWebsiteOrNotes) {
     auto e1 = MakeEntry(1);
     e1.title = QStringLiteral("GitHub");
     e1.username = QStringLiteral("octocat");
@@ -194,12 +194,20 @@ TEST_F(PasswordDaoTest, SearchMatchesTitleUsernameOrWebsite) {
     e3.title = QStringLiteral("Foo");
     e3.username = QStringLiteral("bar");
     e3.website = QStringLiteral("https://octopus.dev");
+    auto e4 = MakeEntry(4);
+    e4.notes = QStringLiteral("private-octagon-note");
+    e4.updated_at = e3.updated_at + 10000;
     ASSERT_TRUE(dao_->Insert(e1).has_value());
     ASSERT_TRUE(dao_->Insert(e2).has_value());
     ASSERT_TRUE(dao_->Insert(e3).has_value());
+    ASSERT_TRUE(dao_->Insert(e4).has_value());
 
     EXPECT_EQ(dao_->Search(QStringLiteral("git")).size(), 2u);
     EXPECT_EQ(dao_->Search(QStringLiteral("octo")).size(), 2u);
+    const auto notes_match =
+        dao_->Search(QStringLiteral("private-octagon-note"));
+    ASSERT_EQ(notes_match.size(), 1u);
+    EXPECT_EQ(notes_match.front().uuid, e4.uuid);
     EXPECT_EQ(dao_->Search(QStringLiteral("missing")).size(), 0u);
 }
 

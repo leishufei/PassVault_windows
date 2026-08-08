@@ -180,6 +180,92 @@ TEST_F(CsvRoundTripTest, ImportUpdatesByUuidAndEncryptsNewPassword) {
     EXPECT_EQ(decrypted, QStringLiteral("newpw"));
 }
 
+TEST_F(CsvRoundTripTest, CollectEntriesDecryptsAndResolvesCategory) {
+    passvault::model::Category category;
+    category.uuid = QStringLiteral("category-id");
+    category.name = QStringLiteral("工作");
+    category.sort_order = 3;
+    const auto category_id = cat_dao_->Insert(category);
+    ASSERT_TRUE(category_id.has_value());
+
+    auto key = FixedKey();
+    const QByteArray iv =
+        QByteArrayLiteral("\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B");
+    const QByteArray plaintext = QByteArrayLiteral("export-value");
+    const QByteArray ciphertext = CryptoService::EncryptGcm(
+        key.data(), key.size(),
+        reinterpret_cast<const std::uint8_t*>(iv.constData()),
+        static_cast<std::size_t>(iv.size()),
+        reinterpret_cast<const std::uint8_t*>(plaintext.constData()),
+        static_cast<std::size_t>(plaintext.size()));
+    ASSERT_FALSE(ciphertext.isEmpty());
+
+    passvault::model::PasswordEntry password;
+    password.uuid = QStringLiteral("entry-id");
+    password.title = QStringLiteral("Example");
+    password.username = QStringLiteral("user");
+    password.encrypted_password = ciphertext;
+    password.password_iv = iv;
+    password.website = QStringLiteral("example.test");
+    password.notes = QStringLiteral("note");
+    password.category_id = *category_id;
+    password.created_at = 100;
+    ASSERT_TRUE(pwd_dao_->Insert(password).has_value());
+
+    const auto entries =
+        CsvExporter::CollectEntries(*pwd_dao_, *cat_dao_, key);
+    ASSERT_TRUE(entries.has_value());
+    ASSERT_EQ(entries->size(), 1);
+    EXPECT_EQ(entries->front().uuid, password.uuid);
+    EXPECT_EQ(entries->front().category_name, category.name);
+    EXPECT_EQ(entries->front().category_sort_order, category.sort_order);
+    EXPECT_EQ(entries->front().password, QString::fromUtf8(plaintext));
+}
+
+TEST_F(CsvRoundTripTest, CollectEntriesFailsWhenPasswordCannotBeDecrypted) {
+    passvault::model::PasswordEntry password;
+    password.uuid = QStringLiteral("entry-id");
+    password.title = QStringLiteral("Example");
+    password.password_iv = QByteArray(12, '\0');
+    password.encrypted_password = QByteArrayLiteral("invalid");
+    ASSERT_TRUE(pwd_dao_->Insert(password).has_value());
+
+    auto key = FixedKey();
+    EXPECT_FALSE(
+        CsvExporter::CollectEntries(*pwd_dao_, *cat_dao_, key).has_value());
+}
+
+TEST_F(CsvRoundTripTest, CollectEntriesFailsWhenCategoryCannotBeResolved) {
+    auto key = FixedKey();
+    const QByteArray iv = QByteArray(12, '\0');
+    const QByteArray plaintext = QByteArrayLiteral("export-value");
+
+    passvault::model::PasswordEntry password;
+    password.uuid = QStringLiteral("entry-id");
+    password.title = QStringLiteral("Example");
+    password.password_iv = iv;
+    password.encrypted_password = CryptoService::EncryptGcm(
+        key.data(), key.size(),
+        reinterpret_cast<const std::uint8_t*>(iv.constData()),
+        static_cast<std::size_t>(iv.size()),
+        reinterpret_cast<const std::uint8_t*>(plaintext.constData()),
+        static_cast<std::size_t>(plaintext.size()));
+    password.category_id = 999;
+    ASSERT_FALSE(password.encrypted_password.isEmpty());
+    ASSERT_TRUE(pwd_dao_->Insert(password).has_value());
+
+    EXPECT_FALSE(
+        CsvExporter::CollectEntries(*pwd_dao_, *cat_dao_, key).has_value());
+}
+
+TEST_F(CsvRoundTripTest, CollectEntriesSupportsEmptyVault) {
+    auto key = FixedKey();
+    const auto entries =
+        CsvExporter::CollectEntries(*pwd_dao_, *cat_dao_, key);
+    ASSERT_TRUE(entries.has_value());
+    EXPECT_TRUE(entries->isEmpty());
+}
+
 TEST(CsvExporter, WritesBomHeaderAndSortsRows) {
     QList<ExportEntry> entries;
     ExportEntry e1;

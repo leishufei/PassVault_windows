@@ -80,6 +80,23 @@ add_executable(passvault_tests
     "${CMAKE_SOURCE_DIR}/src/ui/clipboard_manager.cc"
 )
 
+# Mirror resources/CMakeLists.txt so tests can load :/qss, :/fonts, :/icons via ThemeManager and QFontDatabase.
+set(_test_qss_files
+    ${CMAKE_SOURCE_DIR}/resources/qss/tokens_dark.qss
+    ${CMAKE_SOURCE_DIR}/resources/qss/tokens_light.qss
+    ${CMAKE_SOURCE_DIR}/resources/qss/components.qss
+    ${CMAKE_SOURCE_DIR}/resources/qss/app.qss
+)
+file(GLOB _test_icon_files CONFIGURE_DEPENDS
+     "${CMAKE_SOURCE_DIR}/resources/icons/*.svg")
+file(GLOB _test_font_files CONFIGURE_DEPENDS
+     "${CMAKE_SOURCE_DIR}/resources/fonts/*.ttf")
+qt_add_resources(passvault_tests "passvault_tests_resources"
+    PREFIX "/"
+    BASE   "${CMAKE_SOURCE_DIR}/resources"
+    FILES  ${_test_qss_files} ${_test_icon_files} ${_test_font_files}
+)
+
 target_include_directories(passvault_tests
     PRIVATE
         "${CMAKE_SOURCE_DIR}/src"

@@ -1,7 +1,14 @@
 #include <gtest/gtest.h>
 
+#include <QApplication>
 #include <QBoxLayout>
+#include <QCheckBox>
 #include <QComboBox>
+#include <QCryptographicHash>
+#include <QFontInfo>
+#include <QFontMetrics>
+#include <QGraphicsDropShadowEffect>
+#include <QImage>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -14,10 +21,42 @@
 #include "model/category.h"
 #include "model/password_entry.h"
 #include "ui/editor_panel.h"
+#include "ui/theme_manager.h"
 
 namespace {
 
 using passvault::ui::EditorPanel;
+
+QByteArray IconPixels(const QIcon& icon) {
+    const QImage image = icon.pixmap(32, 32).toImage().convertToFormat(
+        QImage::Format_ARGB32);
+    return QCryptographicHash::hash(
+        QByteArray(reinterpret_cast<const char*>(image.constBits()),
+                   static_cast<qsizetype>(image.sizeInBytes())),
+        QCryptographicHash::Sha256);
+}
+
+class ThemeGuard {
+ public:
+    ThemeGuard() : previous_(passvault::ui::ThemeManager::Instance()->theme()) {}
+    ~ThemeGuard() {
+        passvault::ui::ThemeManager::Instance()->ApplyTheme(previous_);
+    }
+
+ private:
+    passvault::ui::Theme previous_;
+};
+
+void ExpectCenteredTextFits(const QWidget* widget, const QString& text) {
+    const QFontMetrics metrics(widget->font());
+    const QRect rect = widget->contentsRect();
+    const QRect glyphs = metrics.tightBoundingRect(text);
+    const int baseline = rect.top() + (rect.height() - metrics.height()) / 2 +
+                         metrics.ascent();
+    EXPECT_GE(baseline + glyphs.top(), rect.top());
+    EXPECT_LE(baseline + glyphs.bottom(), rect.bottom());
+    EXPECT_LE(metrics.horizontalAdvance(text), rect.width());
+}
 
 class EditorPanelTest : public ::testing::Test {
  protected:
@@ -59,6 +98,13 @@ class EditorPanelTest : public ::testing::Test {
     QToolButton* previewToggle() {
         return panel_.findChild<QToolButton*>(QStringLiteral("EditorPreviewToggle"));
     }
+    QLabel* titleError() {
+        return panel_.findChild<QLabel*>(QStringLiteral("EditorTitleError"));
+    }
+    QLabel* credentialsError() {
+        return panel_.findChild<QLabel*>(
+            QStringLiteral("EditorCredentialsError"));
+    }
 };
 
 TEST_F(EditorPanelTest, OpenForCreateClearsFieldsAndOpens) {
@@ -94,6 +140,34 @@ TEST_F(EditorPanelTest, CreateModeUsesFigmaActionText) {
     EXPECT_EQ(saveButton()->text(), QStringLiteral("创建密码"));
 }
 
+TEST_F(EditorPanelTest, PasswordInputUsesMonoTypography) {
+    QWidget parent;
+    parent.resize(1200, 800);
+    EditorPanel panel(&parent);
+    panel.OpenForCreate();
+    parent.show();
+    QApplication::processEvents();
+
+    auto* password =
+        panel.findChild<QLineEdit*>(QStringLiteral("EditorPasswordInput"));
+    ASSERT_NE(password, nullptr);
+    password->ensurePolished();
+    QApplication::processEvents();
+
+    const QFontInfo password_font_info(password->font());
+    EXPECT_EQ(password_font_info.family(), QStringLiteral("DM Mono"));
+    EXPECT_EQ(password_font_info.pixelSize(), 12);
+}
+
+TEST_F(EditorPanelTest, PasswordTypographyBaselineFitsWithoutClipping) {
+    panel_.OpenForCreate();
+    passwordInput()->setText(QStringLiteral("Dawn!Harbor_2026"));
+    panel_.show();
+    QApplication::processEvents();
+
+    ExpectCenteredTextFits(passwordInput(), passwordInput()->text());
+}
+
 TEST_F(EditorPanelTest, ResultReflectsEditedFields) {
     panel_.OpenForCreate();
     titleInput()->setText(QStringLiteral("NewTitle"));
@@ -126,6 +200,20 @@ TEST_F(EditorPanelTest, SaveWithEmptyTitleDoesNotEmit) {
     QSignalSpy spy(&panel_, &EditorPanel::SaveRequested);
     saveButton()->click();
     EXPECT_EQ(spy.count(), 0);
+    EXPECT_TRUE(titleInput()->property("error").toBool());
+    EXPECT_FALSE(titleError()->isHidden());
+    EXPECT_TRUE(credentialsError()->isHidden());
+}
+
+TEST_F(EditorPanelTest, SaveWithEmptyCredentialsShowsVisibleError) {
+    panel_.OpenForCreate();
+    titleInput()->setText(QStringLiteral("Title"));
+    QSignalSpy spy(&panel_, &EditorPanel::SaveRequested);
+    saveButton()->click();
+    EXPECT_EQ(spy.count(), 0);
+    EXPECT_TRUE(usernameInput()->property("error").toBool());
+    EXPECT_FALSE(credentialsError()->isHidden());
+    EXPECT_TRUE(titleError()->isHidden());
 }
 
 TEST_F(EditorPanelTest, CancelButtonEmitsSignal) {
@@ -147,6 +235,45 @@ TEST_F(EditorPanelTest, GenerateButtonOpensEmbeddedGenerator) {
     EXPECT_EQ(pages->currentWidget(), generator);
 }
 
+TEST_F(EditorPanelTest, GeneratorApplyFollowsPreviewAvailability) {
+    panel_.OpenForCreate();
+    generateButton()->click();
+
+    auto* preview = panel_.findChild<QLineEdit*>(
+        QStringLiteral("EditorGeneratorPreview"));
+    auto* apply = panel_.findChild<QPushButton*>(
+        QStringLiteral("EditorGeneratorApply"));
+    auto* error = panel_.findChild<QLabel*>(
+        QStringLiteral("EditorGeneratorError"));
+    const auto toggles = {
+        panel_.findChild<QCheckBox*>(
+            QStringLiteral("EditorGeneratorUppercase")),
+        panel_.findChild<QCheckBox*>(
+            QStringLiteral("EditorGeneratorLowercase")),
+        panel_.findChild<QCheckBox*>(
+            QStringLiteral("EditorGeneratorNumbers")),
+        panel_.findChild<QCheckBox*>(
+            QStringLiteral("EditorGeneratorSymbols")),
+    };
+
+    ASSERT_NE(preview, nullptr);
+    ASSERT_NE(apply, nullptr);
+    ASSERT_NE(error, nullptr);
+    for (auto* toggle : toggles) {
+        ASSERT_NE(toggle, nullptr);
+        toggle->setChecked(false);
+    }
+
+    EXPECT_TRUE(preview->text().isEmpty());
+    EXPECT_FALSE(error->isHidden());
+    EXPECT_FALSE(apply->isEnabled());
+
+    (*toggles.begin())->setChecked(true);
+    EXPECT_FALSE(preview->text().isEmpty());
+    EXPECT_TRUE(error->isHidden());
+    EXPECT_TRUE(apply->isEnabled());
+}
+
 TEST_F(EditorPanelTest, ApplyGeneratedPasswordSetsField) {
     panel_.OpenForCreate();
     panel_.ApplyGeneratedPassword(QStringLiteral("Xy9!mkQ2pL"));
@@ -164,6 +291,8 @@ TEST_F(EditorPanelTest, MatchesFigmaDrawerSkeleton) {
     parent.resize(1200, 800);
     EditorPanel panel(&parent);
     panel.OpenForCreate();
+    parent.show();
+    QApplication::processEvents();
 
     auto* header = panel.findChild<QWidget*>(QStringLiteral("EditorHeader"));
     auto* back =
@@ -192,7 +321,7 @@ TEST_F(EditorPanelTest, MatchesFigmaDrawerSkeleton) {
     EXPECT_EQ(back->iconSize(), QSize(18, 18));
     EXPECT_EQ(header_layout->contentsMargins(), QMargins(28, 0, 28, 0));
     EXPECT_EQ(content->layout()->contentsMargins(), QMargins(28, 24, 28, 24));
-    EXPECT_EQ(body->maximumWidth(), 340);
+    EXPECT_EQ(body->width(), 340);
     EXPECT_EQ(notes->height(), 96);
     EXPECT_EQ(footer_layout->stretch(0), 1);
     EXPECT_EQ(footer_layout->stretch(1), 0);
@@ -201,24 +330,37 @@ TEST_F(EditorPanelTest, MatchesFigmaDrawerSkeleton) {
 }
 
 TEST_F(EditorPanelTest, EmbeddedGeneratorMatchesFigmaFlow) {
-    panel_.OpenForCreate();
-    generateButton()->click();
+    QWidget parent;
+    parent.resize(1200, 800);
+    EditorPanel panel(&parent);
+    panel.OpenForCreate();
+    parent.show();
+    QApplication::processEvents();
+
+    auto* panel_generate = panel.findChild<QToolButton*>(
+        QStringLiteral("EditorGenerateButton"));
+    ASSERT_NE(panel_generate, nullptr);
+    panel_generate->click();
+    QApplication::processEvents();
 
     auto* pages =
-        panel_.findChild<QStackedWidget*>(QStringLiteral("EditorPages"));
+        panel.findChild<QStackedWidget*>(QStringLiteral("EditorPages"));
     auto* generator =
-        panel_.findChild<QWidget*>(QStringLiteral("EditorGeneratorPage"));
-    auto* slider = panel_.findChild<QSlider*>(
+        panel.findChild<QWidget*>(QStringLiteral("EditorGeneratorPage"));
+    auto* body =
+        panel.findChild<QWidget*>(QStringLiteral("EditorGeneratorBody"));
+    auto* slider = panel.findChild<QSlider*>(
         QStringLiteral("EditorGeneratorLengthSlider"));
-    auto* preview = panel_.findChild<QLineEdit*>(
+    auto* preview = panel.findChild<QLineEdit*>(
         QStringLiteral("EditorGeneratorPreview"));
-    auto* apply = panel_.findChild<QPushButton*>(
+    auto* apply = panel.findChild<QPushButton*>(
         QStringLiteral("EditorGeneratorApply"));
-    auto* back = panel_.findChild<QToolButton*>(
+    auto* back = panel.findChild<QToolButton*>(
         QStringLiteral("EditorGeneratorBack"));
 
     ASSERT_NE(pages, nullptr);
     ASSERT_NE(generator, nullptr);
+    ASSERT_NE(body, nullptr);
     ASSERT_NE(slider, nullptr);
     ASSERT_NE(preview, nullptr);
     ASSERT_NE(apply, nullptr);
@@ -226,19 +368,22 @@ TEST_F(EditorPanelTest, EmbeddedGeneratorMatchesFigmaFlow) {
     EXPECT_EQ(pages->currentWidget(), generator);
     EXPECT_EQ(slider->minimum(), 8);
     EXPECT_EQ(slider->maximum(), 32);
+    EXPECT_EQ(body->width(), 340);
     EXPECT_FALSE(preview->text().isEmpty());
 
     const QString generated = preview->text();
     apply->click();
-    EXPECT_EQ(passwordInput()->text(), generated);
+    EXPECT_EQ(panel.findChild<QLineEdit*>(QStringLiteral("EditorPasswordInput"))
+                  ->text(),
+              generated);
     EXPECT_EQ(pages->currentWidget(),
-              panel_.findChild<QWidget*>(QStringLiteral("EditorPage")));
+              panel.findChild<QWidget*>(QStringLiteral("EditorPage")));
 
-    generateButton()->click();
+    panel_generate->click();
     back->click();
-    EXPECT_TRUE(panel_.IsOpen());
+    EXPECT_TRUE(panel.IsOpen());
     EXPECT_EQ(pages->currentWidget(),
-              panel_.findChild<QWidget*>(QStringLiteral("EditorPage")));
+              panel.findChild<QWidget*>(QStringLiteral("EditorPage")));
 }
 
 TEST_F(EditorPanelTest, FieldsFollowFigmaOrder) {
@@ -265,6 +410,43 @@ TEST_F(EditorPanelTest, PreviewToggleSwitchesEchoMode) {
     EXPECT_EQ(passwordInput()->echoMode(), QLineEdit::Normal);
     previewToggle()->setChecked(false);
     EXPECT_EQ(passwordInput()->echoMode(), QLineEdit::Password);
+}
+
+TEST(EditorPanelThemeTest, ThemeRefreshPreservesEditStateAndPreview) {
+    ThemeGuard guard;
+    auto* theme = passvault::ui::ThemeManager::Instance();
+    theme->ApplyTheme(passvault::ui::Theme::kLight);
+    EditorPanel panel;
+    panel.OpenForCreate();
+    auto* title = panel.findChild<QLineEdit*>(
+        QStringLiteral("EditorTitleInput"));
+    auto* password = panel.findChild<QLineEdit*>(
+        QStringLiteral("EditorPasswordInput"));
+    auto* toggle = panel.findChild<QToolButton*>(
+        QStringLiteral("EditorPreviewToggle"));
+    auto* pages = panel.findChild<QStackedWidget*>(QStringLiteral("EditorPages"));
+    ASSERT_NE(title, nullptr);
+    ASSERT_NE(password, nullptr);
+    ASSERT_NE(toggle, nullptr);
+    ASSERT_NE(pages, nullptr);
+    title->setText(QStringLiteral("Draft title"));
+    password->setText(QStringLiteral("draft-secret"));
+    toggle->setChecked(true);
+    const QByteArray light_icon = IconPixels(toggle->icon());
+    auto* shadow = qobject_cast<QGraphicsDropShadowEffect*>(
+        panel.graphicsEffect());
+    ASSERT_NE(shadow, nullptr);
+    const QColor light_shadow = shadow->color();
+    QWidget* current_page = pages->currentWidget();
+
+    theme->ApplyTheme(passvault::ui::Theme::kDark);
+
+    EXPECT_NE(IconPixels(toggle->icon()), light_icon);
+    EXPECT_NE(shadow->color(), light_shadow);
+    EXPECT_EQ(pages->currentWidget(), current_page);
+    EXPECT_EQ(title->text(), QStringLiteral("Draft title"));
+    EXPECT_EQ(password->text(), QStringLiteral("draft-secret"));
+    EXPECT_EQ(password->echoMode(), QLineEdit::Normal);
 }
 
 TEST_F(EditorPanelTest, CategoryComboReflectsCategories) {
