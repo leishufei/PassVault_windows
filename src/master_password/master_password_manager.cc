@@ -1,6 +1,7 @@
 #include "master_password/master_password_manager.h"
 
 #include <QByteArray>
+#include <QString>
 
 #include <cstdint>
 #include <cstring>
@@ -28,6 +29,12 @@ std::optional<crypto::SessionKey> DeriveSessionKey(
         MasterPasswordManager::kPbkdf2Iterations,
         crypto::SessionKey::kSize);
     return crypto::SessionKey::FromSecureBytes(std::move(key));
+}
+
+bool MeetsNewPasswordPolicy(std::string_view password) {
+    return QString::fromUtf8(password.data(),
+                             static_cast<qsizetype>(password.size()))
+               .size() >= kMinNewPasswordLength;
 }
 
 }  // namespace
@@ -59,6 +66,10 @@ std::optional<UnlockPayload> MasterPasswordManager::SetInitial(
     std::string_view password) {
     if (store_.Exists()) {
         last_error_ = VerifyError::kInternalError;
+        return std::nullopt;
+    }
+    if (!MeetsNewPasswordPolicy(password)) {
+        last_error_ = VerifyError::kPasswordTooShort;
         return std::nullopt;
     }
     const auto salt_vec =
@@ -108,6 +119,10 @@ std::optional<UnlockPayload> MasterPasswordManager::ChangePassword(
     std::string_view old_password, std::string_view new_password) {
     auto verify = VerifyLocal(old_password);
     if (!verify.has_value()) return std::nullopt;
+    if (!MeetsNewPasswordPolicy(new_password)) {
+        last_error_ = VerifyError::kPasswordTooShort;
+        return std::nullopt;
+    }
     const auto salt_vec =
         crypto::Random::Bytes(MasterPasswordStore::kKdfSaltSize);
     QByteArray salt(reinterpret_cast<const char*>(salt_vec.data()),

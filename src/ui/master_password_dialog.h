@@ -3,6 +3,8 @@
 #include <QDialog>
 #include <QString>
 
+#include "master_password/password_policy.h"
+
 class QCheckBox;
 class QLabel;
 class QLineEdit;
@@ -20,7 +22,8 @@ class MasterPasswordDialog : public QDialog {
         kChange,  // old + new + confirm
     };
 
-    static constexpr int kMinPasswordLength = 8;
+    static constexpr int kMinPasswordLength =
+        master_password::kMinNewPasswordLength;
 
     explicit MasterPasswordDialog(Mode mode, QWidget* parent = nullptr);
     ~MasterPasswordDialog() override;

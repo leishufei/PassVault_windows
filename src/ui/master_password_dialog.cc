@@ -114,10 +114,6 @@ void MasterPasswordDialog::BuildUi() {
     form->addRow(mode_ == Mode::kUnlock ? QStringLiteral("主密码")
                                         : QStringLiteral("新主密码"),
                  new_edit_);
-    if (mode_ == Mode::kUnlock) {
-        new_edit_->setText("12345678");
-    }
-
     if (needs_confirm) {
         confirm_edit_ = new QLineEdit(this);
         confirm_edit_->setObjectName(QStringLiteral("ConfirmPasswordEdit"));

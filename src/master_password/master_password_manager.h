@@ -6,12 +6,14 @@
 #include "crypto/secure_bytes.h"
 #include "crypto/session_key.h"
 #include "master_password/master_password_store.h"
+#include "master_password/password_policy.h"
 
 namespace passvault::master_password {
 
 enum class VerifyError {
     kNotInitialized,
     kWrongPassword,
+    kPasswordTooShort,
     kIoError,
     kInternalError,
 };
