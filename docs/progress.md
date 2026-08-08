@@ -202,7 +202,7 @@
 - `src/ui/clipboard_manager.{h,cc}`——`Instance()` 单例；`CopySensitive(text, timeout_ms)` 复制后启动 QTimer::singleShot；超时前对比 `QClipboard::text() == 期望值` 才清空（用户已复制别的东西时跳��）；信号 `ClearScheduled / Cleared / ClearSkippedBecauseChanged`
 - `src/ui/toast.{h,cc}`——`static Show(parent, text, Level, duration_ms)`；`QGraphicsOpacityEffect` + `QPropertyAnimation` 淡入 180ms → 显示 → 淡出 200ms；`WA_DeleteOnClose`；四级 `kInfo/kSuccess/kWarning/kError` 分别对应 objectName `Toast/ToastSuccess/ToastWarning/ToastError`
 - `src/ui/global_hotkey.{h,cc}`——QObject + `QAbstractNativeEventFilter` 单例；`struct Modifiers { alt, ctrl, shift, win }`；Register/Unregister/UnregisterAll；`QtKeyToVk` 覆盖 F1-F12/A-Z/0-9/Space/Return；Win32 `RegisterHotKey` 带 `MOD_NOREPEAT`；`#ifdef _WIN32` 之外的平台走 stub 返 false
-- `src/ui/master_password_dialog.{h,cc}`——`Mode { kSetup, kUnlock, kChange }`；密码显影 checkbox；kSetup/kChange 校验 `len>=8` + 确认输入一致；kChange 额外校验 old != new；Windows Hello 按钮通过 `SetHelloAvailable` 显隐 + `HelloRequested` 信号外接；析构时 `QLineEdit::clear()` 抹掉内存中的明文
+- `src/ui/master_password_dialog.{h,cc}`——`Mode { kSetup, kUnlock, kChange }`；密码显影 checkbox；kSetup/kChange 校验 `len>=12` + 确认输入一致，unlock 不限制长度以兼容既有密码；kChange 额外校验 old != new；Windows Hello 按钮通过 `SetHelloAvailable` 显隐 + `HelloRequested` 信号外接；析构时 `QLineEdit::clear()` 抹掉内存中的明文
 - `src/ui/generator_dialog.{h,cc}`——长度 QSlider 4-64 与 QSpinBox 双向同步；4 个字符类型 QCheckBox；任一输入变化即调用 `generator::PasswordGenerator::Generate` 重摇；`#StrengthBar` 属性 `level=1|2|3` 驱动 QSS 变色；复制按钮走 `ClipboardManager::CopySensitive`
 - `src/ui/password_detail_dialog.{h,cc}`——`Mode { kCreate, kView, kEdit }`；`struct DecryptedEntry { model::PasswordEntry, QString password }`；分类 QComboBox 从 `QList<model::Category>` 加载（id=0 → "未分类"）；密码显影 QToolButton 切换 EchoMode；密码 textChanged → 即时刷新强度标签；信号 `GenerateRequested / CopyRequested / FavoriteToggled / EditRequested / DeleteRequested`
 - `src/ui/settings_dialog.{h,cc}`——QTabWidget 三选项卡：常规（Theme QComboBox + 自动锁定分钟 + 剪贴板清空秒）/ 同步（Google Drive Connect/Disconnect/SyncNow + CSV Import/Export）/ 安全（改主密码 + Windows Hello 开关）；QSettings key：`session/auto_lock_minutes`、`ui/clipboard_seconds`、`session/hello_enabled`；11 个信号让 Application 侧编排具体动作
@@ -226,8 +226,8 @@
 
 **Task 20b（后续）**
 
-- `ChangeMasterPassword` 需要在事务里用旧 SessionKey 解密全表 → 用新 SessionKey 重加密 → 写回，然后 `SyncManager::ChangeCloudMasterPassword` 推云；当前留 `TODO(task-20b)`
-- `ExportCsv` 需要逐行解密再写 CSV，与 ChangeMasterPassword 共用密码重加密管线；当前只写空密码列作为结构占位
+- `ChangeMasterPassword` 需要在事务里用旧 SessionKey 解密全表 → 用新 SessionKey 重加密 → 可恢复地提交本地密码记录和会话 → 处理 Hello 与 `SyncManager::ChangeCloudMasterPassword`；完整回滚实现前设置入口保持禁用
+- `ExportCsv` 已通过当前 SessionKey 解密有效条目并解析分类，使用 `QSaveFile` 原子提交；解密、分类解析、写入或提交失败时不显示成功
 
 ## 剩余任务
 
