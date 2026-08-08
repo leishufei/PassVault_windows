@@ -10,11 +10,14 @@
 #include "model/category.h"
 #include "model/password_entry.h"
 
+class QAction;
+class QHBoxLayout;
 class QLabel;
 class QLineEdit;
 class QListWidget;
 class QListWidgetItem;
 class QPushButton;
+class QResizeEvent;
 class QStackedWidget;
 class QToolButton;
 class QWidget;
@@ -64,9 +67,11 @@ class MainWindow : public QMainWindow {
 
  protected:
     void keyPressEvent(QKeyEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
  private slots:
     void OnNewPassword();
+    void OnAddCategory();
     void OnSectionSelectionChanged();
     void OnCategorySelectionChanged();
     void OnPasswordSelectionChanged();
@@ -91,6 +96,10 @@ class MainWindow : public QMainWindow {
     void RefreshSectionList();
     void RefreshCategoryList();
     void RefreshPasswordList();
+    void RefreshThemeAssets();
+    void UpdateResponsiveLayout();
+    void ShowListPane();
+    void ToggleCompactSidebar();
     void UpdateSyncStatus(bool success, const QString& message);
     QWidget* CreatePasswordCard(const model::PasswordEntry& entry);
     std::optional<model::PasswordEntry> FindEntry(std::int64_t id) const;
@@ -105,12 +114,25 @@ class MainWindow : public QMainWindow {
     Deps deps_;
     QStackedWidget* central_stack_ = nullptr;
     QWidget* workspace_page_ = nullptr;
+    QWidget* sidebar_ = nullptr;
+    QWidget* workspace_ = nullptr;
+    QWidget* workspace_content_ = nullptr;
+    QHBoxLayout* workspace_content_layout_ = nullptr;
     PreferencesPage* preferences_page_ = nullptr;
 
     QListWidget* sections_list_ = nullptr;
     QListWidget* categories_list_ = nullptr;
+    QToolButton* add_category_button_ = nullptr;
+    QToolButton* navigation_button_ = nullptr;
+    QToolButton* back_to_list_button_ = nullptr;
+    QToolButton* more_button_ = nullptr;
+    QWidget* search_container_ = nullptr;
     QLineEdit* search_ = nullptr;
+    QAction* search_action_ = nullptr;
+    QLabel* list_title_ = nullptr;
     QLabel* list_count_ = nullptr;
+    QPushButton* sort_button_ = nullptr;
+    QWidget* password_list_column_ = nullptr;
     QListWidget* password_list_ = nullptr;
     QLabel* empty_state_ = nullptr;
     DetailPanel* detail_panel_ = nullptr;
@@ -125,6 +147,8 @@ class MainWindow : public QMainWindow {
     std::vector<model::PasswordEntry> current_entries_;
     std::vector<model::Category> categories_;
     bool suppress_selection_ = false;
+    bool showing_detail_ = false;
+    bool compact_sidebar_expanded_ = false;
 };
 
 }  // namespace passvault::ui

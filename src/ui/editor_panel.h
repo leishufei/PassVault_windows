@@ -70,11 +70,13 @@ class EditorPanel : public QFrame {
     void FillCategoryCombo();
     void FillFromEntry(const DecryptedEntry& entry);
     void ResetFields();
+    void UpdateValidationErrors(bool title_error, bool credentials_error);
     void UpdateStrength(int level);
     void UpdatePositionFromParent();
     void AnimateIn();
     void AnimateOut();
     void RefreshMode();
+    void RefreshThemeAssets();
 
     Mode mode_ = Mode::kCreate;
     QList<model::Category> categories_;
@@ -88,10 +90,12 @@ class EditorPanel : public QFrame {
     QToolButton* header_close_ = nullptr;
 
     QLineEdit* title_input_ = nullptr;
+    QLabel* title_error_ = nullptr;
     QLineEdit* website_input_ = nullptr;
     QLineEdit* username_input_ = nullptr;
     QLineEdit* password_input_ = nullptr;
     QWidget* password_field_ = nullptr;
+    QLabel* credentials_error_ = nullptr;
     QToolButton* preview_toggle_ = nullptr;
     QToolButton* generate_button_ = nullptr;
     QComboBox* category_combo_ = nullptr;

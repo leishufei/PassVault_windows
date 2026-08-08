@@ -190,12 +190,14 @@ std::vector<model::PasswordEntry> PasswordDao::Search(const QString& query) {
         const std::string sql =
             std::string("SELECT ") + kSelectAllColumns +
             " FROM password_entries WHERE isDeleted = 0 AND ("
-            "title LIKE ? OR username LIKE ? OR website LIKE ?)";
+            "title LIKE ? OR username LIKE ? OR website LIKE ? OR notes LIKE ?) "
+            "ORDER BY updatedAt DESC";
         Statement stmt(db_.handle(), sql);
         const QString like = QStringLiteral("%") + query + QStringLiteral("%");
         stmt.BindText(1, like);
         stmt.BindText(2, like);
         stmt.BindText(3, like);
+        stmt.BindText(4, like);
         while (stmt.Step()) {
             out.push_back(ReadRow(stmt));
         }
