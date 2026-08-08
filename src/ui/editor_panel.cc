@@ -68,12 +68,16 @@ EditorPanel::EditorPanel(QWidget* parent) : QFrame(parent) {
 
     auto* shadow = new QGraphicsDropShadowEffect(this);
     shadow->setBlurRadius(45);
-    shadow->setColor(QColor(50, 73, 105, 36));
+    shadow->setColor(
+        ThemeManager::Instance()->Color(QStringLiteral("shadow")));
     shadow->setOffset(-18, 0);
     setGraphicsEffect(shadow);
 
     BuildUi();
     hide();
+
+    connect(ThemeManager::Instance(), &ThemeManager::ThemeChanged, this,
+            [this](Theme) { RefreshThemeAssets(); });
 
     anim_ = new QPropertyAnimation(this, "geometry", this);
     anim_->setDuration(kAnimationMs);
@@ -194,7 +198,7 @@ QWidget* EditorPanel::BuildOverviewPage() {
 
     auto* container = new QWidget(content);
     container->setObjectName(QStringLiteral("EditorBody"));
-    container->setMaximumWidth(340);
+    container->setFixedWidth(340);
     auto* v = new QVBoxLayout(container);
     v->setContentsMargins(0, 0, 0, 0);
     v->setSpacing(16);
@@ -230,13 +234,20 @@ QWidget* EditorPanel::BuildOverviewPage() {
         field_layout->addWidget(label);
         field_layout->addWidget(editor);
         v->addWidget(field);
+        return field_layout;
     };
 
     title_input_ = new QLineEdit(container);
     title_input_->setObjectName(QStringLiteral("EditorTitleInput"));
     title_input_->setPlaceholderText(QStringLiteral("必填"));
     title_input_->setFixedHeight(36);
-    add_field(QStringLiteral("标题"), title_input_);
+    auto* title_layout = add_field(QStringLiteral("标题"), title_input_);
+    title_error_ = new QLabel(QStringLiteral("请输入标题。"),
+                              title_input_->parentWidget());
+    title_error_->setObjectName(QStringLiteral("EditorTitleError"));
+    title_error_->setProperty("validation-error", true);
+    title_error_->setVisible(false);
+    title_layout->addWidget(title_error_);
 
     username_input_ = new QLineEdit(container);
     username_input_->setObjectName(QStringLiteral("EditorUsernameInput"));
@@ -296,6 +307,13 @@ QWidget* EditorPanel::BuildOverviewPage() {
     password_row_layout->addWidget(password_input_, 1);
     password_row_layout->addWidget(preview_toggle_);
     password_group_layout->addWidget(password_field_);
+    credentials_error_ = new QLabel(QStringLiteral("请输入用户名或密码。"),
+                                    password_group);
+    credentials_error_->setObjectName(
+        QStringLiteral("EditorCredentialsError"));
+    credentials_error_->setProperty("validation-error", true);
+    credentials_error_->setVisible(false);
+    password_group_layout->addWidget(credentials_error_);
     v->addWidget(password_group);
 
     auto* strength_group = new QWidget(container);
@@ -413,7 +431,7 @@ QWidget* EditorPanel::BuildGeneratorPage() {
 
     auto* body = new QWidget(content);
     body->setObjectName(QStringLiteral("EditorGeneratorBody"));
-    body->setMaximumWidth(340);
+    body->setFixedWidth(340);
     auto* body_layout = new QVBoxLayout(body);
     body_layout->setContentsMargins(0, 0, 0, 0);
     body_layout->setSpacing(0);
@@ -559,6 +577,11 @@ QWidget* EditorPanel::BuildGeneratorPage() {
     apply->setObjectName(QStringLiteral("EditorGeneratorApply"));
     apply->setProperty("accent", true);
     apply->setFixedHeight(36);
+    apply->setEnabled(!generator_preview_->text().isEmpty());
+    connect(generator_preview_, &QLineEdit::textChanged, apply,
+            [apply](const QString& password) {
+                apply->setEnabled(!password.isEmpty());
+            });
     connect(apply, &QPushButton::clicked, this,
             &EditorPanel::OnApplyGeneratedPassword);
     footer_layout->addWidget(apply);
@@ -638,6 +661,7 @@ void EditorPanel::ResetFields() {
                                             QStringLiteral("hint-8"), 14));
     FillCategoryCombo();
     if (category_combo_->count() > 0) category_combo_->setCurrentIndex(0);
+    UpdateValidationErrors(false, false);
     UpdateStrength(0);
 }
 
@@ -659,7 +683,22 @@ void EditorPanel::FillFromEntry(const DecryptedEntry& entry) {
             break;
         }
     }
+    UpdateValidationErrors(false, false);
     UpdateStrength(generator::CalculatePasswordStrength(entry.password));
+}
+
+void EditorPanel::UpdateValidationErrors(bool title_error,
+                                         bool credentials_error) {
+    title_input_->setProperty("error", title_error);
+    username_input_->setProperty("error", credentials_error);
+    password_input_->setProperty("error", credentials_error);
+    password_field_->setProperty("error", credentials_error);
+    title_error_->setVisible(title_error);
+    credentials_error_->setVisible(credentials_error);
+    RepolishWidget(title_input_);
+    RepolishWidget(username_input_);
+    RepolishWidget(password_input_);
+    RepolishWidget(password_field_);
 }
 
 void EditorPanel::RefreshMode() {
@@ -672,6 +711,47 @@ void EditorPanel::RefreshMode() {
     header_title_->setText(
         QStringLiteral("编辑密码 · %1").arg(entry_.entry.title));
     save_button_->setText(QStringLiteral("保存更改"));
+}
+
+void EditorPanel::RefreshThemeAssets() {
+    if (auto* shadow =
+            qobject_cast<QGraphicsDropShadowEffect*>(graphicsEffect())) {
+        shadow->setColor(
+            ThemeManager::Instance()->Color(QStringLiteral("shadow")));
+    }
+    const auto set_tool_icon = [this](const QString& object_name,
+                                      const QString& icon_name,
+                                      const QString& token, int size) {
+        if (auto* button = findChild<QToolButton*>(object_name)) {
+            button->setIcon(LoadEditorIcon(icon_name, token, size));
+        }
+    };
+
+    set_tool_icon(QStringLiteral("EditorHeaderBack"),
+                  QStringLiteral("arrow-left"), QStringLiteral("muted-7"),
+                  18);
+    set_tool_icon(QStringLiteral("EditorHeaderClose"), QStringLiteral("x"),
+                  QStringLiteral("muted-7"), 20);
+    set_tool_icon(QStringLiteral("EditorGenerateButton"),
+                  QStringLiteral("refresh-cw"), QStringLiteral("accent"), 12);
+    if (preview_toggle_) {
+        preview_toggle_->setIcon(LoadEditorIcon(
+            preview_toggle_->isChecked() ? QStringLiteral("eye-off")
+                                         : QStringLiteral("eye"),
+            QStringLiteral("hint-8"), 14));
+    }
+    set_tool_icon(QStringLiteral("EditorGeneratorBack"),
+                  QStringLiteral("arrow-left"), QStringLiteral("muted-7"),
+                  18);
+    set_tool_icon(QStringLiteral("EditorGeneratorClose"),
+                  QStringLiteral("x"), QStringLiteral("muted-7"), 20);
+    set_tool_icon(QStringLiteral("EditorGeneratorRefresh"),
+                  QStringLiteral("refresh-cw"), QStringLiteral("accent"), 16);
+    if (auto* regenerate = findChild<QPushButton*>(
+            QStringLiteral("EditorGeneratorRegenerate"))) {
+        regenerate->setIcon(LoadEditorIcon(
+            QStringLiteral("refresh-cw"), QStringLiteral("muted-3"), 14));
+    }
 }
 
 EditorPanel::DecryptedEntry EditorPanel::Result() const {
@@ -767,14 +847,7 @@ void EditorPanel::OnSaveClicked() {
     const bool password_empty = password_input_->text().isEmpty();
     const bool credentials_empty = username_empty && password_empty;
 
-    title_input_->setProperty("error", title_empty);
-    username_input_->setProperty("error", credentials_empty);
-    password_input_->setProperty("error", credentials_empty);
-    password_field_->setProperty("error", credentials_empty);
-    RepolishWidget(title_input_);
-    RepolishWidget(username_input_);
-    RepolishWidget(password_input_);
-    RepolishWidget(password_field_);
+    UpdateValidationErrors(title_empty, credentials_empty);
 
     if (title_empty || credentials_empty) return;
     emit SaveRequested();

@@ -46,6 +46,7 @@ class DetailPanel : public QFrame {
     QWidget* BuildEmptyPage();
     QWidget* BuildContentPage();
     void RefreshView();
+    void RefreshThemeAssets();
     void UpdatePasswordDisplay();
 
     QString CategoryName(std::int64_t category_id) const;
@@ -55,15 +56,17 @@ class DetailPanel : public QFrame {
     QStackedLayout* stack_ = nullptr;
     QWidget* empty_page_ = nullptr;
     QWidget* content_page_ = nullptr;
+    QLabel* empty_icon_ = nullptr;
 
     QLabel* header_icon_ = nullptr;
     QLabel* header_title_ = nullptr;
     QLabel* header_tag_ = nullptr;
     QToolButton* header_favorite_ = nullptr;
     QPushButton* header_edit_ = nullptr;
-    QToolButton* header_more_ = nullptr;
+    QToolButton* header_delete_ = nullptr;
 
     QWidget* risky_banner_ = nullptr;
+    QLabel* risky_icon_ = nullptr;
 
     QLabel* username_value_ = nullptr;
     QToolButton* username_copy_ = nullptr;

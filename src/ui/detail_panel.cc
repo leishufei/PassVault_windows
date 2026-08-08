@@ -62,6 +62,8 @@ DetailPanel::DetailPanel(QWidget* parent)
     setMaximumWidth(460);
     BuildUi();
     ClearEntry();
+    connect(ThemeManager::Instance(), &ThemeManager::ThemeChanged, this,
+            [this](Theme) { RefreshThemeAssets(); });
 }
 
 DetailPanel::~DetailPanel() = default;
@@ -85,14 +87,14 @@ QWidget* DetailPanel::BuildEmptyPage() {
     layout->setSpacing(12);
     layout->addStretch(1);
 
-    auto* icon = new QLabel(page);
-    icon->setObjectName(QStringLiteral("DetailEmptyIcon"));
-    icon->setAlignment(Qt::AlignCenter);
+    empty_icon_ = new QLabel(page);
+    empty_icon_->setObjectName(QStringLiteral("DetailEmptyIcon"));
+    empty_icon_->setAlignment(Qt::AlignCenter);
     const QColor color =
         ThemeManager::Instance()->Color(QStringLiteral("text-quaternary"));
     const QIcon vault_icon = IconLoader::Load(QStringLiteral("vault"), color, 48);
-    icon->setPixmap(vault_icon.pixmap(48, 48));
-    layout->addWidget(icon, 0, Qt::AlignCenter);
+    empty_icon_->setPixmap(vault_icon.pixmap(48, 48));
+    layout->addWidget(empty_icon_, 0, Qt::AlignCenter);
 
     auto* title = MakeLabel(QStringLiteral("选择一条密码查看详情"),
                             QStringLiteral("DetailEmptyText"));
@@ -169,24 +171,11 @@ QWidget* DetailPanel::BuildContentPage() {
     });
     action_layout->addWidget(header_edit_);
 
-    header_more_ = new QToolButton(actions);
-    header_more_->setObjectName(QStringLiteral("DetailHeaderButton"));
-    header_more_->setToolTip(QStringLiteral("更多操作"));
-    header_more_->setIcon(IconLoader::Load(
-        QStringLiteral("more-horizontal"),
-        ThemeManager::Instance()->Color(QStringLiteral("text-secondary")),
-        kIconSize));
-    header_more_->setIconSize(QSize(20, 20));
-    connect(header_more_, &QToolButton::clicked, this, [this]() {
-        if (entry_) emit DeleteRequested(entry_->id);
-    });
-    action_layout->addWidget(header_more_);
-    header_layout->addWidget(actions, 0, Qt::AlignTop);
-
-    header_favorite_ = new QToolButton(header);
+    header_favorite_ = new QToolButton(actions);
     header_favorite_->setObjectName(QStringLiteral("DetailHeaderButton"));
     header_favorite_->setCheckable(true);
     header_favorite_->setToolTip(QStringLiteral("收藏"));
+    header_favorite_->setAccessibleName(QStringLiteral("收藏"));
     header_favorite_->setIcon(IconLoader::Load(
         QStringLiteral("star"),
         ThemeManager::Instance()->Color(QStringLiteral("text-quaternary")),
@@ -196,7 +185,21 @@ QWidget* DetailPanel::BuildContentPage() {
         if (!entry_) return;
         emit FavoriteToggleRequested(entry_->id, checked);
     });
-    header_favorite_->hide();
+    action_layout->addWidget(header_favorite_);
+
+    header_delete_ = new QToolButton(actions);
+    header_delete_->setObjectName(QStringLiteral("DetailHeaderDeleteButton"));
+    header_delete_->setToolTip(QStringLiteral("删除密码"));
+    header_delete_->setAccessibleName(QStringLiteral("删除密码"));
+    header_delete_->setIcon(IconLoader::Load(
+        QStringLiteral("trash-2"),
+        ThemeManager::Instance()->Color(QStringLiteral("danger")), kIconSize));
+    header_delete_->setIconSize(QSize(20, 20));
+    connect(header_delete_, &QToolButton::clicked, this, [this]() {
+        if (entry_) emit DeleteRequested(entry_->id);
+    });
+    action_layout->addWidget(header_delete_);
+    header_layout->addWidget(actions, 0, Qt::AlignTop);
 
     outer->addWidget(header);
 
@@ -205,13 +208,14 @@ QWidget* DetailPanel::BuildContentPage() {
     auto* risky_layout = new QHBoxLayout(risky_banner_);
     risky_layout->setContentsMargins(12, 10, 12, 10);
     risky_layout->setSpacing(10);
-    auto* risky_icon = new QLabel(risky_banner_);
+    risky_icon_ = new QLabel(risky_banner_);
+    risky_icon_->setObjectName(QStringLiteral("DetailRiskyIcon"));
     const QColor danger =
         ThemeManager::Instance()->Color(QStringLiteral("danger"));
-    risky_icon->setPixmap(
+    risky_icon_->setPixmap(
         IconLoader::Load(QStringLiteral("shield-alert"), danger, 20)
             .pixmap(20, 20));
-    risky_layout->addWidget(risky_icon);
+    risky_layout->addWidget(risky_icon_);
     auto* risky_text = MakeLabel(
         QStringLiteral("此密码可能已在其他条目中使用，建议尽快更换。"),
         QStringLiteral("DetailRiskyBannerText"));
@@ -338,7 +342,7 @@ QWidget* DetailPanel::BuildContentPage() {
     open_website_button_->setCursor(Qt::PointingHandCursor);
     open_website_button_->setIcon(IconLoader::Load(
         QStringLiteral("external-link"),
-        QColor(0xff, 0xff, 0xff),
+        ThemeManager::Instance()->Color(QStringLiteral("accent-fg")),
         kIconSize));
     open_website_button_->setIconSize(QSize(kIconSize, kIconSize));
     connect(open_website_button_, &QPushButton::clicked, this, [this]() {
@@ -423,6 +427,68 @@ void DetailPanel::RefreshView() {
     updated_value_->setText(RelativeTime(e.updated_at));
 }
 
+void DetailPanel::RefreshThemeAssets() {
+    auto* theme = ThemeManager::Instance();
+    const auto icon = [theme](const QString& name, const QString& token,
+                              int size) {
+        return IconLoader::Load(name, theme->Color(token), size);
+    };
+
+    if (empty_icon_) {
+        empty_icon_->setPixmap(
+            icon(QStringLiteral("vault"), QStringLiteral("text-quaternary"),
+                 48)
+                .pixmap(48, 48));
+    }
+    if (header_edit_) {
+        header_edit_->setIcon(icon(QStringLiteral("pencil"),
+                                   QStringLiteral("text-secondary"),
+                                   kIconSize));
+    }
+    if (header_delete_) {
+        header_delete_->setIcon(icon(QStringLiteral("trash-2"),
+                                     QStringLiteral("danger"), kIconSize));
+    }
+    if (header_favorite_) {
+        const QString token = entry_ && entry_->is_favorite
+            ? QStringLiteral("warning")
+            : QStringLiteral("text-quaternary");
+        header_favorite_->setIcon(
+            icon(QStringLiteral("star"), token, kHeaderIconSize));
+    }
+    if (risky_icon_) {
+        risky_icon_->setPixmap(
+            icon(QStringLiteral("shield-alert"), QStringLiteral("danger"), 20)
+                .pixmap(20, 20));
+    }
+    if (username_copy_) {
+        username_copy_->setIcon(icon(QStringLiteral("copy"),
+                                     QStringLiteral("text-tertiary"),
+                                     kIconSize));
+    }
+    if (password_copy_) {
+        password_copy_->setIcon(icon(QStringLiteral("copy"),
+                                     QStringLiteral("text-tertiary"),
+                                     kIconSize));
+    }
+    if (website_open_) {
+        website_open_->setIcon(icon(QStringLiteral("external-link"),
+                                    QStringLiteral("text-tertiary"),
+                                    kIconSize));
+    }
+    if (copy_password_button_) {
+        copy_password_button_->setIcon(icon(
+            QStringLiteral("copy"), QStringLiteral("text-primary"),
+            kIconSize));
+    }
+    if (open_website_button_) {
+        open_website_button_->setIcon(icon(
+            QStringLiteral("external-link"), QStringLiteral("accent-fg"),
+            kIconSize));
+    }
+    if (entry_) UpdatePasswordDisplay();
+}
+
 void DetailPanel::UpdatePasswordDisplay() {
     if (!entry_) return;
     if (password_plain_.isEmpty()) {
@@ -439,7 +505,7 @@ void DetailPanel::UpdatePasswordDisplay() {
         password_value_->setText(password_plain_);
         password_toggle_->setIcon(IconLoader::Load(
             QStringLiteral("eye-off"),
-            QColor(0x6d, 0x7e, 0x91),
+            ThemeManager::Instance()->Color(QStringLiteral("text-tertiary")),
             kIconSize));
         password_toggle_->setToolTip(QStringLiteral("隐藏密码"));
     } else {
@@ -447,7 +513,7 @@ void DetailPanel::UpdatePasswordDisplay() {
                                           QChar(0x2022)));
         password_toggle_->setIcon(IconLoader::Load(
             QStringLiteral("eye"),
-            QColor(0x6d, 0x7e, 0x91),
+            ThemeManager::Instance()->Color(QStringLiteral("text-tertiary")),
             kIconSize));
         password_toggle_->setToolTip(QStringLiteral("显示密码"));
     }
