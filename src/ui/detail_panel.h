@@ -18,6 +18,8 @@ class QWidget;
 
 namespace passvault::ui {
 
+class ElidedLabel;
+
 class DetailPanel : public QFrame {
     Q_OBJECT
 
@@ -59,7 +61,7 @@ class DetailPanel : public QFrame {
     QLabel* empty_icon_ = nullptr;
 
     QLabel* header_icon_ = nullptr;
-    QLabel* header_title_ = nullptr;
+    ElidedLabel* header_title_ = nullptr;
     QLabel* header_tag_ = nullptr;
     QToolButton* header_favorite_ = nullptr;
     QPushButton* header_edit_ = nullptr;
@@ -68,12 +70,12 @@ class DetailPanel : public QFrame {
     QWidget* risky_banner_ = nullptr;
     QLabel* risky_icon_ = nullptr;
 
-    QLabel* username_value_ = nullptr;
+    ElidedLabel* username_value_ = nullptr;
     QToolButton* username_copy_ = nullptr;
     QLabel* password_value_ = nullptr;
     QToolButton* password_toggle_ = nullptr;
     QToolButton* password_copy_ = nullptr;
-    QLabel* website_value_ = nullptr;
+    ElidedLabel* website_value_ = nullptr;
     QToolButton* website_open_ = nullptr;
 
     QLabel* created_value_ = nullptr;

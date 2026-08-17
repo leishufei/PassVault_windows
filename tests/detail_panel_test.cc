@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QCryptographicHash>
+#include <QFontMetrics>
 #include <QImage>
 #include <QLabel>
 #include <QList>
@@ -11,11 +12,13 @@
 
 #include "model/password_entry.h"
 #include "ui/detail_panel.h"
+#include "ui/elided_label.h"
 #include "ui/theme_manager.h"
 
 namespace {
 
 using passvault::ui::DetailPanel;
+using passvault::ui::ElidedLabel;
 using passvault::model::PasswordEntry;
 
 QByteArray IconPixels(const QIcon& icon) {
@@ -105,9 +108,55 @@ TEST_F(DetailPanelTest, SetEntryPopulatesAndHasEntry) {
     panel_.SetEntry(MakeEntry(), QStringLiteral("secret"));
     EXPECT_TRUE(panel_.HasEntry());
     EXPECT_EQ(panel_.entry_id(), 77);
-    EXPECT_EQ(title()->text(), QStringLiteral("GitHub"));
-    EXPECT_EQ(usernameValue()->text(), QStringLiteral("octocat"));
-    EXPECT_EQ(websiteValue()->text(), QStringLiteral("https://github.com"));
+    EXPECT_EQ(title()->accessibleName(), QStringLiteral("GitHub"));
+    EXPECT_EQ(usernameValue()->accessibleName(), QStringLiteral("octocat"));
+    EXPECT_EQ(websiteValue()->accessibleName(),
+              QStringLiteral("https://github.com"));
+}
+
+TEST(ElidedLabelTest, ResizesTextAndPreservesFullValue) {
+    const QString full_text = QStringLiteral(
+        "A deliberately long value for responsive elision coverage");
+    ElidedLabel label;
+    label.resize(80, 24);
+    label.SetFullText(full_text);
+
+    EXPECT_NE(label.text(), full_text);
+    EXPECT_TRUE(label.text().endsWith(QChar(0x2026)));
+    EXPECT_EQ(label.toolTip(), full_text);
+    EXPECT_EQ(label.accessibleName(), full_text);
+
+    label.resize(label.fontMetrics().horizontalAdvance(full_text) + 10, 24);
+    QApplication::processEvents();
+    EXPECT_EQ(label.text(), full_text);
+}
+
+TEST_F(DetailPanelTest, LongIdentityFieldsElideAndKeepFullValues) {
+    PasswordEntry entry = MakeEntry();
+    entry.title = QStringLiteral(
+        "Long Identity Entry With A Deliberately Extended Title For Clipping "
+        "Verification 0123456789");
+    entry.username = QStringLiteral(
+        "long.account.identifier.for.stage.two.acceptance@example.invalid");
+    entry.website = QStringLiteral(
+        "https://a-deliberately-long-stage-two-hostname.example.invalid/path");
+    panel_.resize(400, 700);
+    panel_.SetEntry(entry, QStringLiteral("secret"));
+    panel_.show();
+    QApplication::processEvents();
+
+    const QList<QPair<QLabel*, QString>> fields = {
+        {title(), entry.title},
+        {usernameValue(), entry.username},
+        {websiteValue(), entry.website},
+    };
+    for (const auto& [label, full_text] : fields) {
+        ASSERT_NE(label, nullptr);
+        EXPECT_NE(label->text(), full_text);
+        EXPECT_TRUE(label->text().endsWith(QChar(0x2026)));
+        EXPECT_EQ(label->toolTip(), full_text);
+        EXPECT_EQ(label->accessibleName(), full_text);
+    }
 }
 
 TEST(DetailPanelThemeTest, ThemeRefreshPreservesEntryAndPasswordVisibility) {

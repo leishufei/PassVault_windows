@@ -402,6 +402,37 @@ TEST_F(MainWindowTest, PasswordCardsUseTargetDensityAndListStateLayer) {
         QStringLiteral("padding: 6px 22px 20px 22px")));
 }
 
+TEST_F(MainWindowTest, LongCardIdentityElidesAndKeepsFullValues) {
+    const QString long_title = QStringLiteral(
+        "Long Identity Entry With A Deliberately Extended Title For Clipping "
+        "Verification 0123456789");
+    const QString long_username = QStringLiteral(
+        "long.account.identifier.for.stage.two.acceptance.with.extra.characters"
+        "@example.invalid");
+    Seed(long_title, long_username, false, 0, 4000);
+    window_->Reload();
+    window_->resize(1280, 800);
+    window_->show();
+    QApplication::processEvents();
+
+    auto* card = passwords()->itemWidget(passwords()->item(0));
+    ASSERT_NE(card, nullptr);
+    auto* title =
+        card->findChild<QLabel*>(QStringLiteral("PasswordCardTitle"));
+    auto* username =
+        card->findChild<QLabel*>(QStringLiteral("PasswordCardMeta"));
+    ASSERT_NE(title, nullptr);
+    ASSERT_NE(username, nullptr);
+    EXPECT_NE(title->text(), long_title);
+    EXPECT_TRUE(title->text().endsWith(QChar(0x2026)));
+    EXPECT_EQ(title->toolTip(), long_title);
+    EXPECT_EQ(title->accessibleName(), long_title);
+    EXPECT_NE(username->text(), long_username);
+    EXPECT_TRUE(username->text().endsWith(QChar(0x2026)));
+    EXPECT_EQ(username->toolTip(), long_username);
+    EXPECT_EQ(username->accessibleName(), long_username);
+}
+
 TEST_F(MainWindowTest, SearchFocusUpdatesContainerState) {
     window_->show();
     QApplication::processEvents();
@@ -442,6 +473,9 @@ TEST_F(MainWindowTest, ListUsesUpdatedTimeAndRelativeLabel) {
     Seed(QStringLiteral("Recently Updated"), QStringLiteral("recent"), false,
          0, 1, updated);
     window_->Reload();
+    window_->resize(1280, 800);
+    window_->show();
+    QApplication::processEvents();
 
     auto* card = passwords()->itemWidget(passwords()->item(0));
     ASSERT_NE(card, nullptr);
