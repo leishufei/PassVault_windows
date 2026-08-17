@@ -14,6 +14,7 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include "ui/elided_label.h"
 #include "ui/icon_loader.h"
 #include "ui/theme_manager.h"
 
@@ -135,9 +136,9 @@ QWidget* DetailPanel::BuildContentPage() {
     auto* title_line = new QHBoxLayout();
     title_line->setContentsMargins(0, 0, 0, 0);
     title_line->setSpacing(8);
-    header_title_ = MakeLabel(QString(), QStringLiteral("DetailTitle"));
-    header_title_->setWordWrap(true);
-    title_line->addWidget(header_title_);
+    header_title_ = new ElidedLabel(header);
+    header_title_->setObjectName(QStringLiteral("DetailTitle"));
+    title_line->addWidget(header_title_, 1);
     header_tag_ = MakeLabel(QString(), QStringLiteral("DetailTag"));
     header_tag_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Maximum);
     title_line->addWidget(header_tag_);
@@ -231,8 +232,7 @@ QWidget* DetailPanel::BuildContentPage() {
     info_layout->setContentsMargins(0, 0, 0, 0);
     info_layout->setSpacing(0);
 
-    auto build_row = [&](const QString& label_text, QLabel** value_ptr,
-                         const QString& value_object,
+    auto build_row = [&](const QString& label_text, QLabel* value,
                          std::initializer_list<QToolButton**> buttons) {
         auto* row = new QWidget(info_card);
         row->setObjectName(QStringLiteral("DetailCardRow"));
@@ -245,11 +245,8 @@ QWidget* DetailPanel::BuildContentPage() {
         col->setSpacing(4);
         auto* label = MakeLabel(label_text, QStringLiteral("DetailFieldLabel"));
         col->addWidget(label);
-        auto* value = MakeLabel(QString(), value_object);
         value->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        value->setWordWrap(true);
         col->addWidget(value);
-        *value_ptr = value;
         row_layout->addLayout(col, 1);
 
         for (QToolButton** btn_ptr : buttons) {
@@ -263,8 +260,9 @@ QWidget* DetailPanel::BuildContentPage() {
     connect(username_copy_, &QToolButton::clicked, this, [this]() {
         if (entry_) emit CopyUsernameRequested(entry_->id);
     });
-    build_row(QStringLiteral("用户名"), &username_value_,
-              QStringLiteral("DetailFieldValue"), {&username_copy_});
+    username_value_ = new ElidedLabel(info_card);
+    username_value_->setObjectName(QStringLiteral("DetailFieldValue"));
+    build_row(QStringLiteral("用户名"), username_value_, {&username_copy_});
 
     info_layout->addWidget(MakeDivider());
 
@@ -279,8 +277,9 @@ QWidget* DetailPanel::BuildContentPage() {
     connect(password_copy_, &QToolButton::clicked, this, [this]() {
         if (entry_) emit CopyPasswordRequested(entry_->id);
     });
-    build_row(QStringLiteral("密码"), &password_value_,
-              QStringLiteral("DetailFieldValueMono"),
+    password_value_ = MakeLabel(QString(),
+                                QStringLiteral("DetailFieldValueMono"));
+    build_row(QStringLiteral("密码"), password_value_,
               {&password_toggle_, &password_copy_});
 
     info_layout->addWidget(MakeDivider());
@@ -290,8 +289,9 @@ QWidget* DetailPanel::BuildContentPage() {
     connect(website_open_, &QToolButton::clicked, this, [this]() {
         if (entry_) emit OpenWebsiteRequested(entry_->id);
     });
-    build_row(QStringLiteral("网址"), &website_value_,
-              QStringLiteral("DetailFieldValueLink"), {&website_open_});
+    website_value_ = new ElidedLabel(info_card);
+    website_value_->setObjectName(QStringLiteral("DetailFieldValueLink"));
+    build_row(QStringLiteral("网址"), website_value_, {&website_open_});
 
     outer->addWidget(info_card);
 
@@ -386,8 +386,8 @@ void DetailPanel::RefreshView() {
     const auto& e = *entry_;
 
     header_icon_->setText(AvatarInitials(e));
-    header_title_->setText(e.title.isEmpty() ? QStringLiteral("(无标题)")
-                                             : e.title);
+    header_title_->SetFullText(e.title.isEmpty() ? QStringLiteral("(无标题)")
+                                                 : e.title);
     const QString tag = CategoryName(e.category_id);
     if (tag.isEmpty()) {
         header_tag_->hide();
@@ -406,19 +406,19 @@ void DetailPanel::RefreshView() {
 
     risky_banner_->setVisible(false);
 
-    username_value_->setText(e.username.isEmpty()
-                                 ? QStringLiteral("(无用户名)")
-                                 : e.username);
+    username_value_->SetFullText(e.username.isEmpty()
+                                     ? QStringLiteral("(无用户名)")
+                                     : e.username);
     username_copy_->setEnabled(!e.username.isEmpty());
 
     UpdatePasswordDisplay();
 
     if (e.website.isEmpty()) {
-        website_value_->setText(QStringLiteral("(未填写)"));
+        website_value_->SetFullText(QStringLiteral("(未填写)"));
         website_open_->setEnabled(false);
         open_website_button_->setEnabled(false);
     } else {
-        website_value_->setText(e.website);
+        website_value_->SetFullText(e.website);
         website_open_->setEnabled(true);
         open_website_button_->setEnabled(true);
     }

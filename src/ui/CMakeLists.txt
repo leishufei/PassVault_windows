@@ -3,6 +3,8 @@ target_sources(passvault PRIVATE
     theme_manager.cc
     icon_loader.h
     icon_loader.cc
+    elided_label.h
+    elided_label.cc
     clipboard_manager.h
     clipboard_manager.cc
     toast.h

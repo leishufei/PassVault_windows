@@ -77,6 +77,7 @@ add_executable(passvault_tests
     "${CMAKE_SOURCE_DIR}/src/ui/import_preview_dialog.cc"
     "${CMAKE_SOURCE_DIR}/src/ui/theme_manager.cc"
     "${CMAKE_SOURCE_DIR}/src/ui/icon_loader.cc"
+    "${CMAKE_SOURCE_DIR}/src/ui/elided_label.cc"
     "${CMAKE_SOURCE_DIR}/src/ui/clipboard_manager.cc"
 )
 

@@ -42,6 +42,7 @@
 #include "sync/sync_scheduler.h"
 #include "ui/clipboard_manager.h"
 #include "ui/detail_panel.h"
+#include "ui/elided_label.h"
 #include "ui/editor_panel.h"
 #include "ui/icon_loader.h"
 #include "ui/preferences_page.h"
@@ -876,21 +877,15 @@ QWidget* MainWindow::CreatePasswordCard(const model::PasswordEntry& entry) {
     auto* text_col = new QVBoxLayout();
     text_col->setContentsMargins(0, 0, 0, 0);
     text_col->setSpacing(3);
-    auto* title = new QLabel(
+    auto* title = new ElidedLabel(
         entry.title.isEmpty() ? QStringLiteral("(无标题)") : entry.title, card);
     title->setObjectName(QStringLiteral("PasswordCardTitle"));
     title->setTextInteractionFlags(Qt::NoTextInteraction);
-    title->setMinimumWidth(0);
-    title->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    title->setToolTip(title->text());
     text_col->addWidget(title);
-    auto* meta = new QLabel(
+    auto* meta = new ElidedLabel(
         entry.username.isEmpty() ? QStringLiteral("(无用户名)") : entry.username,
         card);
     meta->setObjectName(QStringLiteral("PasswordCardMeta"));
-    meta->setMinimumWidth(0);
-    meta->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    meta->setToolTip(meta->text());
     text_col->addWidget(meta);
     row->addLayout(text_col, 1);
 
