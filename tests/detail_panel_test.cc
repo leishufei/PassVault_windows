@@ -203,6 +203,37 @@ TEST_F(DetailPanelTest, HeaderAlignsIdentityAndActionsOnOneRow) {
     EXPECT_EQ(favoriteButton()->parentWidget(), actions);
 }
 
+TEST_F(DetailPanelTest, DetailUsesUpdatedTimeWithoutSyntheticSubtitle) {
+    panel_.SetEntry(MakeEntry(), QStringLiteral("secret"));
+    auto* subtitle = panel_.findChild<QLabel*>(
+        QStringLiteral("DetailSubtitle"));
+    EXPECT_EQ(subtitle, nullptr);
+
+    const auto stamp_labels = panel_.findChildren<QLabel*>(
+        QStringLiteral("DetailStampLabel"));
+    ASSERT_EQ(stamp_labels.size(), 2);
+    EXPECT_EQ(stamp_labels.at(0)->text(), QStringLiteral("创建时间"));
+    EXPECT_EQ(stamp_labels.at(1)->text(), QStringLiteral("更新时间"));
+}
+
+TEST_F(DetailPanelTest, FooterFollowsTimestampCard) {
+    panel_.SetEntry(MakeEntry(), QStringLiteral("secret"));
+    auto* stamp_card = panel_.findChild<QWidget*>(
+        QStringLiteral("DetailStampCard"));
+    auto* footer_button = panel_.findChild<QWidget*>(
+        QStringLiteral("DetailSecondaryButton"));
+    ASSERT_NE(stamp_card, nullptr);
+    ASSERT_NE(footer_button, nullptr);
+    auto* footer = footer_button->parentWidget();
+    ASSERT_NE(footer, nullptr);
+    panel_.resize(400, 700);
+    panel_.show();
+    QApplication::processEvents();
+
+    EXPECT_GT(footer->y(), stamp_card->y());
+    EXPECT_LT(footer->y(), panel_.height());
+}
+
 TEST_F(DetailPanelTest, ClearEntryResetsState) {
     panel_.SetEntry(MakeEntry(), QStringLiteral("secret"));
     panel_.ClearEntry();
@@ -274,6 +305,32 @@ TEST_F(DetailPanelTest, PasswordToggleSwitchesMaskedAndPlain) {
     EXPECT_EQ(passwordValue()->text(), QStringLiteral("secret"));
     passwordToggle()->click();
     EXPECT_NE(passwordValue()->text(), QStringLiteral("secret"));
+}
+
+TEST_F(DetailPanelTest, EmptyIdentityFieldsShowPlaceholdersAndDisableActions) {
+    PasswordEntry entry = MakeEntry();
+    entry.username.clear();
+    entry.website.clear();
+    panel_.SetEntry(entry, QStringLiteral("secret"));
+
+    EXPECT_EQ(usernameValue()->text(), QStringLiteral("(无用户名)"));
+    EXPECT_EQ(websiteValue()->text(), QStringLiteral("(未填写)"));
+    EXPECT_FALSE(usernameCopy()->isEnabled());
+    auto* websiteButton = NthNamed<QToolButton>(panel_, "DetailFieldButton", 3);
+    ASSERT_NE(websiteButton, nullptr);
+    EXPECT_FALSE(websiteButton->isEnabled());
+    EXPECT_FALSE(openWebsiteButton()->isEnabled());
+}
+
+TEST_F(DetailPanelTest, UnavailablePasswordShowsPlaceholderAndDisablesActions) {
+    panel_.SetEntry(MakeEntry(), QString());
+
+    EXPECT_EQ(passwordValue()->text(), QStringLiteral("(无法解密)"));
+    EXPECT_FALSE(passwordToggle()->isEnabled());
+    auto* passwordCopy = NthNamed<QToolButton>(panel_, "DetailFieldButton", 2);
+    ASSERT_NE(passwordCopy, nullptr);
+    EXPECT_FALSE(passwordCopy->isEnabled());
+    EXPECT_FALSE(copyPasswordButton()->isEnabled());
 }
 
 }  // namespace

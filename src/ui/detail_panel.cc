@@ -145,11 +145,6 @@ QWidget* DetailPanel::BuildContentPage() {
     title_line->addStretch(1);
     title_col->addLayout(title_line);
 
-    auto* header_subtitle = MakeLabel(
-        QStringLiteral("安全条目 · 已加密保存"),
-        QStringLiteral("DetailSubtitle"));
-    title_col->addWidget(header_subtitle);
-    title_col->addStretch(1);
     header_layout->addLayout(title_col, 1);
 
     auto* actions = new QWidget(header);
@@ -314,10 +309,8 @@ QWidget* DetailPanel::BuildContentPage() {
         stamp_layout->addLayout(row);
     };
     make_stamp_row(QStringLiteral("创建时间"), &created_value_);
-    make_stamp_row(QStringLiteral("最近使用"), &updated_value_);
+    make_stamp_row(QStringLiteral("更新时间"), &updated_value_);
     outer->addWidget(stamp_card);
-
-    outer->addStretch(1);
 
     auto* footer = new QWidget(page);
     auto* footer_layout = new QHBoxLayout(footer);
