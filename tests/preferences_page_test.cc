@@ -8,10 +8,12 @@
 #include <QFont>
 #include <QFontInfo>
 #include <QFontMetrics>
+#include <QFrame>
 #include <QImage>
 #include <QLabel>
 #include <QPainter>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSignalSpy>
 #include <QSpinBox>
 #include <QStyle>
@@ -128,6 +130,12 @@ class PreferencesPageTest : public ::testing::Test {
     }
     QLabel* driveStatus() {
         return page_.findChild<QLabel*>(QStringLiteral("SettingRowStatus"));
+    }
+    QFrame* outerCard() {
+        return page_.findChild<QFrame*>(QStringLiteral("PreferencesOuterCard"));
+    }
+    QTabWidget* tabs() {
+        return page_.findChild<QTabWidget*>(QStringLiteral("PreferencesTabs"));
     }
 };
 
@@ -445,6 +453,79 @@ TEST(PreferencesPageThemeTest, ThemeRefreshPreservesTabAndControlValues) {
     EXPECT_NE(IconPixels(back->icon()), light_icon);
     EXPECT_EQ(tabs->currentIndex(), 2);
     EXPECT_EQ(auto_lock->value(), 17);
+}
+
+TEST_F(PreferencesPageTest, OuterCardMaxWidthIsDefined) {
+    auto* card = outerCard();
+    ASSERT_NE(card, nullptr);
+    EXPECT_EQ(card->maximumWidth(), 840);
+}
+
+TEST_F(PreferencesPageTest, OuterCardShrinksToContentNotViewport) {
+    page_.resize(1200, 800);
+    page_.show();
+    QApplication::processEvents();
+
+    auto* scroll =
+        page_.findChild<QScrollArea*>(QStringLiteral("PreferencesScroll"));
+    ASSERT_NE(scroll, nullptr);
+    auto* card = outerCard();
+    ASSERT_NE(card, nullptr);
+
+    const int viewport_h = scroll->viewport()->height();
+    // 内容少时卡片应按内容高度收缩，不被拉满整段滚动区。
+    EXPECT_LT(card->height(), viewport_h);
+}
+
+TEST_F(PreferencesPageTest, AllTabsHaveSectionTitles) {
+    auto* tabs = this->tabs();
+    ASSERT_NE(tabs, nullptr);
+    EXPECT_EQ(tabs->count(), 3);
+    const char* kTabNames[] = {"常规", "同步", "安全"};
+    for (int i = 0; i < tabs->count(); ++i) {
+        auto* tab_page = tabs->widget(i);
+        ASSERT_NE(tab_page, nullptr);
+        const auto titles =
+            tab_page->findChildren<QLabel*>(QStringLiteral("SettingSectionTitle"));
+        EXPECT_FALSE(titles.isEmpty()) << "tab " << kTabNames[i];
+        for (auto* title : titles) {
+            EXPECT_FALSE(title->text().isEmpty());
+        }
+    }
+}
+
+TEST_F(PreferencesPageTest, TabsSwitchBetweenPages) {
+    page_.show();
+    QApplication::processEvents();
+    auto* tabs = this->tabs();
+    ASSERT_NE(tabs, nullptr);
+    EXPECT_EQ(tabs->count(), 3);
+
+    for (int i = 0; i < tabs->count(); ++i) {
+        tabs->setCurrentIndex(i);
+        QApplication::processEvents();
+        EXPECT_EQ(tabs->currentIndex(), i);
+        EXPECT_TRUE(tabs->widget(i)->isVisible());
+        for (int j = 0; j < tabs->count(); ++j) {
+            if (j == i) continue;
+            EXPECT_FALSE(tabs->widget(j)->isVisible());
+        }
+    }
+}
+
+TEST_F(PreferencesPageTest, DefaultValuesWhenUnset) {
+    // 测试二进制未设置组织/应用名，QSettings 读不到任何持久化值，
+    // 因此必然回退到默认值；此处断言默认值常量。
+    PreferencesPage page;
+    auto* auto_lock = page.findChild<QSpinBox*>(QStringLiteral("AutoLockSpin"));
+    auto* clipboard = page.findChild<QSpinBox*>(QStringLiteral("ClipboardSpin"));
+    auto* theme = page.findChild<QComboBox*>(QStringLiteral("ThemeCombo"));
+    ASSERT_NE(auto_lock, nullptr);
+    ASSERT_NE(clipboard, nullptr);
+    ASSERT_NE(theme, nullptr);
+    EXPECT_EQ(auto_lock->value(), 5);
+    EXPECT_EQ(clipboard->value(), 30);
+    EXPECT_EQ(theme->count(), 3);
 }
 
 }  // namespace

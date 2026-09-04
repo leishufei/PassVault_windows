@@ -25,7 +25,7 @@ constexpr const char* kAutoLockKey = "session/auto_lock_minutes";
 constexpr const char* kClipboardKey = "ui/clipboard_seconds";
 
 constexpr int kHeaderHeight = 68;
-constexpr int kOuterCardMaxWidth = 920;
+constexpr int kOuterCardMaxWidth = 840;
 constexpr int kIconBoxSize = 36;
 constexpr int kIconGlyphSize = 18;
 
@@ -48,9 +48,9 @@ void SetThemeIcon(QLabel* label, const QString& icon_name,
             .pixmap(size, size));
 }
 
-QWidget* MakeSettingRow(const QString& icon_name, const QString& title,
-                        const QString& desc, QWidget* control,
-                        QWidget* parent) {
+QWidget* MakeSettingRowWithLabel(const QString& icon_name, const QString& title,
+                                 QLabel* desc_label, QWidget* control,
+                                 QWidget* parent) {
     auto* row = new QWidget(parent);
     row->setObjectName(QStringLiteral("SettingRow"));
 
@@ -71,9 +71,6 @@ QWidget* MakeSettingRow(const QString& icon_name, const QString& title,
     v->setSpacing(2);
     auto* title_label = new QLabel(title, texts);
     title_label->setObjectName(QStringLiteral("SettingRowTitle"));
-    auto* desc_label = new QLabel(desc, texts);
-    desc_label->setObjectName(QStringLiteral("SettingRowDesc"));
-    desc_label->setWordWrap(true);
     v->addWidget(title_label);
     v->addWidget(desc_label);
     h->addWidget(texts, 1);
@@ -85,12 +82,33 @@ QWidget* MakeSettingRow(const QString& icon_name, const QString& title,
     return row;
 }
 
+QWidget* MakeSettingRow(const QString& icon_name, const QString& title,
+                        const QString& desc, QWidget* control,
+                        QWidget* parent) {
+    auto* desc_label = new QLabel(desc);
+    desc_label->setObjectName(QStringLiteral("SettingRowDesc"));
+    desc_label->setWordWrap(true);
+    return MakeSettingRowWithLabel(icon_name, title, desc_label, control, parent);
+}
+
 QFrame* MakeRowSeparator(QWidget* parent) {
     auto* line = new QFrame(parent);
     line->setObjectName(QStringLiteral("SettingRowSeparator"));
     line->setFrameShape(QFrame::HLine);
     line->setFixedHeight(1);
     return line;
+}
+
+QWidget* MakeSectionHeader(const QString& title, QWidget* parent) {
+    auto* header = new QWidget(parent);
+    header->setObjectName(QStringLiteral("SettingSectionHeader"));
+    auto* v = new QVBoxLayout(header);
+    v->setContentsMargins(0, 12, 0, 4);
+    v->setSpacing(0);
+    auto* label = new QLabel(title, header);
+    label->setObjectName(QStringLiteral("SettingSectionTitle"));
+    v->addWidget(label);
+    return header;
 }
 
 }  // namespace
@@ -132,7 +150,9 @@ PreferencesPage::PreferencesPage(QWidget* parent) : QWidget(parent) {
     tabs->addTab(BuildSecurityTab(), QStringLiteral("安全"));
     card_layout->addWidget(tabs);
 
-    body_layout->addWidget(card, 3);
+    // 交叉轴(垂直)按内容高度对齐：内容少时卡片不再被 QHBoxLayout 拉满整段
+    // 滚动区高度，而是贴合内容；内容多时卡片仍按 sizeHint 撑高滚动区并触发滚动。
+    body_layout->addWidget(card, 3, Qt::AlignTop);
     body_layout->addStretch(1);
 
     scroll->setWidget(scroll_body);
@@ -213,6 +233,7 @@ QWidget* PreferencesPage::BuildGeneralTab() {
                 ThemeManager::Instance()->ApplyTheme(static_cast<Theme>(v));
                 emit ThemeChanged(v);
             });
+    v->addWidget(MakeSectionHeader(QStringLiteral("外观"), page));
     v->addWidget(MakeSettingRow(QStringLiteral("settings-2"),
                                  QStringLiteral("主题"),
                                  QStringLiteral("界面外观：跟随系统 / 浅色 / 深色"),
@@ -231,12 +252,14 @@ QWidget* PreferencesPage::BuildGeneralTab() {
                 SaveInt(kAutoLockKey, val);
                 emit AutoLockChanged(val);
             });
+    v->addWidget(MakeSectionHeader(QStringLiteral("安全"), page));
     v->addWidget(MakeSettingRow(QStringLiteral("lock-keyhole"),
                                  QStringLiteral("空闲自动锁定"),
                                  QStringLiteral("无操作超过设定时间后自动锁定应用"),
                                  auto_lock_spin_, page));
     v->addWidget(MakeRowSeparator(page));
 
+    v->addWidget(MakeSectionHeader(QStringLiteral("隐私"), page));
     clipboard_spin_ = new QSpinBox;
     clipboard_spin_->setObjectName(QStringLiteral("ClipboardSpin"));
     clipboard_spin_->setRange(5, 300);
@@ -285,29 +308,12 @@ QWidget* PreferencesPage::BuildSyncTab() {
 
     drive_status_label_ = new QLabel(QStringLiteral("未连接"));
     drive_status_label_->setObjectName(QStringLiteral("SettingRowStatus"));
+    drive_status_label_->setWordWrap(true);
 
-    auto* drive_wrap = new QWidget(page);
-    auto* wrap_row = new QHBoxLayout(drive_wrap);
-    wrap_row->setContentsMargins(0, 12, 0, 12);
-    wrap_row->setSpacing(14);
-    auto* drive_icon = new QLabel(drive_wrap);
-    drive_icon->setObjectName(QStringLiteral("SettingRowIcon"));
-    drive_icon->setFixedSize(kIconBoxSize, kIconBoxSize);
-    drive_icon->setAlignment(Qt::AlignCenter);
-    SetThemeIcon(drive_icon, QStringLiteral("cloud"));
-    wrap_row->addWidget(drive_icon);
-
-    auto* drive_texts = new QWidget(drive_wrap);
-    auto* drive_texts_v = new QVBoxLayout(drive_texts);
-    drive_texts_v->setContentsMargins(0, 0, 0, 0);
-    drive_texts_v->setSpacing(2);
-    auto* drive_title = new QLabel(QStringLiteral("Google Drive"), drive_texts);
-    drive_title->setObjectName(QStringLiteral("SettingRowTitle"));
-    drive_texts_v->addWidget(drive_title);
-    drive_texts_v->addWidget(drive_status_label_);
-    wrap_row->addWidget(drive_texts, 1);
-    wrap_row->addWidget(drive_actions);
-    v->addWidget(drive_wrap);
+    v->addWidget(MakeSectionHeader(QStringLiteral("同步"), page));
+    v->addWidget(MakeSettingRowWithLabel(
+        QStringLiteral("cloud"), QStringLiteral("Google Drive"),
+        drive_status_label_, drive_actions, page));
     v->addWidget(MakeRowSeparator(page));
 
     sync_now_button_ = new QPushButton(QStringLiteral("立即同步"));
@@ -321,6 +327,7 @@ QWidget* PreferencesPage::BuildSyncTab() {
                                  sync_now_button_, page));
     v->addWidget(MakeRowSeparator(page));
 
+    v->addWidget(MakeSectionHeader(QStringLiteral("数据导入与导出"), page));
     auto* import_button = new QPushButton(QStringLiteral("导入..."));
     import_button->setObjectName(QStringLiteral("ImportButton"));
     connect(import_button, &QPushButton::clicked, this,
@@ -351,6 +358,7 @@ QWidget* PreferencesPage::BuildSecurityTab() {
     v->setContentsMargins(28, 20, 28, 24);
     v->setSpacing(0);
 
+    v->addWidget(MakeSectionHeader(QStringLiteral("主密码"), page));
     auto* change_master = new QPushButton(QStringLiteral("暂不可用"));
     change_master->setObjectName(QStringLiteral("ChangeMasterButton"));
     change_master->setEnabled(false);
@@ -362,6 +370,7 @@ QWidget* PreferencesPage::BuildSecurityTab() {
         change_master, page));
     v->addWidget(MakeRowSeparator(page));
 
+    v->addWidget(MakeSectionHeader(QStringLiteral("Windows Hello"), page));
     hello_toggle_ = new QCheckBox;
     hello_toggle_->setObjectName(QStringLiteral("HelloToggle"));
     hello_toggle_->setProperty("variant", "switch");
@@ -378,28 +387,9 @@ QWidget* PreferencesPage::BuildSecurityTab() {
     hello_desc_->setObjectName(QStringLiteral("SettingRowDesc"));
     hello_desc_->setWordWrap(true);
 
-    auto* hello_wrap = new QWidget(page);
-    auto* hello_row = new QHBoxLayout(hello_wrap);
-    hello_row->setContentsMargins(0, 12, 0, 12);
-    hello_row->setSpacing(14);
-    auto* hello_icon = new QLabel(hello_wrap);
-    hello_icon->setObjectName(QStringLiteral("SettingRowIcon"));
-    hello_icon->setFixedSize(kIconBoxSize, kIconBoxSize);
-    hello_icon->setAlignment(Qt::AlignCenter);
-    SetThemeIcon(hello_icon, QStringLiteral("shield-check"));
-    hello_row->addWidget(hello_icon);
-
-    auto* hello_texts = new QWidget(hello_wrap);
-    auto* hello_texts_v = new QVBoxLayout(hello_texts);
-    hello_texts_v->setContentsMargins(0, 0, 0, 0);
-    hello_texts_v->setSpacing(2);
-    auto* hello_title = new QLabel(QStringLiteral("Windows Hello"), hello_texts);
-    hello_title->setObjectName(QStringLiteral("SettingRowTitle"));
-    hello_texts_v->addWidget(hello_title);
-    hello_texts_v->addWidget(hello_desc_);
-    hello_row->addWidget(hello_texts, 1);
-    hello_row->addWidget(hello_toggle_);
-    v->addWidget(hello_wrap);
+    v->addWidget(MakeSettingRowWithLabel(
+        QStringLiteral("shield-check"), QStringLiteral("Windows Hello"),
+        hello_desc_, hello_toggle_, page));
 
     v->addStretch(1);
     return page;

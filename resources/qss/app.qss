@@ -1034,6 +1034,14 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
     max-height: 1px;
 }
 
+#SettingSectionHeader { background: transparent; }
+#SettingSectionTitle {
+    color: var(--muted-2);
+    font-size: 12px;
+    font-weight: 600;
+    background: transparent;
+}
+
 #HelloToggle {
     background: transparent;
     color: var(--ink);
