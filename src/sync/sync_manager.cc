@@ -127,21 +127,20 @@ SyncManager::Result SyncManager::PerformSync(const QString& remote_name,
     for (int i = 0; i < max_retries; ++i) {
         DoSyncOutcome outcome = DoSyncOnce(remote_name);
         if (outcome.status == DoSyncStatus::kSuccess) {
-            final_result = {true, QString{}};
-            emit SyncFinished(true, QString{});
+            final_result = {true, StatusKind::kSuccess, QString{}};
+            emit SyncFinished(StatusKind::kSuccess, QString{});
             return final_result;
         }
         if (outcome.status == DoSyncStatus::kFatal) {
-            final_result = {false, outcome.message};
-            emit SyncFinished(false, outcome.message);
+            final_result = {false, StatusKind::kError, outcome.message};
+            emit SyncFinished(StatusKind::kError, outcome.message);
             return final_result;
         }
         // kVersionMismatch: fall through to retry
     }
-    const QString msg =
-        QStringLiteral("同步失败：多次重试后仍存在并发冲突");
-    final_result = {false, msg};
-    emit SyncFinished(false, msg);
+    const QString msg = QStringLiteral("多次重试后仍存在并发冲突");
+    final_result = {false, StatusKind::kConflict, msg};
+    emit SyncFinished(StatusKind::kConflict, msg);
     return final_result;
 }
 
@@ -418,7 +417,7 @@ SyncManager::Result SyncManager::ChangeCloudMasterPassword(
     const QString& old_password, const QString& new_password,
     const QString& remote_name) {
     if (!provider_) {
-        return {false, QStringLiteral("未配置云端 Provider")};
+        return {false, StatusKind::kError, QStringLiteral("未配置云端 Provider")};
     }
     const QByteArray old_pwd_bytes = old_password.toUtf8();
     const QByteArray new_pwd_bytes = new_password.toUtf8();
@@ -431,20 +430,20 @@ SyncManager::Result SyncManager::ChangeCloudMasterPassword(
         QString err;
         auto download = provider_->DownloadBackupWithVersion(remote_name, &err);
         if (!download) {
-            return {false, QStringLiteral("下载云端备份失败: ") + err};
+            return {false, StatusKind::kError, QStringLiteral("下载云端备份失败: ") + err};
         }
         auto backup = CloudBackupFormat::FromJsonBytes(download->data);
         if (!backup) {
-            return {false, QStringLiteral("云端备份 JSON 解析失败")};
+            return {false, StatusKind::kError, QStringLiteral("云端备份 JSON 解析失败")};
         }
         auto plain = CloudCryptoService::DecryptFromCloud(*backup, old_view);
         if (!plain) {
-            return {false,
+            return {false, StatusKind::kError,
                     QStringLiteral("旧主密码解密云端失败：主密码不匹配")};
         }
         auto new_backup = CloudCryptoService::EncryptForCloud(*plain, new_view);
         if (!new_backup) {
-            return {false, QStringLiteral("新主密码加密云端失败")};
+            return {false, StatusKind::kError, QStringLiteral("新主密码加密云端失败")};
         }
         const QByteArray file_bytes = new_backup->ToJsonBytes();
 
@@ -452,14 +451,15 @@ SyncManager::Result SyncManager::ChangeCloudMasterPassword(
         auto status = provider_->UploadBackupIfMatch(
             file_bytes, remote_name, download->version, &up_err);
         if (status == UploadIfMatchStatus::kSuccess) {
-            return {true, QString{}};
+            return {true, StatusKind::kSuccess, QString{}};
         }
         if (status == UploadIfMatchStatus::kError) {
-            return {false, QStringLiteral("上传失败: ") + up_err};
+            return {false, StatusKind::kError, QStringLiteral("上传失败: ") + up_err};
         }
         // kVersionMismatch: retry
     }
-    return {false, QStringLiteral("改密失败：多次重试后仍存在并发冲突")};
+    return {false, StatusKind::kConflict,
+            QStringLiteral("多次重试后仍存在并发冲突")};
 }
 
 }  // namespace passvault::sync

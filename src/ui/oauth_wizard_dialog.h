@@ -28,6 +28,7 @@ class OAuthWizardDialog : public QDialog {
 
  private slots:
     void OnStart();
+    void OnCancel();
     void OnSuccess();
     void OnFailure(const QString& message);
 

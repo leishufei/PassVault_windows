@@ -1042,6 +1042,86 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
     background: transparent;
 }
 
+#SyncHeadingTitle {
+    color: var(--ink);
+    font-size: 14px;
+    font-weight: 600;
+    background: transparent;
+}
+#SyncHeadingDesc,
+#SyncAuthDesc,
+#SyncE2eHint {
+    color: var(--muted-13);
+    font-size: 11px;
+    background: transparent;
+}
+#SyncAuthCard {
+    background-color: var(--soft-bg-sync-auth);
+    border: 1px solid var(--primary-focus-border);
+    border-radius: 12px;
+}
+#SyncAccountCard,
+#SyncLastCard {
+    border: 1px solid var(--border-panel-3);
+    border-radius: 12px;
+}
+#SyncAccountCard { background-color: var(--card); }
+#SyncLastCard { background-color: var(--soft-bg-sync); }
+#SyncAuthTitle,
+#SyncAccountTitle {
+    color: var(--info-value);
+    font-size: 12px;
+    font-weight: 600;
+    background: transparent;
+}
+#SyncLastTitle {
+    color: var(--hint-6);
+    font-size: 11px;
+    background: transparent;
+}
+#SyncAccountEmail {
+    color: var(--muted-13);
+    font-size: 11px;
+    background: transparent;
+}
+#SyncLastValue {
+    color: var(--info-value);
+    font-size: 12px;
+    font-weight: 500;
+    background: transparent;
+}
+#SyncStateText {
+    color: var(--hint-6);
+    font-size: 12px;
+    background: transparent;
+}
+#SyncStateDot {
+    border-radius: 4px;
+    min-width: 8px;
+    max-width: 8px;
+    min-height: 8px;
+    max-height: 8px;
+}
+#SyncStateDot[state="idle"]     { background-color: var(--muted-13); }
+#SyncStateDot[state="busy"]     { background-color: var(--warn); }
+#SyncStateDot[state="ok"]       { background-color: var(--success); }
+#SyncStateDot[state="conflict"] { background-color: var(--warn); }
+#SyncStateDot[state="error"]    { background-color: var(--danger); }
+#AuthorizeCancelButton,
+#ChangeAccountButton {
+    background: transparent;
+    color: var(--hint-10);
+    border: 1px solid var(--border-panel-3);
+    border-radius: 8px;
+    padding: 0 12px;
+    min-height: 32px;
+    font-size: 11px;
+}
+#AuthorizeCancelButton:hover,
+#ChangeAccountButton:hover {
+    background-color: var(--primary-hover-surface-6);
+}
+
 #HelloToggle {
     background: transparent;
     color: var(--ink);

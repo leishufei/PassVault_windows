@@ -48,7 +48,8 @@ OAuthWizardDialog::OAuthWizardDialog(oauth::GoogleOAuthClient* client,
 
     auto* buttons = new QHBoxLayout;
     cancel_ = new QPushButton(QStringLiteral("取消"), this);
-    connect(cancel_, &QPushButton::clicked, this, &QDialog::reject);
+    connect(cancel_, &QPushButton::clicked, this,
+            &OAuthWizardDialog::OnCancel);
     start_ = new QPushButton(QStringLiteral("开始授权"), this);
     start_->setProperty("accent", true);
     connect(start_, &QPushButton::clicked, this, &OAuthWizardDialog::OnStart);
@@ -70,6 +71,11 @@ void OAuthWizardDialog::OnStart() {
     start_->setEnabled(false);
     status_->setText(QStringLiteral("已打开浏览器，正在等待授权..."));
     client_->Authorize();
+}
+
+void OAuthWizardDialog::OnCancel() {
+    if (client_) client_->CancelAuthorization();
+    reject();
 }
 
 void OAuthWizardDialog::OnSuccess() {

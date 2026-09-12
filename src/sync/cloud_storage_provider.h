@@ -23,6 +23,11 @@ class CloudStorageProvider {
     virtual ~CloudStorageProvider() = default;
 
     virtual QString ProviderName() const = 0;
+
+    // Account identifier for display (email address, etc). Empty when unknown;
+    // callers fall back to ProviderName(). May perform a blocking lookup.
+    virtual QString AccountHint() { return QString(); }
+
     virtual bool IsAuthenticated() const = 0;
     virtual void SignOut() = 0;
 

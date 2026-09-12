@@ -33,6 +33,9 @@ class GoogleDriveProvider : public QObject, public CloudStorageProvider {
     void set_upload_base_url(QString url) { upload_base_url_ = std::move(url); }
 
     QString ProviderName() const override { return QStringLiteral("Google Drive"); }
+    // Fetches the account email once, on first request, and caches it. Returns
+    // an empty string when the account cannot be determined.
+    QString AccountHint() override;
     bool IsAuthenticated() const override;
     void SignOut() override;
 
@@ -58,6 +61,7 @@ class GoogleDriveProvider : public QObject, public CloudStorageProvider {
     };
 
     void EnsureNetwork();
+    void FetchAccountHint();
     HttpResult SendRequestSync(const QByteArray& verb, const QString& url,
                                const QByteArray& body, const QByteArray& content_type);
     HttpResult SendMultipartUploadSync(const QByteArray& verb, const QString& url,
@@ -82,6 +86,7 @@ class GoogleDriveProvider : public QObject, public CloudStorageProvider {
     bool owns_network_ = false;
 
     QString backup_folder_name_ = QStringLiteral("PassVault");
+    QString account_hint_;
     QString base_url_ = QStringLiteral("https://www.googleapis.com/drive/v3");
     QString upload_base_url_ =
         QStringLiteral("https://www.googleapis.com/upload/drive/v3");

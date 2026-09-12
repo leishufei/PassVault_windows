@@ -1240,17 +1240,8 @@ void MainWindow::OnFavoriteToggleRequested(std::int64_t entry_id, bool desired) 
     }
 }
 
-void MainWindow::OnSyncNow() {
-    if (!deps_.sync_scheduler) {
-        Toast::Show(this, QStringLiteral("请先在设置中连接 Google Drive。"),
-                    Toast::Level::kWarning);
-        return;
-    }
-    deps_.sync_scheduler->SyncImmediately();
-}
-
 void MainWindow::OnSyncStarted() {
-    UpdateSyncStatus(true, QStringLiteral("同步中..."));
+    if (sync_status_label_) sync_status_label_->setText(QStringLiteral("同步中..."));
     if (sync_status_dot_) {
         sync_status_dot_->setProperty("state", QStringLiteral("busy"));
         sync_status_dot_->style()->unpolish(sync_status_dot_);
@@ -1258,22 +1249,40 @@ void MainWindow::OnSyncStarted() {
     }
 }
 
-void MainWindow::OnSyncFinished(bool success, const QString& message) {
-    UpdateSyncStatus(success, success ? QStringLiteral("已同步到云端")
-                                       : QStringLiteral("同步失败：%1")
-                                             .arg(message));
-    Toast::Show(this,
-                success ? QStringLiteral("同步完成")
-                        : QStringLiteral("同步失败：%1").arg(message),
-                success ? Toast::Level::kSuccess : Toast::Level::kError);
+void MainWindow::OnSyncFinished(sync::SyncManager::StatusKind kind,
+                                const QString& message) {
+    switch (kind) {
+        case sync::SyncManager::StatusKind::kSuccess:
+            UpdateSyncStatus(kind, QStringLiteral("已同步到云端"));
+            Toast::Show(this, QStringLiteral("同步完成"),
+                        Toast::Level::kSuccess);
+            break;
+        case sync::SyncManager::StatusKind::kConflict:
+            UpdateSyncStatus(kind, QStringLiteral("同步冲突，请稍后重试"));
+            Toast::Show(this, QStringLiteral("同步冲突，请稍后重试"),
+                        Toast::Level::kWarning);
+            break;
+        case sync::SyncManager::StatusKind::kError:
+        default:
+            UpdateSyncStatus(kind, QStringLiteral("同步失败：%1").arg(message));
+            Toast::Show(this, QStringLiteral("同步失败：%1").arg(message),
+                        Toast::Level::kError);
+            break;
+    }
     Reload();
 }
 
-void MainWindow::UpdateSyncStatus(bool success, const QString& message) {
+void MainWindow::UpdateSyncStatus(sync::SyncManager::StatusKind kind,
+                                  const QString& message) {
     if (sync_status_label_) sync_status_label_->setText(message);
     if (sync_status_dot_) {
-        sync_status_dot_->setProperty(
-            "state", success ? QStringLiteral("ok") : QStringLiteral("error"));
+        const char* state = "ok";
+        if (kind == sync::SyncManager::StatusKind::kConflict) {
+            state = "conflict";
+        } else if (kind == sync::SyncManager::StatusKind::kError) {
+            state = "error";
+        }
+        sync_status_dot_->setProperty("state", QString::fromLatin1(state));
         sync_status_dot_->style()->unpolish(sync_status_dot_);
         sync_status_dot_->style()->polish(sync_status_dot_);
     }

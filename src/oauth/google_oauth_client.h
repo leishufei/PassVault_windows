@@ -34,7 +34,10 @@ class GoogleOAuthClient : public QObject {
         owns_network_ = false;
     }
 
-    void Authorize();
+    virtual void Authorize();
+    // Stops a pending authorization: shuts down the loopback server without
+    // emitting AuthorizationSucceeded. Safe to call when idle.
+    virtual void CancelAuthorization();
 
     void RefreshAccessToken();
 

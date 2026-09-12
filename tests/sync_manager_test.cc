@@ -373,3 +373,58 @@ TEST_F(SyncManagerTest, DedupByNameCollapsesDuplicateCategories) {
     ASSERT_TRUE(migrated.has_value());
     EXPECT_EQ(migrated->category_id, older_id);
 }
+
+TEST_F(SyncManagerTest, KindIsSuccessOnCleanSync) {
+    manager_->set_provider(&provider_);
+    ASSERT_TRUE(pwd_dao_->Insert(MakeEntry(1, "pwd-1", 1710000000000LL)).has_value());
+
+    auto result = manager_->PerformSync();
+    EXPECT_TRUE(result.success);
+    EXPECT_EQ(result.kind, SyncManager::StatusKind::kSuccess);
+}
+
+TEST_F(SyncManagerTest, KindIsErrorWithoutProvider) {
+    auto result = manager_->PerformSync();
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(result.kind, SyncManager::StatusKind::kError);
+}
+
+TEST_F(SyncManagerTest, KindIsConflictAfterRetriesExhausted) {
+    manager_->set_provider(&provider_);
+    ASSERT_TRUE(pwd_dao_->Insert(MakeEntry(1, "pwd-1", 1710000000000LL)).has_value());
+    ASSERT_TRUE(manager_->PerformSync().success);
+
+    provider_.set_always_mismatch(true);
+    ASSERT_TRUE(pwd_dao_->Insert(MakeEntry(2, "pwd-2", 1710000001000LL)).has_value());
+
+    auto result = manager_->PerformSync(
+        QString::fromLatin1(SyncManager::kDefaultRemoteFileName), 2);
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(result.kind, SyncManager::StatusKind::kConflict);
+}
+
+TEST_F(SyncManagerTest, ConflictMessageHasNoFailurePrefix) {
+    manager_->set_provider(&provider_);
+    ASSERT_TRUE(pwd_dao_->Insert(MakeEntry(1, "pwd-1", 1710000000000LL)).has_value());
+    ASSERT_TRUE(manager_->PerformSync().success);
+
+    provider_.set_always_mismatch(true);
+    ASSERT_TRUE(pwd_dao_->Insert(MakeEntry(2, "pwd-2", 1710000001000LL)).has_value());
+
+    auto result = manager_->PerformSync(
+        QString::fromLatin1(SyncManager::kDefaultRemoteFileName), 2);
+    EXPECT_FALSE(result.message.startsWith(QStringLiteral("同步失败")));
+    EXPECT_TRUE(result.message.contains(QStringLiteral("并发冲突")));
+}
+
+TEST_F(SyncManagerTest, SyncFinishedCarriesKind) {
+    manager_->set_provider(&provider_);
+    ASSERT_TRUE(pwd_dao_->Insert(MakeEntry(1, "pwd-1", 1710000000000LL)).has_value());
+
+    QSignalSpy finished(manager_.get(), &SyncManager::SyncFinished);
+    auto result = manager_->PerformSync();
+    ASSERT_EQ(finished.count(), 1);
+    const auto emitted =
+        finished.at(0).at(0).value<SyncManager::StatusKind>();
+    EXPECT_EQ(emitted, result.kind);
+}

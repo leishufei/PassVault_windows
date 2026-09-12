@@ -22,8 +22,16 @@ class SyncManager : public QObject {
     Q_OBJECT
 
  public:
+    enum class StatusKind {
+        kSuccess,
+        kConflict,
+        kError,
+    };
+    Q_ENUM(StatusKind)
+
     struct Result {
         bool success = false;
+        StatusKind kind = StatusKind::kError;
         QString message;
     };
 
@@ -50,7 +58,7 @@ class SyncManager : public QObject {
 
  signals:
     void SyncStarted();
-    void SyncFinished(bool success, const QString& message);
+    void SyncFinished(StatusKind kind, const QString& message);
 
  private:
     enum class DoSyncStatus {

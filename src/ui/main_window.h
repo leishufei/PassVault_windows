@@ -9,6 +9,7 @@
 
 #include "model/category.h"
 #include "model/password_entry.h"
+#include "sync/sync_manager.h"
 
 class QAction;
 class QHBoxLayout;
@@ -30,7 +31,6 @@ class PasswordDao;
 class CategoryDao;
 }
 namespace passvault::sync {
-class SyncManager;
 class SyncScheduler;
 }
 
@@ -76,9 +76,9 @@ class MainWindow : public QMainWindow {
     void OnCategorySelectionChanged();
     void OnPasswordSelectionChanged();
     void OnSearchChanged(const QString& text);
-    void OnSyncNow();
     void OnSyncStarted();
-    void OnSyncFinished(bool success, const QString& message);
+    void OnSyncFinished(sync::SyncManager::StatusKind kind,
+                        const QString& message);
     void OnEditRequested(std::int64_t entry_id);
     void OnDeleteRequested(std::int64_t entry_id);
     void OnCopyPasswordRequested(std::int64_t entry_id);
@@ -100,7 +100,8 @@ class MainWindow : public QMainWindow {
     void UpdateResponsiveLayout();
     void ShowListPane();
     void ToggleCompactSidebar();
-    void UpdateSyncStatus(bool success, const QString& message);
+    void UpdateSyncStatus(sync::SyncManager::StatusKind kind,
+                          const QString& message);
     QWidget* CreatePasswordCard(const model::PasswordEntry& entry);
     std::optional<model::PasswordEntry> FindEntry(std::int64_t id) const;
 

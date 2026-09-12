@@ -38,6 +38,7 @@
     --card-hover: #fbfcff;
     --soft-bg: #f9fbfd;
     --soft-bg-sync: #f7faff;
+    --soft-bg-sync-auth: #f8fbff;
     --soft-bg-select: #fafcff;
 
     /* Legacy aliases (used across components.qss / app.qss). */

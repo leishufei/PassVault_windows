@@ -262,7 +262,11 @@ class Application::Impl {
         page->SetHelloAvailable(hello_->IsAvailable());
         page->SetHelloEnabled(
             QSettings().value(kSettingsHelloEnabled, false).toBool());
-        page->SetGoogleDriveConnected(token_store_->Exists(), QString());
+        page->SetSyncState(
+            token_store_->Exists()
+                ? ui::PreferencesPage::SyncUiState::kConnected
+                : ui::PreferencesPage::SyncUiState::kDisconnected,
+            QString());
 
         QObject::connect(page,
                           &ui::PreferencesPage::ChangeMasterPasswordRequested,
@@ -298,21 +302,63 @@ class Application::Impl {
         QObject::connect(page,
                           &ui::PreferencesPage::ConnectGoogleDriveRequested,
                           [this, page]() {
+                              page->SetSyncState(
+                                  ui::PreferencesPage::SyncUiState::kAuthorizing,
+                                  QString());
                               ui::OAuthWizardDialog wiz(oauth_client_.get(),
                                                         page);
-                              if (wiz.exec() != QDialog::Accepted) return;
+                              if (wiz.exec() != QDialog::Accepted) {
+                                  page->SetSyncState(
+                                      ui::PreferencesPage::SyncUiState::
+                                          kDisconnected,
+                                      QString());
+                                  return;
+                              }
                               sync_manager_->set_provider(drive_provider_.get());
-                              page->SetGoogleDriveConnected(true, QString());
+                              page->SetSyncState(
+                                  ui::PreferencesPage::SyncUiState::kConnected,
+                                  drive_provider_->AccountHint());
+                          });
+        QObject::connect(page,
+                          &ui::PreferencesPage::AuthorizeCancelled,
+                          [page]() {
+                              page->SetSyncState(
+                                  ui::PreferencesPage::SyncUiState::kDisconnected,
+                                  QString());
                           });
         QObject::connect(page,
                           &ui::PreferencesPage::DisconnectGoogleDriveRequested,
                           [this, page]() {
                               oauth_client_->RevokeTokens();
                               sync_manager_->set_provider(nullptr);
-                              page->SetGoogleDriveConnected(false, QString());
+                              page->SetSyncState(
+                                  ui::PreferencesPage::SyncUiState::kDisconnected,
+                                  QString());
                           });
         QObject::connect(page, &ui::PreferencesPage::SyncNowRequested,
                           [this]() { sync_scheduler_->SyncImmediately(); });
+        if (sync_manager_) {
+            QObject::connect(
+                sync_manager_.get(), &sync::SyncManager::SyncStarted,
+                [page]() {
+                    page->SetSyncState(
+                        ui::PreferencesPage::SyncUiState::kSyncing, QString());
+                });
+            QObject::connect(
+                sync_manager_.get(), &sync::SyncManager::SyncFinished,
+                [this, page](sync::SyncManager::StatusKind kind,
+                             const QString& message) {
+                    using SyncUiState = ui::PreferencesPage::SyncUiState;
+                    using StatusKind = sync::SyncManager::StatusKind;
+                    SyncUiState state = SyncUiState::kError;
+                    if (kind == StatusKind::kSuccess) {
+                        state = SyncUiState::kSuccess;
+                    } else if (kind == StatusKind::kConflict) {
+                        state = SyncUiState::kConflict;
+                    }
+                    page->SetSyncState(state, QString(), message);
+                });
+        }
         QObject::connect(page, &ui::PreferencesPage::ImportCsvRequested,
                           [this, page]() { ImportCsv(page); });
         QObject::connect(page, &ui::PreferencesPage::ExportCsvRequested,

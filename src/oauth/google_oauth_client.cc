@@ -106,6 +106,13 @@ void GoogleOAuthClient::Authorize() {
     OpenAuthorizationUrl(redirect, pkce.challenge, expected_state_);
 }
 
+void GoogleOAuthClient::CancelAuthorization() {
+    if (server_ == nullptr) return;
+    server_->Stop();
+    server_->deleteLater();
+    server_ = nullptr;
+}
+
 void GoogleOAuthClient::OpenAuthorizationUrl(const QString& redirect_uri,
                                              const QString& challenge,
                                              const QString& state) {

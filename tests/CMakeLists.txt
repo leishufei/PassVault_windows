@@ -30,6 +30,7 @@ add_executable(passvault_tests
     toast_test.cc
     generator_dialog_test.cc
     preferences_page_test.cc
+    oauth_wizard_dialog_test.cc
     master_password_dialog_test.cc
     editor_panel_test.cc
     detail_panel_test.cc
@@ -67,9 +68,11 @@ add_executable(passvault_tests
     "${CMAKE_SOURCE_DIR}/src/oauth/pkce.cc"
     "${CMAKE_SOURCE_DIR}/src/oauth/loopback_http_server.cc"
     "${CMAKE_SOURCE_DIR}/src/oauth/token_store.cc"
+    "${CMAKE_SOURCE_DIR}/src/oauth/google_oauth_client.cc"
     "${CMAKE_SOURCE_DIR}/src/ui/toast.cc"
     "${CMAKE_SOURCE_DIR}/src/ui/generator_dialog.cc"
     "${CMAKE_SOURCE_DIR}/src/ui/preferences_page.cc"
+    "${CMAKE_SOURCE_DIR}/src/ui/oauth_wizard_dialog.cc"
     "${CMAKE_SOURCE_DIR}/src/ui/master_password_dialog.cc"
     "${CMAKE_SOURCE_DIR}/src/ui/editor_panel.cc"
     "${CMAKE_SOURCE_DIR}/src/ui/detail_panel.cc"

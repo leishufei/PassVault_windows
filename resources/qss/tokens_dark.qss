@@ -37,6 +37,7 @@
     --card-hover: #1a2029;
     --soft-bg: #141516;
     --soft-bg-sync: #141516;
+    --soft-bg-sync-auth: #14171c;
     --soft-bg-select: #141516;
 
     /* Legacy aliases. */

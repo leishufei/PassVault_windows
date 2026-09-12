@@ -2,6 +2,7 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDateTime>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -23,11 +24,14 @@ namespace {
 
 constexpr const char* kAutoLockKey = "session/auto_lock_minutes";
 constexpr const char* kClipboardKey = "ui/clipboard_seconds";
+constexpr const char* kLastSyncKey = "sync/last_sync_ms";
 
 constexpr int kHeaderHeight = 68;
 constexpr int kOuterCardMaxWidth = 840;
 constexpr int kIconBoxSize = 36;
 constexpr int kIconGlyphSize = 18;
+constexpr int kSyncCardGap = 16;
+constexpr int kSyncCardPad = 16;
 
 int LoadInt(const char* key, int fallback) {
     return QSettings().value(QString::fromLatin1(key), fallback).toInt();
@@ -35,6 +39,52 @@ int LoadInt(const char* key, int fallback) {
 
 void SaveInt(const char* key, int value) {
     QSettings().setValue(QString::fromLatin1(key), value);
+}
+
+std::int64_t LoadLastSyncMs() {
+    return QSettings()
+        .value(QString::fromLatin1(kLastSyncKey), 0)
+        .toLongLong();
+}
+
+void SaveLastSyncMs(std::int64_t value) {
+    QSettings().setValue(QString::fromLatin1(kLastSyncKey),
+                         static_cast<qlonglong>(value));
+}
+
+QString FormatLastSync(std::int64_t epoch_ms) {
+    if (epoch_ms <= 0) return QStringLiteral("从未同步");
+    return QDateTime::fromMSecsSinceEpoch(epoch_ms)
+        .toString(QStringLiteral("yyyy/MM/dd HH:mm"));
+}
+
+const char* SyncStateName(PreferencesPage::SyncUiState state) {
+    switch (state) {
+        case PreferencesPage::SyncUiState::kSyncing:
+            return "busy";
+        case PreferencesPage::SyncUiState::kSuccess:
+            return "ok";
+        case PreferencesPage::SyncUiState::kConflict:
+            return "conflict";
+        case PreferencesPage::SyncUiState::kError:
+            return "error";
+        case PreferencesPage::SyncUiState::kDisconnected:
+        case PreferencesPage::SyncUiState::kAuthorizing:
+        case PreferencesPage::SyncUiState::kConnected:
+        default:
+            return "idle";
+    }
+}
+
+QString GoogleMarkStyle() {
+    return QStringLiteral(
+        "background-color: %1; color: %2; border: 1px solid %3;"
+        " border-radius: 18px; font-size: 15px; font-weight: 700;")
+        .arg(ThemeManager::Instance()->ColorHex(QStringLiteral("card")),
+             ThemeManager::Instance()->ColorHex(
+                 QStringLiteral("brand-google-fg")),
+             ThemeManager::Instance()->ColorHex(
+                 QStringLiteral("border-section-3")));
 }
 
 void SetThemeIcon(QLabel* label, const QString& icon_name,
@@ -276,55 +326,6 @@ QWidget* PreferencesPage::BuildGeneralTab() {
                                  QStringLiteral("剪贴板自动清空"),
                                  QStringLiteral("复制密码后经过设定时间自动清除"),
                                  clipboard_spin_, page));
-
-    v->addStretch(1);
-    return page;
-}
-
-QWidget* PreferencesPage::BuildSyncTab() {
-    auto* page = new QWidget;
-    page->setObjectName(QStringLiteral("PreferencesTabPage"));
-    auto* v = new QVBoxLayout(page);
-    v->setContentsMargins(28, 20, 28, 24);
-    v->setSpacing(0);
-
-    auto* drive_actions = new QWidget;
-    auto* drive_row = new QHBoxLayout(drive_actions);
-    drive_row->setContentsMargins(0, 0, 0, 0);
-    drive_row->setSpacing(8);
-    drive_connect_button_ = new QPushButton(QStringLiteral("连接..."));
-    drive_connect_button_->setObjectName(QStringLiteral("DriveConnectButton"));
-    drive_connect_button_->setProperty("accent", true);
-    drive_connect_button_->setVisible(true);
-    connect(drive_connect_button_, &QPushButton::clicked, this,
-            &PreferencesPage::ConnectGoogleDriveRequested);
-    drive_disconnect_button_ = new QPushButton(QStringLiteral("断开"));
-    drive_disconnect_button_->setObjectName(QStringLiteral("DriveDisconnectButton"));
-    drive_disconnect_button_->setVisible(false);
-    connect(drive_disconnect_button_, &QPushButton::clicked, this,
-            &PreferencesPage::DisconnectGoogleDriveRequested);
-    drive_row->addWidget(drive_connect_button_);
-    drive_row->addWidget(drive_disconnect_button_);
-
-    drive_status_label_ = new QLabel(QStringLiteral("未连接"));
-    drive_status_label_->setObjectName(QStringLiteral("SettingRowStatus"));
-    drive_status_label_->setWordWrap(true);
-
-    v->addWidget(MakeSectionHeader(QStringLiteral("同步"), page));
-    v->addWidget(MakeSettingRowWithLabel(
-        QStringLiteral("cloud"), QStringLiteral("Google Drive"),
-        drive_status_label_, drive_actions, page));
-    v->addWidget(MakeRowSeparator(page));
-
-    sync_now_button_ = new QPushButton(QStringLiteral("立即同步"));
-    sync_now_button_->setObjectName(QStringLiteral("SyncNowButton"));
-    sync_now_button_->setEnabled(false);
-    connect(sync_now_button_, &QPushButton::clicked, this,
-            &PreferencesPage::SyncNowRequested);
-    v->addWidget(MakeSettingRow(QStringLiteral("cloud"),
-                                 QStringLiteral("立即同步"),
-                                 QStringLiteral("手动触发一次云端同步"),
-                                 sync_now_button_, page));
     v->addWidget(MakeRowSeparator(page));
 
     v->addWidget(MakeSectionHeader(QStringLiteral("数据导入与导出"), page));
@@ -347,6 +348,205 @@ QWidget* PreferencesPage::BuildSyncTab() {
                                  QStringLiteral("将全部密码导出为 CSV 文件"),
                                  export_button, page));
 
+    v->addStretch(1);
+    return page;
+}
+
+QWidget* PreferencesPage::BuildAuthorizeCard() {
+    auto* card = new QWidget;
+    card->setObjectName(QStringLiteral("SyncAuthCard"));
+    auto* v = new QVBoxLayout(card);
+    v->setContentsMargins(kSyncCardPad, kSyncCardPad, kSyncCardPad,
+                          kSyncCardPad);
+    v->setSpacing(0);
+
+    auto* top = new QHBoxLayout;
+    top->setContentsMargins(0, 0, 0, 0);
+    top->setSpacing(12);
+    auto* mark = new QLabel(QStringLiteral("G"), card);
+    mark->setObjectName(QStringLiteral("SyncGoogleMark"));
+    mark->setFixedSize(36, 36);
+    mark->setAlignment(Qt::AlignCenter);
+    mark->setStyleSheet(GoogleMarkStyle());
+    top->addWidget(mark);
+
+    auto* texts = new QWidget(card);
+    auto* tv = new QVBoxLayout(texts);
+    tv->setContentsMargins(0, 0, 0, 0);
+    tv->setSpacing(2);
+    auto* title = new QLabel(QStringLiteral("通过 Google 认证"), texts);
+    title->setObjectName(QStringLiteral("SyncAuthTitle"));
+    tv->addWidget(title);
+    auto* desc =
+        new QLabel(QStringLiteral("授权后将绑定此保险库的唯一同步账号。"),
+                   texts);
+    desc->setObjectName(QStringLiteral("SyncAuthDesc"));
+    desc->setWordWrap(true);
+    tv->addWidget(desc);
+    top->addWidget(texts, 1);
+    v->addLayout(top);
+
+    auto* actions = new QHBoxLayout;
+    actions->setContentsMargins(0, 16, 0, 0);
+    actions->setSpacing(8);
+    auto* cancel = new QPushButton(QStringLiteral("取消"), card);
+    cancel->setObjectName(QStringLiteral("AuthorizeCancelButton"));
+    connect(cancel, &QPushButton::clicked, this,
+            &PreferencesPage::AuthorizeCancelled);
+    drive_connect_button_ = new QPushButton(QStringLiteral("继续使用 Google"),
+                                            card);
+    drive_connect_button_->setObjectName(QStringLiteral("DriveConnectButton"));
+    drive_connect_button_->setProperty("accent", true);
+    connect(drive_connect_button_, &QPushButton::clicked, this,
+            &PreferencesPage::ConnectGoogleDriveRequested);
+    actions->addStretch(1);
+    actions->addWidget(cancel);
+    actions->addWidget(drive_connect_button_);
+    v->addLayout(actions);
+    return card;
+}
+
+QWidget* PreferencesPage::BuildAccountCard() {
+    auto* card = new QWidget;
+    card->setObjectName(QStringLiteral("SyncAccountCard"));
+    auto* h = new QHBoxLayout(card);
+    h->setContentsMargins(kSyncCardPad, kSyncCardPad, kSyncCardPad,
+                          kSyncCardPad);
+    h->setSpacing(12);
+
+    auto* mark = new QLabel(QStringLiteral("G"), card);
+    mark->setObjectName(QStringLiteral("SyncGoogleMark"));
+    mark->setFixedSize(36, 36);
+    mark->setAlignment(Qt::AlignCenter);
+    mark->setStyleSheet(GoogleMarkStyle());
+    h->addWidget(mark);
+
+    auto* texts = new QWidget(card);
+    auto* tv = new QVBoxLayout(texts);
+    tv->setContentsMargins(0, 0, 0, 0);
+    tv->setSpacing(2);
+    auto* title = new QLabel(QStringLiteral("Google"), texts);
+    title->setObjectName(QStringLiteral("SyncAccountTitle"));
+    tv->addWidget(title);
+    sync_account_email_ = new QLabel(QStringLiteral("未连接"), texts);
+    sync_account_email_->setObjectName(QStringLiteral("SyncAccountEmail"));
+    sync_account_email_->setWordWrap(false);
+    tv->addWidget(sync_account_email_);
+    h->addWidget(texts, 1);
+
+    sync_change_account_button_ =
+        new QPushButton(QStringLiteral("更换账号"), card);
+    sync_change_account_button_->setObjectName(
+        QStringLiteral("ChangeAccountButton"));
+    connect(sync_change_account_button_, &QPushButton::clicked, this,
+            &PreferencesPage::ConnectGoogleDriveRequested);
+    h->addWidget(sync_change_account_button_);
+
+    drive_disconnect_button_ = new QPushButton(QStringLiteral("断开"), card);
+    drive_disconnect_button_->setObjectName(
+        QStringLiteral("DriveDisconnectButton"));
+    connect(drive_disconnect_button_, &QPushButton::clicked, this,
+            &PreferencesPage::DisconnectGoogleDriveRequested);
+    h->addWidget(drive_disconnect_button_);
+    return card;
+}
+
+QWidget* PreferencesPage::BuildLastSyncCard() {
+    auto* card = new QWidget;
+    card->setObjectName(QStringLiteral("SyncLastCard"));
+    auto* h = new QHBoxLayout(card);
+    h->setContentsMargins(kSyncCardPad, kSyncCardPad, kSyncCardPad,
+                          kSyncCardPad);
+    h->setSpacing(12);
+
+    auto* texts = new QWidget(card);
+    auto* tv = new QVBoxLayout(texts);
+    tv->setContentsMargins(0, 0, 0, 0);
+    tv->setSpacing(2);
+    auto* title = new QLabel(QStringLiteral("上次同步"), texts);
+    title->setObjectName(QStringLiteral("SyncLastTitle"));
+    tv->addWidget(title);
+    sync_last_value_ = new QLabel(texts);
+    sync_last_value_->setObjectName(QStringLiteral("SyncLastValue"));
+    tv->addWidget(sync_last_value_);
+    h->addWidget(texts, 1);
+
+    sync_now_button_ = new QPushButton(QStringLiteral("立即同步"), card);
+    sync_now_button_->setObjectName(QStringLiteral("SyncNowButton"));
+    sync_now_button_->setProperty("accent", true);
+    connect(sync_now_button_, &QPushButton::clicked, this,
+            &PreferencesPage::SyncNowRequested);
+    h->addWidget(sync_now_button_);
+    return card;
+}
+
+QWidget* PreferencesPage::BuildSyncTab() {
+    auto* page = new QWidget;
+    page->setObjectName(QStringLiteral("PreferencesTabPage"));
+    auto* v = new QVBoxLayout(page);
+    v->setContentsMargins(28, 20, 28, 24);
+    v->setSpacing(0);
+
+    auto* heading = new QWidget(page);
+    auto* hv = new QVBoxLayout(heading);
+    hv->setContentsMargins(0, 0, 0, 16);
+    hv->setSpacing(2);
+    auto* heading_title = new QLabel(QStringLiteral("Google 同步"), heading);
+    heading_title->setObjectName(QStringLiteral("SyncHeadingTitle"));
+    hv->addWidget(heading_title);
+    auto* heading_desc =
+        new QLabel(QStringLiteral("使用 Google 账号安全地同步加密保险库"),
+                   heading);
+    heading_desc->setObjectName(QStringLiteral("SyncHeadingDesc"));
+    hv->addWidget(heading_desc);
+    v->addWidget(heading);
+
+    sync_authorize_card_ = BuildAuthorizeCard();
+    v->addWidget(sync_authorize_card_);
+
+    sync_account_card_ = BuildAccountCard();
+    sync_account_card_->setVisible(false);
+    v->addWidget(sync_account_card_);
+
+    sync_last_card_ = BuildLastSyncCard();
+    sync_last_card_->setVisible(false);
+    v->addWidget(sync_last_card_);
+
+    auto* state_row = new QWidget(page);
+    state_row->setObjectName(QStringLiteral("SyncStateRow"));
+    auto* sr = new QHBoxLayout(state_row);
+    sr->setContentsMargins(0, 12, 0, 0);
+    sr->setSpacing(8);
+    sync_state_dot_ = new QLabel(state_row);
+    sync_state_dot_->setObjectName(QStringLiteral("SyncStateDot"));
+    sync_state_dot_->setFixedSize(8, 8);
+    sync_state_dot_->setProperty("state", QStringLiteral("idle"));
+    sr->addWidget(sync_state_dot_);
+    sync_state_text_ = new QLabel(state_row);
+    sync_state_text_->setObjectName(QStringLiteral("SyncStateText"));
+    sync_state_text_->setWordWrap(true);
+    sr->addWidget(sync_state_text_, 1);
+    v->addWidget(state_row);
+
+    auto* hint_row = new QWidget(page);
+    hint_row->setObjectName(QStringLiteral("SyncE2eHintRow"));
+    auto* hr = new QHBoxLayout(hint_row);
+    hr->setContentsMargins(0, 12, 0, 0);
+    hr->setSpacing(6);
+    auto* hint_icon = new QLabel(hint_row);
+    hint_icon->setObjectName(QStringLiteral("SyncE2eHintIcon"));
+    SetThemeIcon(hint_icon, QStringLiteral("cloud"),
+                 QStringLiteral("primary-icon-cloud"), 16);
+    hr->addWidget(hint_icon);
+    auto* hint = new QLabel(
+        QStringLiteral("同步前会在本设备完成端到端加密"), hint_row);
+    hint->setObjectName(QStringLiteral("SyncE2eHint"));
+    hr->addWidget(hint, 1);
+    v->addWidget(hint_row);
+
+    sync_last_ms_ = LoadLastSyncMs();
+    RefreshLastSyncLabel();
+    ApplySyncState(SyncUiState::kDisconnected, QString());
     v->addStretch(1);
     return page;
 }
@@ -435,17 +635,91 @@ void PreferencesPage::SetHelloEnabled(bool enabled) {
 
 void PreferencesPage::SetGoogleDriveConnected(bool connected,
                                               const QString& account_hint) {
-    if (!drive_status_label_) return;
-    drive_status_label_->setText(
-        connected ? QStringLiteral("已连接 %1")
-                        .arg(account_hint.isEmpty()
-                                 ? QStringLiteral("Google Drive")
-                                 : account_hint)
-                  : QStringLiteral("未连接"));
-    if (drive_connect_button_) drive_connect_button_->setVisible(!connected);
-    if (drive_disconnect_button_)
-        drive_disconnect_button_->setVisible(connected);
-    if (sync_now_button_) sync_now_button_->setEnabled(connected);
+    SetSyncState(connected ? SyncUiState::kConnected : SyncUiState::kDisconnected,
+                 account_hint);
+}
+
+void PreferencesPage::RefreshLastSyncLabel() {
+    if (!sync_last_value_) return;
+    sync_last_value_->setText(FormatLastSync(sync_last_ms_));
+}
+
+void PreferencesPage::ApplySyncState(SyncUiState state,
+                                     const QString& message) {
+    const bool authorized = state == SyncUiState::kConnected ||
+                            state == SyncUiState::kSyncing ||
+                            state == SyncUiState::kSuccess ||
+                            state == SyncUiState::kConflict ||
+                            state == SyncUiState::kError;
+
+    if (sync_authorize_card_) sync_authorize_card_->setVisible(!authorized);
+    if (sync_account_card_) sync_account_card_->setVisible(authorized);
+    if (sync_last_card_) sync_last_card_->setVisible(authorized);
+    if (sync_now_button_) {
+        sync_now_button_->setEnabled(authorized &&
+                                     state != SyncUiState::kSyncing);
+        sync_now_button_->setText(state == SyncUiState::kSyncing
+                                      ? QStringLiteral("同步中...")
+                                      : QStringLiteral("立即同步"));
+    }
+
+    QString text;
+    switch (state) {
+        case SyncUiState::kAuthorizing:
+            text = QStringLiteral("等待授权...");
+            break;
+        case SyncUiState::kSyncing:
+            text = QStringLiteral("同步中...");
+            break;
+        case SyncUiState::kConflict:
+            text = QStringLiteral("同步冲突，请稍后重试");
+            break;
+        case SyncUiState::kError:
+            text = message.isEmpty()
+                       ? QStringLiteral("同步失败")
+                       : QStringLiteral("同步失败：%1").arg(message);
+            break;
+        case SyncUiState::kDisconnected:
+        case SyncUiState::kConnected:
+        case SyncUiState::kSuccess:
+        default:
+            break;
+    }
+    if (sync_state_text_) sync_state_text_->setText(text);
+
+    if (sync_state_dot_) {
+        sync_state_dot_->setProperty(
+            "state", QString::fromLatin1(SyncStateName(state)));
+        sync_state_dot_->style()->unpolish(sync_state_dot_);
+        sync_state_dot_->style()->polish(sync_state_dot_);
+    }
+}
+
+void PreferencesPage::SetSyncState(SyncUiState state,
+                                   const QString& account_hint,
+                                   const QString& message) {
+    if (!account_hint.isEmpty()) sync_account_hint_ = account_hint;
+    if (sync_account_email_ && !sync_account_hint_.isEmpty()) {
+        sync_account_email_->setText(sync_account_hint_);
+    }
+    if (state == SyncUiState::kDisconnected) {
+        sync_account_hint_.clear();
+        if (sync_account_email_) {
+            sync_account_email_->setText(QStringLiteral("未连接"));
+        }
+    }
+    if (state == SyncUiState::kSuccess) {
+        sync_last_ms_ = QDateTime::currentMSecsSinceEpoch();
+        SaveLastSyncMs(sync_last_ms_);
+        RefreshLastSyncLabel();
+    }
+    ApplySyncState(state, message);
+}
+
+void PreferencesPage::SetLastSyncAt(std::int64_t epoch_ms) {
+    sync_last_ms_ = epoch_ms;
+    SaveLastSyncMs(epoch_ms);
+    RefreshLastSyncLabel();
 }
 
 }  // namespace passvault::ui

@@ -61,6 +61,32 @@ void GoogleDriveProvider::SignOut() {
     // Tokens are held by GoogleOAuthClient; this provider has no credentials
     // of its own to clear. Callers should invoke
     // GoogleOAuthClient::RevokeTokens directly to revoke access.
+    account_hint_.clear();
+}
+
+void GoogleDriveProvider::FetchAccountHint() {
+    if (!account_hint_.isEmpty()) return;
+    if (!IsAuthenticated()) return;
+    QUrl url(base_url_ + QStringLiteral("/about"));
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("fields"),
+                       QStringLiteral("user(emailAddress,displayName)"));
+    url.setQuery(query);
+    const HttpResult result =
+        SendRequestSync("GET", url.toString(QUrl::FullyEncoded), {}, {});
+    if (!result.ok()) return;  // Display-only: stay silent on failure.
+    const QJsonObject root = QJsonDocument::fromJson(result.body).object();
+    const QString email =
+        root.value(QStringLiteral("user"))
+            .toObject()
+            .value(QStringLiteral("emailAddress"))
+            .toString();
+    if (!email.isEmpty()) account_hint_ = email;
+}
+
+QString GoogleDriveProvider::AccountHint() {
+    FetchAccountHint();
+    return account_hint_;
 }
 
 GoogleDriveProvider::HttpResult GoogleDriveProvider::SendRequestSync(
@@ -391,6 +417,7 @@ UploadIfMatchStatus GoogleDriveProvider::UploadBackupIfMatch(
     }
 
     if (UpdateFile(*file_id, data, out_error)) {
+        FetchAccountHint();
         return UploadIfMatchStatus::kSuccess;
     }
     return UploadIfMatchStatus::kError;

@@ -4,6 +4,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCryptographicHash>
+#include <QDateTime>
 #include <QFile>
 #include <QFont>
 #include <QFontInfo>
@@ -129,7 +130,22 @@ class PreferencesPageTest : public ::testing::Test {
         return page_.findChild<QCheckBox*>(QStringLiteral("HelloToggle"));
     }
     QLabel* driveStatus() {
-        return page_.findChild<QLabel*>(QStringLiteral("SettingRowStatus"));
+        return page_.findChild<QLabel*>(QStringLiteral("SyncStateText"));
+    }
+    QLabel* accountEmail() {
+        return page_.findChild<QLabel*>(QStringLiteral("SyncAccountEmail"));
+    }
+    QWidget* authorizeCard() {
+        return page_.findChild<QWidget*>(QStringLiteral("SyncAuthCard"));
+    }
+    QWidget* accountCard() {
+        return page_.findChild<QWidget*>(QStringLiteral("SyncAccountCard"));
+    }
+    QWidget* lastSyncCard() {
+        return page_.findChild<QWidget*>(QStringLiteral("SyncLastCard"));
+    }
+    QPushButton* changeAccount() {
+        return page_.findChild<QPushButton*>(QStringLiteral("ChangeAccountButton"));
     }
     QFrame* outerCard() {
         return page_.findChild<QFrame*>(QStringLiteral("PreferencesOuterCard"));
@@ -258,18 +274,152 @@ TEST_F(PreferencesPageTest, SetHelloEnabledChecksToggle) {
 
 TEST_F(PreferencesPageTest, SetGoogleDriveConnectedUpdatesStatus) {
     page_.SetGoogleDriveConnected(true, QStringLiteral("test@example.com"));
-    auto* status = driveStatus();
-    ASSERT_NE(status, nullptr);
-    EXPECT_TRUE(status->text().contains(QStringLiteral("test@example.com")));
+    auto* email = accountEmail();
+    ASSERT_NE(email, nullptr);
+    EXPECT_TRUE(email->text().contains(QStringLiteral("test@example.com")));
     EXPECT_TRUE(syncNow()->isEnabled());
 }
 
 TEST_F(PreferencesPageTest, SetGoogleDriveDisconnectedUpdatesStatus) {
     page_.SetGoogleDriveConnected(false, QString());
-    auto* status = driveStatus();
-    ASSERT_NE(status, nullptr);
-    EXPECT_TRUE(status->text().contains(QStringLiteral("未连接")));
+    ASSERT_NE(authorizeCard(), nullptr);
+    EXPECT_FALSE(authorizeCard()->isHidden());
     EXPECT_FALSE(syncNow()->isEnabled());
+}
+
+TEST_F(PreferencesPageTest, DisconnectedShowsAuthorizeCard) {
+    page_.SetSyncState(PreferencesPage::SyncUiState::kDisconnected, QString());
+    ASSERT_NE(authorizeCard(), nullptr);
+    ASSERT_NE(accountCard(), nullptr);
+    ASSERT_NE(lastSyncCard(), nullptr);
+    EXPECT_FALSE(authorizeCard()->isHidden());
+    EXPECT_TRUE(accountCard()->isHidden());
+    EXPECT_TRUE(lastSyncCard()->isHidden());
+    EXPECT_FALSE(syncNow()->isEnabled());
+}
+
+TEST_F(PreferencesPageTest, AuthorizingShowsWaitingAndDisablesSync) {
+    page_.SetSyncState(PreferencesPage::SyncUiState::kAuthorizing, QString());
+    EXPECT_FALSE(authorizeCard()->isHidden());
+    EXPECT_TRUE(accountCard()->isHidden());
+    EXPECT_FALSE(syncNow()->isEnabled());
+    EXPECT_EQ(driveStatus()->text(), QStringLiteral("等待授权..."));
+}
+
+TEST_F(PreferencesPageTest, ConnectedShowsAccountAndLastSyncCards) {
+    page_.SetSyncState(PreferencesPage::SyncUiState::kConnected,
+                       QStringLiteral("user@example.com"));
+    EXPECT_TRUE(authorizeCard()->isHidden());
+    EXPECT_FALSE(accountCard()->isHidden());
+    EXPECT_FALSE(lastSyncCard()->isHidden());
+    EXPECT_TRUE(syncNow()->isEnabled());
+    EXPECT_EQ(accountEmail()->text(), QStringLiteral("user@example.com"));
+}
+
+TEST_F(PreferencesPageTest, SyncingDisablesSyncNowButton) {
+    page_.SetSyncState(PreferencesPage::SyncUiState::kConnected,
+                       QStringLiteral("user@example.com"));
+    page_.SetSyncState(PreferencesPage::SyncUiState::kSyncing, QString());
+    EXPECT_FALSE(syncNow()->isEnabled());
+    EXPECT_EQ(driveStatus()->text(), QStringLiteral("同步中..."));
+}
+
+TEST_F(PreferencesPageTest, SuccessEnablesSyncNowAndClearsStatus) {
+    page_.SetSyncState(PreferencesPage::SyncUiState::kConnected,
+                       QStringLiteral("user@example.com"));
+    page_.SetSyncState(PreferencesPage::SyncUiState::kSuccess, QString());
+    EXPECT_TRUE(syncNow()->isEnabled());
+    EXPECT_TRUE(driveStatus()->text().isEmpty());
+    EXPECT_EQ(syncNow()->text(), QStringLiteral("立即同步"));
+}
+
+TEST_F(PreferencesPageTest, ConflictShowsConflictTextAndKeepsSyncEnabled) {
+    page_.SetSyncState(PreferencesPage::SyncUiState::kConnected,
+                       QStringLiteral("user@example.com"));
+    page_.SetSyncState(PreferencesPage::SyncUiState::kConflict, QString());
+    EXPECT_TRUE(syncNow()->isEnabled());
+    EXPECT_EQ(driveStatus()->text(),
+              QStringLiteral("同步冲突，请稍后重试"));
+}
+
+TEST_F(PreferencesPageTest, ErrorShowsFailureTextAndKeepsSyncEnabled) {
+    page_.SetSyncState(PreferencesPage::SyncUiState::kConnected,
+                       QStringLiteral("user@example.com"));
+    page_.SetSyncState(PreferencesPage::SyncUiState::kError, QString(),
+                       QStringLiteral("多次重试后仍存在并发冲突"));
+    EXPECT_TRUE(syncNow()->isEnabled());
+    EXPECT_EQ(driveStatus()->text(),
+              QStringLiteral("同步失败：多次重试后仍存在并发冲突"));
+}
+
+TEST_F(PreferencesPageTest, ChangeAccountButtonEmitsConnectRequested) {
+    page_.SetSyncState(PreferencesPage::SyncUiState::kConnected,
+                       QStringLiteral("user@example.com"));
+    auto* btn = changeAccount();
+    ASSERT_NE(btn, nullptr);
+    QSignalSpy spy(&page_, &PreferencesPage::ConnectGoogleDriveRequested);
+    btn->click();
+    EXPECT_EQ(spy.count(), 1);
+}
+
+TEST_F(PreferencesPageTest, SetLastSyncAtZeroShowsNever) {
+    page_.SetLastSyncAt(0);
+    auto* value = page_.findChild<QLabel*>(QStringLiteral("SyncLastValue"));
+    ASSERT_NE(value, nullptr);
+    EXPECT_EQ(value->text(), QStringLiteral("从未同步"));
+}
+
+TEST_F(PreferencesPageTest, SetLastSyncAtFormatsAsFigmaStyle) {
+    const qint64 epoch_ms = 1785406920000LL;
+    page_.SetLastSyncAt(epoch_ms);
+    auto* value = page_.findChild<QLabel*>(QStringLiteral("SyncLastValue"));
+    ASSERT_NE(value, nullptr);
+    const QString expected =
+        QDateTime::fromMSecsSinceEpoch(epoch_ms)
+            .toString(QStringLiteral("yyyy/MM/dd HH:mm"));
+    EXPECT_EQ(value->text(), expected);
+    EXPECT_TRUE(expected.contains(QLatin1Char('/')));
+}
+
+TEST_F(PreferencesPageTest, CsvButtonsLiveInGeneralTab) {
+    auto* tabs = this->tabs();
+    ASSERT_NE(tabs, nullptr);
+    auto* import = importBtn();
+    ASSERT_NE(import, nullptr);
+    auto* export_b = exportBtn();
+    ASSERT_NE(export_b, nullptr);
+    EXPECT_EQ(tabs->indexOf(tabs->currentWidget()), 0);
+    for (int i = 0; i < tabs->count(); ++i) {
+        const bool has_import =
+            tabs->widget(i)->findChild<QPushButton*>(
+                QStringLiteral("ImportButton")) != nullptr;
+        const bool has_export =
+            tabs->widget(i)->findChild<QPushButton*>(
+                QStringLiteral("ExportButton")) != nullptr;
+        if (i == 0) {
+            EXPECT_TRUE(has_import);
+            EXPECT_TRUE(has_export);
+        } else {
+            EXPECT_FALSE(has_import);
+            EXPECT_FALSE(has_export);
+        }
+    }
+}
+
+TEST_F(PreferencesPageTest, LongAccountEmailDoesNotOverflowCard) {
+    page_.resize(1200, 800);
+    page_.show();
+    QApplication::processEvents();
+    page_.SetSyncState(
+        PreferencesPage::SyncUiState::kConnected,
+        QStringLiteral("a-very-long-mailbox-name-for-acceptance@example-domain.com"));
+    QApplication::processEvents();
+    auto* email = accountEmail();
+    auto* card = accountCard();
+    ASSERT_NE(email, nullptr);
+    ASSERT_NE(card, nullptr);
+    EXPECT_LE(email->sizeHint().width(), card->width());
+    EXPECT_FALSE(email->wordWrap());
 }
 
 TEST_F(PreferencesPageTest, HelloToggleUsesSwitchVariant) {
@@ -478,16 +628,18 @@ TEST_F(PreferencesPageTest, OuterCardShrinksToContentNotViewport) {
 }
 
 TEST_F(PreferencesPageTest, AllTabsHaveSectionTitles) {
+    // The sync tab follows the Figma shape: a page heading plus cards, with no
+    // SettingSectionHeader rows.
     auto* tabs = this->tabs();
     ASSERT_NE(tabs, nullptr);
     EXPECT_EQ(tabs->count(), 3);
-    const char* kTabNames[] = {"常规", "同步", "安全"};
-    for (int i = 0; i < tabs->count(); ++i) {
+    const int kTabsWithSections[] = {0, 2};
+    for (int i : kTabsWithSections) {
         auto* tab_page = tabs->widget(i);
         ASSERT_NE(tab_page, nullptr);
         const auto titles =
             tab_page->findChildren<QLabel*>(QStringLiteral("SettingSectionTitle"));
-        EXPECT_FALSE(titles.isEmpty()) << "tab " << kTabNames[i];
+        EXPECT_FALSE(titles.isEmpty()) << "tab " << i;
         for (auto* title : titles) {
             EXPECT_FALSE(title->text().isEmpty());
         }
