@@ -232,6 +232,41 @@ TEST_F(PreferencesPageTest, ChangeMasterButtonIsDisabledUntilReencryptExists) {
     EXPECT_EQ(spy.count(), 0);
 }
 
+TEST_F(PreferencesPageTest, ChangeMasterGateControlsRequestWithoutChangingCopy) {
+    auto* button = changeMaster();
+    ASSERT_NE(button, nullptr);
+    QSignalSpy requested(&page_, &PreferencesPage::ChangeMasterPasswordRequested);
+    page_.SetChangeMasterPasswordEnabled(true, QString());
+    button->click();
+    EXPECT_EQ(requested.count(), 1);
+
+    page_.SetChangeMasterPasswordEnabled(false, QStringLiteral("unavailable"));
+    button->click();
+    EXPECT_EQ(requested.count(), 1);
+    EXPECT_EQ(button->toolTip(), QStringLiteral("unavailable"));
+    const auto labels = button->parentWidget()->findChildren<QLabel*>();
+    for (const auto* label : labels) {
+        EXPECT_FALSE(label->text().contains(QStringLiteral("unavailable")));
+    }
+}
+
+TEST_F(PreferencesPageTest, UnavailableSecurityActionsCannotBeActivated) {
+    auto* leave_lock = page_.findChild<QCheckBox*>(
+        QStringLiteral("LeaveLockToggle"));
+    auto* wipe = page_.findChild<QToolButton*>(
+        QStringLiteral("ClearLocalDataButton"));
+    ASSERT_NE(leave_lock, nullptr);
+    ASSERT_NE(wipe, nullptr);
+    EXPECT_FALSE(leave_lock->isEnabled());
+    EXPECT_FALSE(wipe->isEnabled());
+    QSignalSpy toggled(leave_lock, &QCheckBox::toggled);
+    QSignalSpy clicked(wipe, &QToolButton::clicked);
+    leave_lock->click();
+    wipe->click();
+    EXPECT_EQ(toggled.count(), 0);
+    EXPECT_EQ(clicked.count(), 0);
+}
+
 TEST_F(PreferencesPageTest, HelloToggleEmitsEnableSignal) {
     auto* toggle = helloToggle();
     ASSERT_NE(toggle, nullptr);
@@ -251,25 +286,46 @@ TEST_F(PreferencesPageTest, HelloToggleEmitsDisableSignal) {
     EXPECT_EQ(spy.count(), 1);
 }
 
-TEST_F(PreferencesPageTest, SetHelloAvailableFalseDisablesToggle) {
-    page_.SetHelloAvailable(false);
+TEST_F(PreferencesPageTest, HelloUnavailableDisablesAndUnchecksToggle) {
+    page_.SetHelloState(false, true);
     auto* toggle = helloToggle();
     ASSERT_NE(toggle, nullptr);
     EXPECT_FALSE(toggle->isEnabled());
+    EXPECT_FALSE(toggle->isChecked());
 }
 
-TEST_F(PreferencesPageTest, SetHelloAvailableTrueEnablesToggle) {
-    page_.SetHelloAvailable(true);
+TEST_F(PreferencesPageTest, HelloAvailableEnablesToggle) {
+    page_.SetHelloState(true, false);
     auto* toggle = helloToggle();
     ASSERT_NE(toggle, nullptr);
     EXPECT_TRUE(toggle->isEnabled());
 }
 
-TEST_F(PreferencesPageTest, SetHelloEnabledChecksToggle) {
-    page_.SetHelloEnabled(true);
+TEST_F(PreferencesPageTest, HelloEnrolledChecksToggle) {
+    page_.SetHelloState(true, true);
     auto* toggle = helloToggle();
     ASSERT_NE(toggle, nullptr);
+    EXPECT_TRUE(toggle->isEnabled());
     EXPECT_TRUE(toggle->isChecked());
+}
+
+TEST_F(PreferencesPageTest, HelloAvailableButNotEnrolledLeavesToggleOff) {
+    page_.SetHelloState(true, true);
+    page_.SetHelloState(true, false);
+    auto* toggle = helloToggle();
+    ASSERT_NE(toggle, nullptr);
+    EXPECT_TRUE(toggle->isEnabled());
+    EXPECT_FALSE(toggle->isChecked());
+}
+
+TEST_F(PreferencesPageTest, HelloStateChangeDoesNotEmitRequests) {
+    QSignalSpy enable(&page_, &PreferencesPage::EnableHelloRequested);
+    QSignalSpy disable(&page_, &PreferencesPage::DisableHelloRequested);
+    page_.SetHelloState(true, true);
+    page_.SetHelloState(true, false);
+    page_.SetHelloState(false, false);
+    EXPECT_EQ(enable.count(), 0);
+    EXPECT_EQ(disable.count(), 0);
 }
 
 TEST_F(PreferencesPageTest, SetGoogleDriveConnectedUpdatesStatus) {
@@ -627,22 +683,17 @@ TEST_F(PreferencesPageTest, OuterCardShrinksToContentNotViewport) {
     EXPECT_LT(card->height(), viewport_h);
 }
 
-TEST_F(PreferencesPageTest, AllTabsHaveSectionTitles) {
-    // The sync tab follows the Figma shape: a page heading plus cards, with no
-    // SettingSectionHeader rows.
+TEST_F(PreferencesPageTest, GeneralTabKeepsSectionTitles) {
     auto* tabs = this->tabs();
     ASSERT_NE(tabs, nullptr);
     EXPECT_EQ(tabs->count(), 3);
-    const int kTabsWithSections[] = {0, 2};
-    for (int i : kTabsWithSections) {
-        auto* tab_page = tabs->widget(i);
-        ASSERT_NE(tab_page, nullptr);
-        const auto titles =
-            tab_page->findChildren<QLabel*>(QStringLiteral("SettingSectionTitle"));
-        EXPECT_FALSE(titles.isEmpty()) << "tab " << i;
-        for (auto* title : titles) {
-            EXPECT_FALSE(title->text().isEmpty());
-        }
+    auto* tab_page = tabs->widget(0);
+    ASSERT_NE(tab_page, nullptr);
+    const auto titles =
+        tab_page->findChildren<QLabel*>(QStringLiteral("SettingSectionTitle"));
+    EXPECT_FALSE(titles.isEmpty());
+    for (auto* title : titles) {
+        EXPECT_FALSE(title->text().isEmpty());
     }
 }
 

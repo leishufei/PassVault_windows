@@ -558,22 +558,36 @@ QWidget* PreferencesPage::BuildSecurityTab() {
     v->setContentsMargins(28, 20, 28, 24);
     v->setSpacing(0);
 
-    v->addWidget(MakeSectionHeader(QStringLiteral("主密码"), page));
-    auto* change_master = new QPushButton(QStringLiteral("暂不可用"));
-    change_master->setObjectName(QStringLiteral("ChangeMasterButton"));
-    change_master->setEnabled(false);
-    change_master->setToolTip(
-        QStringLiteral("完整重加密与失败回滚完成前暂不可用"));
-    v->addWidget(MakeSettingRow(
+    auto* title = new QLabel(QStringLiteral("安全设置"), page);
+    title->setObjectName(QStringLiteral("SecurityPageTitle"));
+    v->addWidget(title);
+    v->addSpacing(4);
+    auto* description = new QLabel(
+        QStringLiteral("保护你的保险库与本地数据"), page);
+    description->setObjectName(QStringLiteral("SecurityPageDescription"));
+    description->setWordWrap(true);
+    v->addWidget(description);
+    v->addSpacing(12);
+
+    change_master_button_ = new QPushButton(QStringLiteral("修改主密码"));
+    change_master_button_->setObjectName(QStringLiteral("ChangeMasterButton"));
+    change_master_button_->setEnabled(false);
+    change_master_button_->setToolTip(QStringLiteral("修改主密码暂不可用"));
+    connect(change_master_button_, &QPushButton::clicked, this,
+            &PreferencesPage::ChangeMasterPasswordRequested);
+    change_master_desc_ = new QLabel(
+        QStringLiteral("定期更换主密码可以加强保护"));
+    change_master_desc_->setObjectName(QStringLiteral("SettingRowDesc"));
+    change_master_desc_->setWordWrap(true);
+    v->addWidget(MakeSettingRowWithLabel(
         QStringLiteral("key-round"), QStringLiteral("主密码"),
-        QStringLiteral("完整重加密与失败回滚完成前暂不支持修改主密码"),
-        change_master, page));
+        change_master_desc_, change_master_button_, page));
     v->addWidget(MakeRowSeparator(page));
 
-    v->addWidget(MakeSectionHeader(QStringLiteral("Windows Hello"), page));
     hello_toggle_ = new QCheckBox;
     hello_toggle_->setObjectName(QStringLiteral("HelloToggle"));
     hello_toggle_->setProperty("variant", "switch");
+    hello_toggle_->setAccessibleName(QStringLiteral("Windows Hello"));
     hello_toggle_->setEnabled(false);
     connect(hello_toggle_, &QCheckBox::toggled, this, [this](bool on) {
         if (on) {
@@ -590,12 +604,65 @@ QWidget* PreferencesPage::BuildSecurityTab() {
     v->addWidget(MakeSettingRowWithLabel(
         QStringLiteral("shield-check"), QStringLiteral("Windows Hello"),
         hello_desc_, hello_toggle_, page));
+    v->addWidget(MakeRowSeparator(page));
+
+    // Keep unavailable actions disabled until their behavior is verified.
+    auto* leave_lock = new QCheckBox;
+    leave_lock->setObjectName(QStringLiteral("LeaveLockToggle"));
+    leave_lock->setProperty("variant", "switch");
+    leave_lock->setAccessibleName(QStringLiteral("离开时锁定"));
+    leave_lock->setEnabled(false);
+    leave_lock->setToolTip(QStringLiteral("离开时锁定暂不可用"));
+    v->addWidget(MakeSettingRow(
+        QStringLiteral("lock-keyhole"), QStringLiteral("离开时锁定"),
+        QStringLiteral("最小化主窗口时锁定保险库"),
+        leave_lock, page));
+    v->addWidget(MakeRowSeparator(page));
+
+    auto* danger_zone = new QWidget(page);
+    danger_zone->setObjectName(QStringLiteral("SecurityDangerZone"));
+    auto* danger_layout = new QHBoxLayout(danger_zone);
+    danger_layout->setContentsMargins(0, 20, 0, 0);
+    danger_layout->setSpacing(12);
+    auto* danger_text = new QVBoxLayout;
+    danger_text->setSpacing(4);
+    auto* danger_title = new QLabel(
+        QStringLiteral("清除本设备的本地数据"), danger_zone);
+    danger_title->setObjectName(QStringLiteral("SecurityDangerTitle"));
+    danger_title->setWordWrap(true);
+    auto* danger_description = new QLabel(
+        QStringLiteral("不会影响已同步的加密数据"), danger_zone);
+    danger_description->setObjectName(QStringLiteral("SecurityDangerDescription"));
+    danger_description->setWordWrap(true);
+    danger_text->addWidget(danger_title);
+    danger_text->addWidget(danger_description);
+    danger_layout->addLayout(danger_text, 1);
+
+    auto* wipe = new QToolButton(danger_zone);
+    wipe->setObjectName(QStringLiteral("ClearLocalDataButton"));
+    wipe->setProperty("danger", true);
+    wipe->setFixedSize(36, 36);
+    wipe->setIconSize(QSize(16, 16));
+    wipe->setAccessibleName(QStringLiteral("清除本地数据"));
+    wipe->setIcon(IconLoader::Load(
+        QStringLiteral("trash-2"),
+        ThemeManager::Instance()->Color(QStringLiteral("danger-text")), 16));
+    wipe->setEnabled(false);
+    wipe->setToolTip(QStringLiteral("清除本地数据暂不可用"));
+    danger_layout->addWidget(wipe);
+    v->addWidget(danger_zone);
 
     v->addStretch(1);
     return page;
 }
 
 void PreferencesPage::RefreshThemeAssets() {
+    if (auto* wipe = findChild<QToolButton*>(
+            QStringLiteral("ClearLocalDataButton"))) {
+        wipe->setIcon(IconLoader::Load(
+            QStringLiteral("trash-2"),
+            ThemeManager::Instance()->Color(QStringLiteral("danger-text")), 16));
+    }
     if (auto* back = findChild<QToolButton*>(
             QStringLiteral("PreferencesBack"))) {
         back->setIcon(IconLoader::Load(
@@ -616,21 +683,41 @@ void PreferencesPage::RefreshThemeAssets() {
     }
 }
 
-void PreferencesPage::SetHelloAvailable(bool available) {
+void PreferencesPage::SetHelloState(bool available, bool enrolled) {
+    hello_available_ = available;
+    hello_enrolled_ = enrolled;
     if (!hello_toggle_) return;
-    hello_toggle_->setEnabled(available);
-    if (hello_desc_) {
+    {
+        QSignalBlocker b(hello_toggle_);
+        hello_toggle_->setEnabled(available);
+        hello_toggle_->setChecked(available && enrolled);
+    }
+    if (!hello_desc_) return;
+    if (!available) {
         hello_desc_->setText(
-            available
-                ? QStringLiteral("已启用 Windows Hello。开启后解锁时可跳过主密码。")
-                : QStringLiteral("当前设备未启用 Windows Hello 或不支持"));
+            QStringLiteral("当前设备未启用 Windows Hello 或不支持"));
+    } else if (enrolled) {
+        hello_desc_->setText(
+            QStringLiteral("已启用 Windows Hello。解锁时可跳过主密码。"));
+    } else {
+        hello_desc_->setText(
+            QStringLiteral("使用生物识别或 PIN 快速解锁，无需输入主密码。"));
     }
 }
 
+void PreferencesPage::SetHelloAvailable(bool available) {
+    SetHelloState(available, hello_enrolled_);
+}
+
 void PreferencesPage::SetHelloEnabled(bool enabled) {
-    if (!hello_toggle_) return;
-    QSignalBlocker b(hello_toggle_);
-    hello_toggle_->setChecked(enabled);
+    SetHelloState(hello_available_, enabled);
+}
+
+void PreferencesPage::SetChangeMasterPasswordEnabled(bool enabled,
+                                                     const QString& reason) {
+    if (!change_master_button_) return;
+    change_master_button_->setEnabled(enabled);
+    change_master_button_->setToolTip(enabled ? QString() : reason);
 }
 
 void PreferencesPage::SetGoogleDriveConnected(bool connected,

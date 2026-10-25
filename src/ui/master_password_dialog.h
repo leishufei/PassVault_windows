@@ -1,14 +1,17 @@
 #pragma once
 
 #include <QDialog>
+#include <QPointer>
 #include <QString>
 
 #include "master_password/password_policy.h"
 
 class QCheckBox;
+class QGraphicsDropShadowEffect;
 class QLabel;
 class QLineEdit;
 class QPushButton;
+class QToolButton;
 
 namespace passvault::ui {
 
@@ -37,17 +40,27 @@ class MasterPasswordDialog : public QDialog {
  signals:
     void HelloRequested();
 
+ protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+    void showEvent(QShowEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
+
  private slots:
     void OnAccept();
     void OnTogglePreview(bool visible);
 
  private:
     void BuildUi();
+    void RefreshThemeAssets();
     void ValidateInputs();
 
     Mode mode_;
     QLabel* title_ = nullptr;
     QLabel* subtitle_ = nullptr;
+    QLabel* icon_ = nullptr;
+    QGraphicsDropShadowEffect* shadow_ = nullptr;
+    QPointer<QWidget> backdrop_;
+    QToolButton* close_button_ = nullptr;
     QLabel* error_ = nullptr;
     QLineEdit* old_edit_ = nullptr;
     QLineEdit* new_edit_ = nullptr;

@@ -167,6 +167,8 @@
 
     --focus-ring: #276cf0;
     --shadow: rgba(0, 0, 0, 128);
+    --dialog-shadow: #000000;
+    --dialog-backdrop: rgba(0, 0, 0, 96);
 
     /* ---- Brand tiles (brand-fixed, identical across themes) ---- */
     --brand-google-bg: #f7f8fa;

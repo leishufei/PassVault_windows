@@ -49,8 +49,13 @@ class PreferencesPage : public QWidget {
     void BackRequested();
 
  public slots:
+    // availability = the device can use Hello at all; enrolled = a credential
+    // is currently stored. The switch reflects `enrolled`, not a setting.
+    void SetHelloState(bool available, bool enrolled);
+    // Thin adapters kept for callers that only know one of the two inputs.
     void SetHelloAvailable(bool available);
     void SetHelloEnabled(bool enabled);
+    void SetChangeMasterPasswordEnabled(bool enabled, const QString& reason);
     void SetGoogleDriveConnected(bool connected, const QString& account_hint);
     void SetSyncState(SyncUiState state, const QString& account_hint,
                       const QString& message = QString());
@@ -89,6 +94,10 @@ class PreferencesPage : public QWidget {
 
     QCheckBox* hello_toggle_ = nullptr;
     QLabel* hello_desc_ = nullptr;
+    QPushButton* change_master_button_ = nullptr;
+    QLabel* change_master_desc_ = nullptr;
+    bool hello_available_ = false;
+    bool hello_enrolled_ = false;
 };
 
 }  // namespace passvault::ui

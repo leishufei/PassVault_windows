@@ -168,6 +168,8 @@
 
     --focus-ring: #8ab3ff;
     --shadow: rgba(52, 72, 99, 32);
+    --dialog-shadow: #324969;
+    --dialog-backdrop: rgba(49, 68, 93, 38);
 
     /* ---- Brand tiles (password-card icon square) ---- */
     --brand-google-bg: #f7f8fa;

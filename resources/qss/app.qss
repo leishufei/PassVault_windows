@@ -1042,6 +1042,57 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
     background: transparent;
 }
 
+/* ---------- Security page ---------- */
+#SecurityPageTitle {
+    color: var(--ink);
+    font-size: 18px;
+    font-weight: 700;
+    background: transparent;
+}
+#SecurityPageDescription {
+    color: var(--hint-4);
+    font-size: 12px;
+    background: transparent;
+}
+#SecurityDangerZone { background: transparent; }
+#SecurityDangerTitle {
+    color: var(--danger-text);
+    font-size: 12px;
+    font-weight: 500;
+    background: transparent;
+}
+#SecurityDangerDescription {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    background: transparent;
+}
+#ChangeMasterButton {
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+}
+#ClearLocalDataButton {
+    background: transparent;
+    color: var(--danger-text);
+    border: 1px solid var(--danger-text);
+    border-radius: 8px;
+    padding: 0;
+}
+#ClearLocalDataButton:hover {
+    background-color: var(--danger-soft);
+}
+#ClearLocalDataButton:focus {
+    border-color: var(--focus-ring);
+}
+#ClearLocalDataButton:disabled {
+    background-color: transparent;
+    color: var(--hint-6);
+    border-color: var(--border-panel-3);
+}
+#ChangeMasterButton:disabled {
+    color: var(--hint-6);
+}
+
 #SyncHeadingTitle {
     color: var(--ink);
     font-size: 14px;
@@ -1129,9 +1180,87 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
     spacing: 8px;
 }
 
+/* ---------- Master password dialogs ---------- */
+
+#MasterPasswordDialog { background: transparent; }
+#MasterPasswordBackdrop { background-color: var(--dialog-backdrop); }
+#MasterPasswordCard {
+    background-color: var(--card);
+    border: 1px solid var(--border-panel);
+    border-radius: 16px;
+}
+#MasterPasswordHeader {
+    background: transparent;
+    border-bottom: 1px solid var(--border-section-3);
+}
+#MasterPasswordIcon {
+    background-color: var(--primary-hover-surface-3);
+    border-radius: 8px;
+}
+#MasterPasswordDialog #DialogTitle {
+    background: transparent;
+    color: var(--ink);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0px;
+}
+#MasterPasswordClose {
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 8px;
+}
+#MasterPasswordClose:hover {
+    background-color: var(--primary-hover-surface-3);
+}
+#MasterPasswordClose:focus {
+    border-color: var(--focus-ring);
+}
+#MasterPasswordBody { background: transparent; }
+#MasterPasswordDialog #DialogSubtitle {
+    background: transparent;
+    color: var(--hint-8);
+    font-size: 12px;
+}
+#MasterPasswordFieldLabel {
+    background: transparent;
+    color: var(--muted-11);
+    font-size: 11px;
+}
+#MasterPasswordDialog QLineEdit {
+    background-color: var(--shell);
+    color: var(--ink-2);
+    border: 1px solid var(--border-panel);
+    border-radius: 8px;
+    padding: 0 10px;
+    font-size: 12px;
+}
+#MasterPasswordDialog QLineEdit:focus {
+    border-color: var(--focus-ring);
+}
+#MasterPasswordDialog #PreviewCheckbox {
+    color: var(--muted-3);
+    font-size: 12px;
+}
+#MasterPasswordDialog #PreviewCheckbox::indicator:focus {
+    border-color: var(--focus-ring);
+}
+#MasterPasswordFooter {
+    background: transparent;
+    border-top: 1px solid var(--border-drawer-inner);
+}
+#MasterPasswordFooter QPushButton {
+    padding: 0 16px;
+    min-height: 34px;
+    max-height: 34px;
+    border-radius: 8px;
+    font-size: 12px;
+}
+#MasterPasswordDialog QPushButton:focus {
+    border-color: var(--focus-ring);
+}
+
 /* ---------- Legacy dialogs (Phase 6) ---------- */
 
-#MasterPasswordDialog,
 #GeneratorDialog,
 #OAuthWizardDialog,
 #ImportPreviewDialog {
