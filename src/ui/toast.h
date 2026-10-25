@@ -18,6 +18,9 @@ class Toast : public QFrame {
     static void Show(QWidget* parent, const QString& text,
                      Level level = Level::kInfo, int duration_ms = 2400);
 
+ protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
  private:
     Toast(QWidget* parent, const QString& text, Level level, int duration_ms);
     void FadeOutAndClose();

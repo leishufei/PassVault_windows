@@ -5,7 +5,6 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPropertyAnimation>
-#include <QResizeEvent>
 #include <QTimer>
 
 namespace passvault::ui {
@@ -31,6 +30,9 @@ const char* LevelObjectName(Toast::Level level) {
 void Toast::Show(QWidget* parent, const QString& text, Level level,
                  int duration_ms) {
     if (!parent) return;
+    const auto previous = parent->findChildren<Toast*>(
+        QString(), Qt::FindDirectChildrenOnly);
+    for (auto* toast : previous) toast->close();
     auto* toast = new Toast(parent, text, level, duration_ms);
     toast->show();
     toast->raise();
@@ -46,6 +48,7 @@ Toast::Toast(QWidget* parent, const QString& text, Level level, int duration_ms)
 
     label_ = new QLabel(text, this);
     label_->setObjectName(QStringLiteral("ToastText"));
+    label_->setTextFormat(Qt::PlainText);
     label_->setWordWrap(true);
     auto* layout = new QHBoxLayout(this);
     layout->setContentsMargins(14, 10, 14, 10);
@@ -71,6 +74,7 @@ Toast::Toast(QWidget* parent, const QString& text, Level level, int duration_ms)
 }
 
 void Toast::FadeOutAndClose() {
+    animation_->stop();
     auto* effect = qobject_cast<QGraphicsOpacityEffect*>(graphicsEffect());
     if (!effect) {
         close();
@@ -84,14 +88,25 @@ void Toast::FadeOutAndClose() {
     out->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
+bool Toast::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == parentWidget() &&
+        (event->type() == QEvent::Resize ||
+         event->type() == QEvent::StyleChange)) {
+        PositionOverParent();
+    }
+    return QFrame::eventFilter(watched, event);
+}
+
 void Toast::PositionOverParent() {
     QWidget* p = parentWidget();
     if (!p) return;
-    adjustSize();
-    const int max_w = qMin(p->width() - 40, 480);
-    setFixedWidth(qMin(sizeHint().width(), max_w));
+    const int max_w = qMax(1, qMin(p->width() - 40, 480));
+    setFixedWidth(qBound(1, sizeHint().width(), max_w));
+    const int content_height = qMax(sizeHint().height(),
+                                    layout()->totalHeightForWidth(width()));
+    setFixedHeight(qBound(1, content_height, qMax(1, p->height() - 16)));
     const int x = (p->width() - width()) / 2;
-    const int y = p->height() - height() - 32;
+    const int y = qMax(0, p->height() - this->height() - 32);
     move(x, y);
 }
 
