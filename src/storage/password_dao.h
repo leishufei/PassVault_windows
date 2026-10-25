@@ -16,6 +16,8 @@ class PasswordDao {
  public:
     explicit PasswordDao(Database& db);
 
+    Database& database() { return db_; }
+
     std::vector<model::PasswordEntry> ListActive();
     std::vector<model::PasswordEntry> ListIncludingDeleted();
     std::vector<model::PasswordEntry> ListByCategory(std::int64_t category_id);

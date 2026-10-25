@@ -110,6 +110,17 @@ bool EnsureParentDir(const QString& file_path) {
     return parent.mkpath(QStringLiteral("."));
 }
 
+bool WriteBlob(const QString& file_path, const QByteArray& blob) {
+    if (!EnsureParentDir(file_path)) return false;
+    QSaveFile out(file_path);
+    if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    if (out.write(blob) != blob.size()) {
+        out.cancelWriting();
+        return false;
+    }
+    return out.commit();
+}
+
 }  // namespace
 
 MasterPasswordStore::MasterPasswordStore() : file_path_(DefaultFilePath()) {}
@@ -144,20 +155,26 @@ bool MasterPasswordStore::Save(const MasterRecord& record) const {
     if (record.password_hash.size() != kPasswordHashHexLen) return false;
     if (record.kdf_salt.size() != kKdfSaltSize) return false;
 
-    if (!EnsureParentDir(file_path_)) return false;
-
     QByteArray plaintext = SerializeRecord(record);
     auto ciphertext = ProtectData(plaintext);
     plaintext.fill('\0');
     if (!ciphertext.has_value()) return false;
 
-    QSaveFile out(file_path_);
-    if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
-    if (out.write(*ciphertext) != ciphertext->size()) {
-        out.cancelWriting();
-        return false;
-    }
-    return out.commit();
+    return WriteBlob(file_path_, *ciphertext);
+}
+
+std::optional<QByteArray> MasterPasswordStore::LoadRaw() const {
+    QFile file(file_path_);
+    if (!file.open(QIODevice::ReadOnly)) return std::nullopt;
+    const QByteArray blob = file.readAll();
+    file.close();
+    if (blob.isEmpty()) return std::nullopt;
+    return blob;
+}
+
+bool MasterPasswordStore::SaveRaw(const QByteArray& blob) const {
+    if (blob.isEmpty()) return false;
+    return WriteBlob(file_path_, blob);
 }
 
 bool MasterPasswordStore::Clear() const {

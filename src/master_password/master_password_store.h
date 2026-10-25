@@ -29,6 +29,12 @@ class MasterPasswordStore {
     bool Save(const MasterRecord& record) const;
     bool Clear() const;
 
+    // Raw DPAPI blob, used to snapshot and restore the record around a
+    // multi-step master password change. The blob is machine-bound, so a
+    // byte-level copy is a complete rollback point.
+    std::optional<QByteArray> LoadRaw() const;
+    bool SaveRaw(const QByteArray& blob) const;
+
  private:
     static QString DefaultFilePath();
 

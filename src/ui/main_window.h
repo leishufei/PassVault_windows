@@ -56,6 +56,11 @@ class MainWindow : public QMainWindow {
     ~MainWindow() override;
 
     void Reload();
+    // The session key is replaced after a master password change; callers that
+    // own the session must push the new pointer through before the next decrypt.
+    void SetSessionKey(const crypto::SessionKey* session_key) {
+        deps_.session_key = session_key;
+    }
     PreferencesPage* preferences_page() const { return preferences_page_; }
 
  signals:

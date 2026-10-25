@@ -56,6 +56,8 @@ namespace passvault::app {
 namespace {
 
 constexpr const char* kSettingsHelloEnabled = "session/hello_enabled";
+// Keep the migration draft gated until stage 7 recovery checks pass.
+constexpr bool kMasterPasswordChangeReady = false;
 
 QString DefaultDbPath() {
     return QCoreApplication::applicationDirPath() +
@@ -114,6 +116,7 @@ class Application::Impl {
         master_manager_ =
             std::make_unique<master_password::MasterPasswordManager>(
                 *master_store_);
+        master_manager_->set_password_dao(password_dao_.get());
         hello_ = std::make_unique<hello::WindowsHelloUnlock>();
         token_store_ = std::make_unique<oauth::TokenStore>();
         oauth_client_ =
@@ -259,9 +262,10 @@ class Application::Impl {
     void WirePreferencesPage() {
         auto* page = window_->preferences_page();
         if (!page) return;
-        page->SetHelloAvailable(hello_->IsAvailable());
-        page->SetHelloEnabled(
-            QSettings().value(kSettingsHelloEnabled, false).toBool());
+        page->SetHelloState(hello_->IsAvailable(), hello_->IsEnrolled());
+        page->SetChangeMasterPasswordEnabled(
+            kMasterPasswordChangeReady,
+            QStringLiteral("修改主密码暂不可用"));
         page->SetSyncState(
             token_store_->Exists()
                 ? ui::PreferencesPage::SyncUiState::kConnected
@@ -282,18 +286,30 @@ class Application::Impl {
                     ui::Toast::Show(page,
                                     QStringLiteral("Windows Hello 注册失败"),
                                     ui::Toast::Level::kError);
-                    page->SetHelloEnabled(false);
+                    page->SetHelloState(hello_->IsAvailable(),
+                                        hello_->IsEnrolled());
                     return;
                 }
                 QSettings().setValue(kSettingsHelloEnabled, true);
+                page->SetHelloState(hello_->IsAvailable(), hello_->IsEnrolled());
                 ui::Toast::Show(page,
                                 QStringLiteral("已启用 Windows Hello"),
                                 ui::Toast::Level::kSuccess);
             });
         QObject::connect(page, &ui::PreferencesPage::DisableHelloRequested,
                           [this, page]() {
-                              hello_->Disable();
+                              if (!hello_->Disable()) {
+                                  ui::Toast::Show(
+                                      page,
+                                      QStringLiteral("关闭 Windows Hello 失败"),
+                                      ui::Toast::Level::kError);
+                                  page->SetHelloState(hello_->IsAvailable(),
+                                                      hello_->IsEnrolled());
+                                  return;
+                              }
                               QSettings().setValue(kSettingsHelloEnabled, false);
+                              page->SetHelloState(hello_->IsAvailable(),
+                                                  hello_->IsEnrolled());
                               ui::Toast::Show(
                                   page,
                                   QStringLiteral("已关闭 Windows Hello"),
@@ -375,10 +391,76 @@ class Application::Impl {
     }
 
     void ChangeMasterPassword(QWidget* parent) {
-        QMessageBox::information(
-            parent, QStringLiteral("暂不可用"),
-            QStringLiteral("完成本地与云端数据重加密及失败回滚前，"
-                           "暂不支持修改主密码。"));
+        if (!kMasterPasswordChangeReady) {
+            QMessageBox::information(parent, QStringLiteral("暂不可用"),
+                                      QStringLiteral("修改主密码暂不可用。"));
+            return;
+        }
+        ui::MasterPasswordDialog dlg(ui::MasterPasswordDialog::Mode::kChange,
+                                     parent);
+        if (dlg.exec() != QDialog::Accepted) return;
+
+        const QString old_password = dlg.OldPassword();
+        const QString new_password = dlg.NewPassword();
+
+        // Step 1: local. The re-encryption runs in one transaction, so a
+        // failure here leaves the vault decryptable with the old password.
+        auto result =
+            master_manager_->PrepareChange(old_password, new_password);
+        if (!result.success) {
+            QMessageBox::warning(parent, QStringLiteral("修改失败"),
+                                 result.message);
+            return;
+        }
+
+        // Step 2: cloud. The local rollback point stays live until this
+        // succeeds, so a failed migration does not strand the two sides on
+        // different keys.
+        if (sync_manager_->provider() != nullptr) {
+            const auto cloud = sync_manager_->ChangeCloudMasterPassword(
+                old_password, new_password);
+            if (!cloud.success) {
+                const bool rolled_back = master_manager_->RollBack();
+                const QString detail =
+                    cloud.message.isEmpty() ? QStringLiteral("云端迁移失败")
+                                            : cloud.message;
+                if (rolled_back) {
+                    QMessageBox::warning(
+                        parent, QStringLiteral("修改失败"),
+                        QStringLiteral("%1，本地数据已回滚，主密码未改变。")
+                            .arg(detail));
+                } else {
+                    QMessageBox::critical(
+                        parent, QStringLiteral("修改失败"),
+                        QStringLiteral("%1，且本地回滚未完成。请勿继续使用，"
+                                       "并立即检查数据。")
+                            .arg(detail));
+                }
+                return;
+            }
+        }
+        master_manager_->CommitChange();
+
+        session::SessionManager::Instance()->Unlock(
+            std::move(result.payload->session_key),
+            std::move(result.payload->master_password));
+        if (window_) {
+            window_->SetSessionKey(
+                session::SessionManager::Instance()->session_key());
+        }
+
+        // The stored Hello credential still holds the old master password, so
+        // it must be dropped rather than left to fail at the next unlock.
+        hello_->Disable();
+        QSettings().setValue(kSettingsHelloEnabled, false);
+        if (window_ && window_->preferences_page()) {
+            auto* page = window_->preferences_page();
+            page->SetHelloState(hello_->IsAvailable(), hello_->IsEnrolled());
+        }
+        if (window_) window_->Reload();
+
+        ui::Toast::Show(parent, QStringLiteral("主密码已更新"),
+                        ui::Toast::Level::kSuccess);
     }
 
     void ImportCsv(QWidget* parent) {
