@@ -1289,6 +1289,19 @@ QTabWidget#ImportPreviewTabs::pane {
     border-top: 1px solid var(--border-section-4);
     background: transparent;
 }
+#ImportPreviewNotice {
+    background-color: var(--soft-bg-sync);
+    color: var(--body);
+    border: 1px solid var(--border-panel);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+}
+#ImportPreviewEmpty {
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: 13px;
+}
 QTabWidget#ImportPreviewTabs QTabBar {
     background: transparent;
     border: none;

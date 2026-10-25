@@ -1,10 +1,14 @@
 #include <gtest/gtest.h>
 
 #include <QAbstractButton>
+#include <QApplication>
 #include <QDialogButtonBox>
 #include <QLabel>
+#include <QHeaderView>
+#include <QSignalSpy>
 #include <QStringList>
 #include <QTabWidget>
+#include <QTest>
 #include <QTreeWidget>
 
 #include "csv/csv_models.h"
@@ -137,6 +141,93 @@ TEST(ImportPreviewDialogTest, ValidationReturnsSameResult) {
     EXPECT_EQ(v.InsertCount(), 3);
     EXPECT_EQ(v.UpdateCount(), 2);
     EXPECT_EQ(v.invalid_rows.size(), 1);
+}
+
+TEST(ImportPreviewDialogTest, UnchangedRowsCannotConfirmAnImport) {
+    auto result = MakeResult(0, 1, 0);
+    result.valid_rows[0].diffs.clear();
+    ImportPreviewDialog dialog(result);
+    EXPECT_FALSE(RoleButton(dialog, QDialogButtonBox::AcceptRole)->isEnabled());
+    EXPECT_TRUE(Summary(dialog)->text().contains(QStringLiteral("无变化 1")));
+    EXPECT_EQ(dialog.findChild<QTreeWidget*>(QStringLiteral("ImportUpdateTree"))
+                  ->topLevelItemCount(), 0);
+    EXPECT_TRUE(dialog.findChild<QLabel*>(QStringLiteral("ImportPreviewNotice"))
+                    ->text().contains(QStringLiteral("无需导入")));
+    EXPECT_EQ(dialog.validation().valid_rows.size(), 1);
+}
+
+TEST(ImportPreviewDialogTest, AllInvalidRowsOpenTheirTabAndExplainTheBlock) {
+    ImportPreviewDialog dialog(MakeResult(0, 0, 2));
+    EXPECT_EQ(Tabs(dialog)->currentIndex(), 2);
+    EXPECT_FALSE(RoleButton(dialog, QDialogButtonBox::AcceptRole)->isEnabled());
+    EXPECT_TRUE(dialog.findChild<QLabel*>(QStringLiteral("ImportPreviewNotice"))
+                    ->text().contains(QStringLiteral("请先修正无效行")));
+}
+
+TEST(ImportPreviewDialogTest, PartialImportExplainsSkippedRows) {
+    ImportPreviewDialog dialog(MakeResult(1, 1, 2));
+    EXPECT_TRUE(RoleButton(dialog, QDialogButtonBox::AcceptRole)->isEnabled());
+    EXPECT_TRUE(dialog.findChild<QLabel*>(QStringLiteral("ImportPreviewNotice"))
+                    ->text().contains(QStringLiteral("可用的 2 行")));
+}
+
+TEST(ImportPreviewDialogTest, EmptyFileShowsEmptyStatesWithoutFakeRows) {
+    ImportPreviewDialog dialog(MakeResult(0, 0, 0));
+    EXPECT_FALSE(RoleButton(dialog, QDialogButtonBox::AcceptRole)->isEnabled());
+    EXPECT_EQ(dialog.findChildren<QLabel*>(QStringLiteral("ImportPreviewEmpty"))
+                  .size(), 3);
+    for (auto* tree : dialog.findChildren<QTreeWidget*>()) {
+        EXPECT_EQ(tree->topLevelItemCount(), 0);
+    }
+}
+
+TEST(ImportPreviewDialogTest, PasswordDiffAndInvalidRawDataStayHidden) {
+    auto result = MakeResult(0, 1, 1);
+    result.valid_rows[0].diffs[0].field = QStringLiteral("密码");
+    result.valid_rows[0].diffs[0].old_value = QStringLiteral("old-private-value");
+    result.valid_rows[0].diffs[0].new_value = QStringLiteral("new-private-value");
+    result.invalid_rows[0].raw_data.append(QStringLiteral("raw-private-value"));
+    ImportPreviewDialog dialog(result);
+    auto* updates = dialog.findChild<QTreeWidget*>(QStringLiteral("ImportUpdateTree"));
+    auto* change = updates->topLevelItem(0)->child(0);
+    EXPECT_TRUE(change->text(3).contains(QStringLiteral("已隐藏")));
+    EXPECT_FALSE(change->text(3).contains(QStringLiteral("private-value")));
+    EXPECT_TRUE(change->toolTip(3).isEmpty());
+    auto* invalid = dialog.findChild<QTreeWidget*>(QStringLiteral("ImportInvalidTree"));
+    EXPECT_FALSE(invalid->topLevelItem(0)->text(2).contains(QStringLiteral("private-value")));
+    EXPECT_TRUE(invalid->topLevelItem(0)->toolTip(2).isEmpty());
+    EXPECT_EQ(dialog.validation().valid_rows[0].diffs[0].new_value,
+              result.valid_rows[0].diffs[0].new_value);
+}
+
+TEST(ImportPreviewDialogTest, LongTitlesStayInViewportAndKeepTheirTooltip) {
+    auto result = MakeResult(1, 0, 0);
+    result.valid_rows[0].title = QString(300, QLatin1Char('w'));
+    ImportPreviewDialog dialog(result);
+    dialog.show();
+    QApplication::processEvents();
+    auto* tree = dialog.findChild<QTreeWidget*>(QStringLiteral("ImportInsertTree"));
+    EXPECT_LE(tree->header()->length(), tree->viewport()->width());
+    EXPECT_TRUE(tree->topLevelItem(0)->toolTip(1).contains(result.valid_rows[0].title));
+}
+
+TEST(ImportPreviewDialogTest, TooltipTreatsImportedMarkupAsLiteralText) {
+    auto result = MakeResult(1, 0, 0);
+    result.valid_rows[0].title = QStringLiteral("<b>literal title</b>");
+    ImportPreviewDialog dialog(result);
+    auto* tree = dialog.findChild<QTreeWidget*>(QStringLiteral("ImportInsertTree"));
+    const QString tooltip = tree->topLevelItem(0)->toolTip(1);
+    EXPECT_FALSE(tooltip.contains(QStringLiteral("<b>")));
+    EXPECT_TRUE(tooltip.contains(QStringLiteral("&lt;b&gt;")));
+}
+
+TEST(ImportPreviewDialogTest, EscapeCancelsWithoutAccepting) {
+    ImportPreviewDialog dialog(MakeResult(1, 0, 0));
+    QSignalSpy accepted(&dialog, &QDialog::accepted);
+    QSignalSpy rejected(&dialog, &QDialog::rejected);
+    QTest::keyClick(&dialog, Qt::Key_Escape);
+    EXPECT_EQ(accepted.count(), 0);
+    EXPECT_EQ(rejected.count(), 1);
 }
 
 }  // namespace

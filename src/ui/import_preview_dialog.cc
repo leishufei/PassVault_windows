@@ -6,6 +6,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QTabWidget>
+#include <QTextDocument>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QVBoxLayout>
@@ -20,6 +21,20 @@ QString Preview(const QString& s) {
     collapsed.replace(QLatin1Char('\r'), QLatin1Char(' '));
     if (collapsed.size() > 60) collapsed = collapsed.left(57) + QStringLiteral("...");
     return collapsed;
+}
+
+void FinishTree(QTreeWidget* tree, const QString& empty_text) {
+    tree->header()->setSectionResizeMode(QHeaderView::Stretch);
+    tree->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    tree->setTextElideMode(Qt::ElideRight);
+    if (tree->topLevelItemCount() != 0) return;
+    auto* empty = new QLabel(empty_text, tree->viewport());
+    empty->setObjectName(QStringLiteral("ImportPreviewEmpty"));
+    empty->setAlignment(Qt::AlignCenter);
+    empty->setWordWrap(true);
+    auto* layout = new QVBoxLayout(tree->viewport());
+    layout->setContentsMargins(16, 16, 16, 16);
+    layout->addWidget(empty);
 }
 
 }  // namespace
@@ -49,22 +64,52 @@ ImportPreviewDialog::ImportPreviewDialog(csv::CsvValidationResult result,
             .arg(result_.InsertCount())
             .arg(result_.UpdateCount())
             .arg(result_.invalid_rows.size()));
+    const int changes = result_.InsertCount() + result_.UpdateCount();
+    const int unchanged = result_.valid_rows.size() - changes;
+    if (unchanged > 0) {
+        summary_->setText(summary_->text() +
+                          QStringLiteral(" · 无变化 %1").arg(unchanged));
+    }
     root->addWidget(summary_);
+
+    auto* notice = new QLabel(this);
+    notice->setObjectName(QStringLiteral("ImportPreviewNotice"));
+    notice->setWordWrap(true);
+    if (result_.total_rows == 0) {
+        notice->setText(QStringLiteral("文件没有可导入的数据。"));
+    } else if (changes == 0) {
+        notice->setText(result_.invalid_rows.isEmpty()
+                            ? QStringLiteral("内容与本地一致，无需导入。")
+                            : QStringLiteral("没有可导入的数据，请先修正无效行。"));
+    } else if (!result_.invalid_rows.isEmpty()) {
+        notice->setText(QStringLiteral("仅导入可用的 %1 行；无效行将跳过。")
+                            .arg(changes));
+    }
+    notice->setVisible(!notice->text().isEmpty());
+    root->addWidget(notice);
 
     auto* tabs = new QTabWidget(this);
     tabs->setObjectName(QStringLiteral("ImportPreviewTabs"));
     BuildInsertTab(tabs);
     BuildUpdateTab(tabs);
     BuildInvalidTab(tabs);
+    if (result_.InsertCount() == 0) {
+        tabs->setCurrentIndex(result_.UpdateCount() > 0
+                                  ? 1
+                                  : (result_.invalid_rows.isEmpty() ? 0 : 2));
+    }
     root->addWidget(tabs, 1);
 
     auto* box = new QDialogButtonBox(this);
     auto* cancel = box->addButton(QStringLiteral("取消"),
                                   QDialogButtonBox::RejectRole);
+    cancel->setObjectName(QStringLiteral("ImportCancelButton"));
+    cancel->setDefault(true);
     auto* confirm = box->addButton(QStringLiteral("确认导入"),
                                    QDialogButtonBox::AcceptRole);
     confirm->setProperty("accent", true);
-    confirm->setEnabled(!result_.valid_rows.isEmpty());
+    confirm->setObjectName(QStringLiteral("ImportConfirmButton"));
+    confirm->setEnabled(changes > 0);
     connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
     connect(confirm, &QPushButton::clicked, this, &QDialog::accept);
     root->addWidget(box);
@@ -72,10 +117,10 @@ ImportPreviewDialog::ImportPreviewDialog(csv::CsvValidationResult result,
 
 void ImportPreviewDialog::BuildInsertTab(QTabWidget* tabs) {
     auto* tree = new QTreeWidget;
+    tree->setObjectName(QStringLiteral("ImportInsertTree"));
     tree->setColumnCount(4);
     tree->setHeaderLabels({QStringLiteral("行"), QStringLiteral("标题"),
                            QStringLiteral("用户名"), QStringLiteral("分类")});
-    tree->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
     tree->setRootIsDecorated(false);
     for (const auto& row : result_.valid_rows) {
         if (row.action != csv::ImportAction::kInsert) continue;
@@ -84,48 +129,66 @@ void ImportPreviewDialog::BuildInsertTab(QTabWidget* tabs) {
         item->setText(1, Preview(row.title));
         item->setText(2, Preview(row.username));
         item->setText(3, Preview(row.category_name));
+        item->setToolTip(1, Qt::convertFromPlainText(row.title));
+        item->setToolTip(2, Qt::convertFromPlainText(row.username));
+        item->setToolTip(3, Qt::convertFromPlainText(row.category_name));
     }
+    FinishTree(tree, QStringLiteral("没有新增条目"));
     tabs->addTab(tree, QStringLiteral("新增 (%1)").arg(result_.InsertCount()));
 }
 
 void ImportPreviewDialog::BuildUpdateTab(QTabWidget* tabs) {
     auto* tree = new QTreeWidget;
+    tree->setObjectName(QStringLiteral("ImportUpdateTree"));
     tree->setColumnCount(4);
     tree->setHeaderLabels({QStringLiteral("行"), QStringLiteral("标题"),
                            QStringLiteral("字段"), QStringLiteral("变更")});
-    tree->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
     for (const auto& row : result_.valid_rows) {
-        if (row.action != csv::ImportAction::kUpdate) continue;
+        if (row.action != csv::ImportAction::kUpdate || row.diffs.isEmpty()) continue;
         auto* parent = new QTreeWidgetItem(tree);
         parent->setText(0, QString::number(row.row_index));
         parent->setText(1, Preview(row.title));
+        parent->setToolTip(1, Qt::convertFromPlainText(row.title));
         parent->setText(
             2, QStringLiteral("%1 个字段").arg(row.diffs.size()));
         for (const auto& d : row.diffs) {
             auto* child = new QTreeWidgetItem(parent);
             child->setText(2, d.field);
-            child->setText(3, QStringLiteral("%1 → %2")
-                                  .arg(Preview(d.old_value),
-                                       Preview(d.new_value)));
+            if (d.field == QStringLiteral("密码") ||
+                d.field.compare(QStringLiteral("password"),
+                                Qt::CaseInsensitive) == 0) {
+                child->setText(3, QStringLiteral("密码将更新（已隐藏）"));
+            } else {
+                child->setText(3, QStringLiteral("%1 → %2")
+                                      .arg(Preview(d.old_value),
+                                           Preview(d.new_value)));
+                child->setToolTip(3, Qt::convertFromPlainText(
+                                         QStringLiteral("%1 → %2")
+                                             .arg(d.old_value, d.new_value)));
+            }
         }
         parent->setExpanded(false);
     }
+    FinishTree(tree, QStringLiteral("没有需要更新的条目"));
     tabs->addTab(tree, QStringLiteral("更新 (%1)").arg(result_.UpdateCount()));
 }
 
 void ImportPreviewDialog::BuildInvalidTab(QTabWidget* tabs) {
     auto* tree = new QTreeWidget;
+    tree->setObjectName(QStringLiteral("ImportInvalidTree"));
     tree->setColumnCount(3);
     tree->setHeaderLabels({QStringLiteral("行"), QStringLiteral("原因"),
-                           QStringLiteral("原始数据")});
-    tree->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
+                           QStringLiteral("数据保护")});
     tree->setRootIsDecorated(false);
     for (const auto& r : result_.invalid_rows) {
         auto* item = new QTreeWidgetItem(tree);
         item->setText(0, QString::number(r.row_index));
         item->setText(1, r.error_message);
-        item->setText(2, Preview(r.raw_data.join(QLatin1Char(','))));
+        item->setToolTip(1, Qt::convertFromPlainText(r.error_message));
+        item->setText(2, QStringLiteral("原始数据已隐藏（%1 列）")
+                             .arg(r.raw_data.size()));
     }
+    FinishTree(tree, QStringLiteral("没有无效行"));
     tabs->addTab(tree,
                  QStringLiteral("无效 (%1)").arg(result_.invalid_rows.size()));
 }
