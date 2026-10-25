@@ -11,6 +11,7 @@ add_executable(passvault_tests
     password_dao_test.cc
     category_dao_test.cc
     master_password_store_test.cc
+    probe_test.cc
     master_password_manager_test.cc
     session_manager_test.cc
     auto_lock_timer_test.cc
