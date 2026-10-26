@@ -355,6 +355,29 @@ TEST_F(PasswordDaoTest, BulkLogicalDeleteEmptyIsNoop) {
     EXPECT_FALSE(dao_->ListActive().empty());
 }
 
+TEST_F(PasswordDaoTest, DeleteByCategoryPreservesCiphertextAndOldTombstones) {
+    for (int i = 1; i <= 4; ++i) {
+        auto entry = MakeEntry(i);
+        entry.category_id = i == 4 ? 6 : 5;
+        entry.is_deleted = i == 3;
+        entry.updated_at = 100;
+        ASSERT_TRUE(dao_->Insert(entry).has_value());
+    }
+    const auto before = dao_->ListIncludingDeleted();
+    ASSERT_TRUE(dao_->LogicalDeleteByCategory(5, 999));
+    for (const auto& entry : before) {
+        const auto after = dao_->FindById(entry.id);
+        ASSERT_TRUE(after.has_value());
+        EXPECT_EQ(after->category_id, entry.category_id);
+        EXPECT_EQ(after->encrypted_password, entry.encrypted_password);
+        EXPECT_EQ(after->password_iv, entry.password_iv);
+        const bool newly_deleted = entry.category_id == 5 && !entry.is_deleted;
+        EXPECT_EQ(after->is_deleted, entry.is_deleted || newly_deleted);
+        EXPECT_EQ(after->updated_at, newly_deleted ? 999 : 100);
+    }
+    EXPECT_TRUE(dao_->LogicalDeleteByCategory(99, 1000));
+}
+
 TEST_F(PasswordDaoTest, BulkUpdateCategoryByIds) {
     const auto id1 = dao_->Insert(MakeEntry(1));
     const auto id2 = dao_->Insert(MakeEntry(2));

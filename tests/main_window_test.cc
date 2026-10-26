@@ -753,4 +753,194 @@ TEST_F(MainWindowTest, LockClearsEditorAndDetailAndRebindingAllowsValidWrites) {
     QApplication::clipboard()->clear();
 }
 
+TEST_F(MainWindowTest, SortMenuSupportsBothDirectionsForEveryField) {
+    Seed("Zebra", "user", false, 0, 9000, 1);
+    window_->Reload();
+    auto* sort = window_->findChild<QPushButton*>("ListSortMenu");
+    ASSERT_NE(sort->menu(), nullptr);
+    auto* ascending = sort->findChild<QAction*>("SortAscendingAction");
+    auto* descending = sort->findChild<QAction*>("SortDescendingAction");
+    ASSERT_NE(ascending, nullptr);
+    ASSERT_NE(descending, nullptr);
+    EXPECT_TRUE(descending->isChecked());
+    const auto titles = [this] {
+        QStringList result;
+        for (int i = 0; i < passwords()->count(); ++i) {
+            const auto id = passwords()->item(i)->data(Qt::UserRole).toLongLong();
+            result.append(password_dao_->FindById(id)->title);
+        }
+        return result;
+    };
+    const QStringList expected[] = {
+        {"Zebra", "Work App", "GitLab", "GitHub"},
+        {"Work App", "GitLab", "GitHub", "Zebra"},
+        {"GitHub", "GitLab", "Work App", "Zebra"},
+    };
+    for (int field = 0; field < 3; ++field) {
+        sort->menu()->actions()[field]->trigger();
+        ascending->trigger();
+        EXPECT_TRUE(ascending->isChecked());
+        EXPECT_FALSE(descending->isChecked());
+        EXPECT_EQ(titles(), expected[field]);
+        EXPECT_TRUE(sort->text().endsWith(QStringLiteral("升序")));
+        descending->trigger();
+        auto reversed = expected[field];
+        std::reverse(reversed.begin(), reversed.end());
+        EXPECT_EQ(titles(), reversed);
+        EXPECT_FALSE(ascending->isChecked());
+        EXPECT_TRUE(descending->isChecked());
+        EXPECT_TRUE(sort->text().endsWith(QStringLiteral("降序")));
+    }
+}
+
+TEST_F(MainWindowTest, RenameCategoryPersistsWithoutChangingItsPasswords) {
+    QTimer::singleShot(0, [] {
+        auto* dialog = qobject_cast<QInputDialog*>(QApplication::activeModalWidget());
+        ASSERT_NE(dialog, nullptr);
+        dialog->setTextValue("Renamed");
+        dialog->accept();
+    });
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnRenameCategory",
+        Q_ARG(std::int64_t, work_category_id_)));
+    EXPECT_EQ(category_dao_->FindById(work_category_id_)->name,
+              QStringLiteral("Renamed"));
+    EXPECT_EQ(password_dao_->ListByCategory(work_category_id_).size(), 1u);
+}
+
+TEST_F(MainWindowTest, DeleteCategoryTrashesAllItsPasswordsAndPreservesCiphertext) {
+    Seed("Second work", "user", false, work_category_id_, 1000);
+    window_->Reload();
+    const auto before = password_dao_->ListByCategory(work_category_id_);
+    ASSERT_EQ(before.size(), 2u);
+    categories()->setCurrentRow(0);
+    passwords()->setCurrentRow(0);
+    QTimer::singleShot(0, [] {
+        auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        ASSERT_NE(dialog, nullptr);
+        EXPECT_EQ(dialog->defaultButton(), dialog->button(QMessageBox::No));
+        EXPECT_TRUE(dialog->text().contains(QStringLiteral("回收站")));
+        dialog->button(QMessageBox::Yes)->click();
+    });
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnDeleteCategory",
+        Q_ARG(std::int64_t, work_category_id_)));
+    EXPECT_TRUE(category_dao_->FindById(work_category_id_)->is_deleted);
+    EXPECT_EQ(password_dao_->ListActive().size(), 2u);
+    EXPECT_FALSE(detail()->HasEntry());
+    for (const auto& entry : before) {
+        const auto after = password_dao_->FindById(entry.id);
+        ASSERT_TRUE(after.has_value());
+        EXPECT_EQ(after->category_id, work_category_id_);
+        EXPECT_TRUE(after->is_deleted);
+        EXPECT_EQ(after->encrypted_password, entry.encrypted_password);
+        EXPECT_EQ(after->password_iv, entry.password_iv);
+        EXPECT_GT(after->updated_at, entry.updated_at);
+    }
+    sections()->setCurrentRow(3);
+    EXPECT_EQ(passwords()->count(), 2);
+}
+
+TEST_F(MainWindowTest, FailedCategoryDeleteRollsBackPasswordDeletion) {
+    ASSERT_TRUE(db_->Execute("CREATE TRIGGER fail_category_delete BEFORE UPDATE "
+                            "ON categories BEGIN SELECT RAISE(ABORT, 'blocked'); END"));
+    QTimer::singleShot(0, [] {
+        auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        ASSERT_NE(dialog, nullptr);
+        dialog->button(QMessageBox::Yes)->click();
+    });
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnDeleteCategory",
+        Q_ARG(std::int64_t, work_category_id_)));
+    EXPECT_FALSE(category_dao_->FindById(work_category_id_)->is_deleted);
+    EXPECT_EQ(password_dao_->ListByCategory(work_category_id_).size(), 1u);
+    EXPECT_NE(window_->findChild<QWidget*>("ToastError"), nullptr);
+}
+
+TEST_F(MainWindowTest, FailedPasswordDeletionPreservesCategoryAndPasswords) {
+    ASSERT_TRUE(db_->Execute("CREATE TRIGGER fail_password_delete BEFORE UPDATE "
+                            "ON password_entries BEGIN SELECT RAISE(ABORT, 'blocked'); END"));
+    QTimer::singleShot(0, [] {
+        auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        ASSERT_NE(dialog, nullptr);
+        dialog->button(QMessageBox::Yes)->click();
+    });
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnDeleteCategory",
+        Q_ARG(std::int64_t, work_category_id_)));
+    EXPECT_FALSE(category_dao_->FindById(work_category_id_)->is_deleted);
+    EXPECT_EQ(password_dao_->ListByCategory(work_category_id_).size(), 1u);
+    EXPECT_NE(window_->findChild<QWidget*>("ToastError"), nullptr);
+}
+
+TEST_F(MainWindowTest, CategoryDragOrderSurvivesReload) {
+    Category second;
+    second.uuid = "second-category";
+    second.name = "Second";
+    second.sort_order = 1;
+    const auto id = category_dao_->Insert(second);
+    ASSERT_TRUE(id.has_value());
+    window_->Reload();
+    EXPECT_EQ(categories()->dragDropMode(), QAbstractItemView::InternalMove);
+    ASSERT_TRUE(categories()->model()->moveRow(QModelIndex(), 0, QModelIndex(), 2));
+    QApplication::processEvents();
+    const auto ordered = category_dao_->ListActive();
+    ASSERT_EQ(ordered.size(), 2u);
+    EXPECT_EQ(ordered.front().id, *id);
+    window_->Reload();
+    EXPECT_EQ(categories()->item(0)->data(Qt::UserRole).toLongLong(), *id);
+}
+
+TEST_F(MainWindowTest, CategoryMutationsScheduleSyncWithoutContactingProvider) {
+    passvault::sync::GoogleDriveProvider provider([] { return QString(); });
+    passvault::sync::SyncManager manager(password_dao_.get(), category_dao_.get(),
+        passvault::session::SessionManager::Instance());
+    manager.set_provider(&provider);
+    passvault::sync::SyncScheduler scheduler(&manager);
+    MainWindow::Deps deps;
+    deps.password_dao = password_dao_.get();
+    deps.category_dao = category_dao_.get();
+    deps.session_key = &*session_key_;
+    deps.sync_scheduler = &scheduler;
+    window_ = std::make_unique<MainWindow>(deps);
+    QSignalSpy scheduled(&scheduler, &passvault::sync::SyncScheduler::SyncScheduled);
+    QTimer::singleShot(0, [] {
+        auto* dialog = qobject_cast<QInputDialog*>(QApplication::activeModalWidget());
+        ASSERT_NE(dialog, nullptr);
+        dialog->setTextValue("Synced category");
+        dialog->accept();
+    });
+    QMetaObject::invokeMethod(window_.get(), "OnAddCategory");
+    EXPECT_EQ(scheduled.count(), 1);
+    QTimer::singleShot(0, [] {
+        auto* dialog = qobject_cast<QInputDialog*>(QApplication::activeModalWidget());
+        ASSERT_NE(dialog, nullptr);
+        dialog->setTextValue("Renamed work");
+        dialog->accept();
+    });
+    QMetaObject::invokeMethod(window_.get(), "OnRenameCategory",
+        Q_ARG(std::int64_t, work_category_id_));
+    EXPECT_EQ(scheduled.count(), 2);
+    ASSERT_TRUE(categories()->model()->moveRow(QModelIndex(), 0, QModelIndex(), 2));
+    QApplication::processEvents();
+    EXPECT_EQ(scheduled.count(), 3);
+    QTimer::singleShot(0, [] {
+        auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        ASSERT_NE(dialog, nullptr);
+        dialog->button(QMessageBox::Yes)->click();
+    });
+    QMetaObject::invokeMethod(window_.get(), "OnDeleteCategory",
+        Q_ARG(std::int64_t, work_category_id_));
+    EXPECT_EQ(scheduled.count(), 4);
+    window_.reset();
+}
+
+TEST_F(MainWindowTest, CancelCategoryDeletePreservesCategoryAndPasswords) {
+    QTimer::singleShot(0, [] {
+        auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        ASSERT_NE(dialog, nullptr);
+        dialog->button(QMessageBox::No)->click();
+    });
+    QMetaObject::invokeMethod(window_.get(), "OnDeleteCategory",
+        Q_ARG(std::int64_t, work_category_id_));
+    EXPECT_FALSE(category_dao_->FindById(work_category_id_)->is_deleted);
+    EXPECT_EQ(password_dao_->ListByCategory(work_category_id_).size(), 1u);
+}
+
 }  // namespace

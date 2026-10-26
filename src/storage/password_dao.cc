@@ -334,6 +334,23 @@ bool PasswordDao::LogicalDelete(std::int64_t id, std::int64_t timestamp) {
     }
 }
 
+bool PasswordDao::LogicalDeleteByCategory(std::int64_t category_id,
+                                           std::int64_t timestamp) {
+    try {
+        Statement stmt(
+            db_.handle(),
+            "UPDATE password_entries SET isDeleted = 1, updatedAt = ? "
+            "WHERE categoryId = ? AND isDeleted = 0");
+        stmt.BindInt64(1, timestamp);
+        stmt.BindInt64(2, category_id);
+        stmt.StepDone();
+        return true;
+    } catch (const std::exception& ex) {
+        qWarning() << "PasswordDao::LogicalDeleteByCategory failed:" << ex.what();
+        return false;
+    }
+}
+
 bool PasswordDao::DeleteAll() {
     return db_.Execute("DELETE FROM password_entries");
 }

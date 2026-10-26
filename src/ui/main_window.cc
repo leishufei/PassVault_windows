@@ -1,6 +1,8 @@
 #include "ui/main_window.h"
 
 #include <QAction>
+#include <QActionGroup>
+#include <QMenu>
 #include <QApplication>
 #include <QDateTime>
 #include <QDesktopServices>
@@ -37,6 +39,7 @@
 #include "crypto/session_key.h"
 #include "generator/password_strength.h"
 #include "storage/category_dao.h"
+#include "storage/database.h"
 #include "storage/password_dao.h"
 #include "sync/sync_manager.h"
 #include "sync/sync_scheduler.h"
@@ -366,6 +369,27 @@ QWidget* MainWindow::BuildSidebar() {
     categories_list_->setFrameShape(QFrame::NoFrame);
     categories_list_->setIconSize(QSize(kSectionIconSize, kSectionIconSize));
     categories_list_->setSelectionMode(QAbstractItemView::SingleSelection);
+    categories_list_->setDragDropMode(QAbstractItemView::InternalMove);
+    categories_list_->setDefaultDropAction(Qt::MoveAction);
+    categories_list_->setDragDropOverwriteMode(false);
+    categories_list_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(categories_list_, &QListWidget::customContextMenuRequested, this,
+            [this](const QPoint& position) {
+                auto* item = categories_list_->itemAt(position);
+                if (!item || !deps_.session_key) return;
+                const auto id = item->data(Qt::UserRole).toLongLong();
+                QMenu menu(this);
+                auto* rename = menu.addAction(QStringLiteral("重命名"));
+                rename->setObjectName(QStringLiteral("RenameCategoryAction"));
+                auto* remove = menu.addAction(QStringLiteral("删除分类"));
+                remove->setObjectName(QStringLiteral("DeleteCategoryAction"));
+                auto* chosen = menu.exec(
+                    categories_list_->viewport()->mapToGlobal(position));
+                if (chosen == rename) OnRenameCategory(id);
+                if (chosen == remove) OnDeleteCategory(id);
+            });
+    connect(categories_list_->model(), &QAbstractItemModel::rowsMoved, this,
+            &MainWindow::PersistCategoryOrder, Qt::QueuedConnection);
     categories_list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     categories_list_->setItemDelegate(
         new SidebarItemDelegate(categories_list_));
@@ -576,17 +600,60 @@ QWidget* MainWindow::BuildPasswordListColumn() {
     title_layout->addWidget(list_count_);
     title_layout->addStretch(1);
 
-    sort_button_ = new QPushButton(QStringLiteral("按更新时间"), title_row);
+    sort_button_ = new QPushButton(QStringLiteral("按更新时间 · 降序"), title_row);
     sort_button_->setObjectName(QStringLiteral("ListSortMenu"));
     sort_button_->setProperty("flat", true);
-    sort_button_->setToolTip(QStringLiteral("当前固定按更新时间排序"));
+    sort_button_->setToolTip(QStringLiteral("选择密码排序方式"));
     sort_button_->setLayoutDirection(Qt::RightToLeft);
     sort_button_->setIcon(IconLoader::Load(
         QStringLiteral("chevron-down"),
         ThemeManager::Instance()->Color(QStringLiteral("text-tertiary")),
         12));
     sort_button_->setIconSize(QSize(12, 12));
-    sort_button_->setEnabled(false);
+    auto* sort_menu = new QMenu(sort_button_);
+    auto* sort_group = new QActionGroup(sort_menu);
+    const std::pair<QString, SortOrder> orders[] = {
+        {QStringLiteral("按更新时间"), SortOrder::kUpdated},
+        {QStringLiteral("按创建时间"), SortOrder::kCreated},
+        {QStringLiteral("按标题"), SortOrder::kTitle},
+    };
+    const auto update_sort = [this]() {
+        const QString label = sort_order_ == SortOrder::kUpdated
+            ? QStringLiteral("按更新时间")
+            : sort_order_ == SortOrder::kCreated ? QStringLiteral("按创建时间")
+                                                : QStringLiteral("按标题");
+        sort_button_->setText(QStringLiteral("%1 · %2").arg(
+            label, sort_ascending_ ? QStringLiteral("升序")
+                                   : QStringLiteral("降序")));
+        RefreshPasswordList();
+    };
+    for (const auto& order : orders) {
+        auto* action = sort_menu->addAction(order.first);
+        action->setCheckable(true);
+        action->setChecked(order.second == sort_order_);
+        sort_group->addAction(action);
+        connect(action, &QAction::triggered, this, [this, order, update_sort]() {
+            sort_order_ = order.second;
+            update_sort();
+        });
+    }
+    sort_menu->addSeparator();
+    auto* direction_group = new QActionGroup(sort_menu);
+    for (bool ascending : {true, false}) {
+        auto* action = sort_menu->addAction(
+            ascending ? QStringLiteral("升序") : QStringLiteral("降序"));
+        action->setObjectName(ascending ? QStringLiteral("SortAscendingAction")
+                                       : QStringLiteral("SortDescendingAction"));
+        action->setCheckable(true);
+        action->setChecked(ascending == sort_ascending_);
+        direction_group->addAction(action);
+        connect(action, &QAction::triggered, this,
+                [this, ascending, update_sort]() {
+                    sort_ascending_ = ascending;
+                    update_sort();
+                });
+    }
+    sort_button_->setMenu(sort_menu);
     title_layout->addWidget(sort_button_);
 
     layout->addWidget(title_row);
@@ -812,6 +879,7 @@ void MainWindow::RefreshCategoryList() {
         if (c.is_deleted) continue;
         auto* item = new QListWidgetItem(categories_list_);
         item->setText(c.name);
+        item->setFlags(item->flags() & ~Qt::ItemIsDropEnabled);
         item->setData(Qt::UserRole, QVariant::fromValue<qint64>(c.id));
         item->setData(kSidebarCountRole, counts.value(c.id));
         item->setData(kSidebarSystemRole, false);
@@ -950,9 +1018,19 @@ void MainWindow::RefreshPasswordList() {
     }
 
     std::stable_sort(rows.begin(), rows.end(),
-                     [](const model::PasswordEntry& lhs,
+                     [this](const model::PasswordEntry& lhs,
                         const model::PasswordEntry& rhs) {
-                         return lhs.updated_at > rhs.updated_at;
+                         if (sort_order_ == SortOrder::kTitle) {
+                             const int comparison = QString::localeAwareCompare(
+                                 lhs.title, rhs.title);
+                             return sort_ascending_ ? comparison < 0
+                                                    : comparison > 0;
+                         }
+                         const auto left = sort_order_ == SortOrder::kCreated
+                             ? lhs.created_at : lhs.updated_at;
+                         const auto right = sort_order_ == SortOrder::kCreated
+                             ? rhs.created_at : rhs.updated_at;
+                         return sort_ascending_ ? left < right : left > right;
                      });
 
     current_entries_ = std::move(rows);
@@ -1066,7 +1144,7 @@ bool MainWindow::EncryptAndAssign(model::PasswordEntry* entry,
 void MainWindow::OnNewPassword() { ShowPasswordCreate(); }
 
 void MainWindow::OnAddCategory() {
-    if (!deps_.category_dao) return;
+    if (!deps_.category_dao || !deps_.session_key) return;
     bool accepted = false;
     const QString name = QInputDialog::getText(
                              this, QStringLiteral("新增分类"),
@@ -1107,6 +1185,7 @@ void MainWindow::OnAddCategory() {
         return;
     }
     selected_category_ = *id;
+    if (deps_.sync_scheduler) deps_.sync_scheduler->MarkDirty();
     showing_detail_ = false;
     if (width() < kSidebarBreakpoint) compact_sidebar_expanded_ = false;
     Reload();
@@ -1120,6 +1199,100 @@ void MainWindow::ShowPasswordCreate() {
     editor_panel_->SetCategories(std::move(cats));
     editor_entry_id_ = -1;
     editor_panel_->OpenForCreate();
+}
+
+void MainWindow::OnRenameCategory(std::int64_t category_id) {
+    if (!deps_.session_key || !deps_.category_dao) return;
+    auto category = deps_.category_dao->FindById(category_id);
+    if (!category || category->is_deleted) return;
+    bool accepted = false;
+    const QString name = QInputDialog::getText(
+        this, QStringLiteral("重命名分类"), QStringLiteral("分类名称"),
+        QLineEdit::Normal, category->name, &accepted).trimmed();
+    if (!accepted || name == category->name) return;
+    if (name.isEmpty()) {
+        Toast::Show(this, QStringLiteral("分类名称不能为空"),
+                    Toast::Level::kWarning);
+        return;
+    }
+    for (const auto& existing : categories_) {
+        if (existing.id != category_id &&
+            existing.name.compare(name, Qt::CaseInsensitive) == 0) {
+            Toast::Show(this, QStringLiteral("分类已存在"),
+                        Toast::Level::kWarning);
+            return;
+        }
+    }
+    category->name = name;
+    category->updated_at = QDateTime::currentMSecsSinceEpoch();
+    if (!deps_.category_dao->Update(*category)) {
+        Toast::Show(this, QStringLiteral("分类更新失败"), Toast::Level::kError);
+        return;
+    }
+    if (deps_.sync_scheduler) deps_.sync_scheduler->MarkDirty();
+    Reload();
+}
+
+void MainWindow::OnDeleteCategory(std::int64_t category_id) {
+    if (!deps_.session_key || !deps_.category_dao || !deps_.password_dao) return;
+    const auto category = deps_.category_dao->FindById(category_id);
+    if (!category || category->is_deleted) return;
+    QMessageBox message(QMessageBox::Question, QStringLiteral("删除分类"),
+                        QStringLiteral("删除分类“%1”及其中的所有密码？密码将移入回收站，不会永久删除。")
+                            .arg(category->name),
+                        QMessageBox::Yes | QMessageBox::No, this);
+    message.setTextFormat(Qt::PlainText);
+    message.button(QMessageBox::Yes)->setText(QStringLiteral("删除分类及密码"));
+    message.button(QMessageBox::No)->setText(QStringLiteral("取消"));
+    message.setDefaultButton(QMessageBox::No);
+    message.setEscapeButton(QMessageBox::No);
+    if (message.exec() != QMessageBox::Yes || !deps_.session_key) return;
+
+    bool success = false;
+    try {
+        storage::Transaction transaction(deps_.password_dao->database());
+        const auto now = QDateTime::currentMSecsSinceEpoch();
+        success = deps_.password_dao->LogicalDeleteByCategory(category_id, now) &&
+                  deps_.category_dao->LogicalDelete(category_id, now) &&
+                  transaction.Commit();
+    } catch (const std::exception&) {
+        success = false;
+    }
+    if (!success) {
+        Toast::Show(this, QStringLiteral("分类删除失败，未改变数据"),
+                    Toast::Level::kError);
+        return;
+    }
+    if (selected_category_ == category_id) selected_category_ = kSectionAll;
+    if (deps_.sync_scheduler) deps_.sync_scheduler->MarkDirty();
+    Reload();
+}
+
+void MainWindow::PersistCategoryOrder() {
+    if (suppress_selection_ || !deps_.session_key || !deps_.password_dao ||
+        !deps_.category_dao) return;
+    bool success = false;
+    try {
+        storage::Transaction transaction(deps_.password_dao->database());
+        const auto now = QDateTime::currentMSecsSinceEpoch();
+        success = true;
+        for (int row = 0; row < categories_list_->count(); ++row) {
+            const auto id = categories_list_->item(row)->data(Qt::UserRole).toLongLong();
+            if (!deps_.category_dao->UpdateSortOrder(id, row, now)) {
+                success = false;
+                break;
+            }
+        }
+        success = success && transaction.Commit();
+    } catch (const std::exception&) {
+        success = false;
+    }
+    if (success) {
+        if (deps_.sync_scheduler) deps_.sync_scheduler->MarkDirty();
+    } else {
+        Toast::Show(this, QStringLiteral("分类排序保存失败"), Toast::Level::kError);
+    }
+    Reload();
 }
 
 void MainWindow::OpenEditDialog(std::int64_t entry_id) {

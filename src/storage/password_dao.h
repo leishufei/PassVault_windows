@@ -37,6 +37,8 @@ class PasswordDao {
     bool SetFavorite(std::int64_t id, bool is_favorite);
     bool HardDelete(std::int64_t id);
     bool LogicalDelete(std::int64_t id, std::int64_t timestamp);
+    bool LogicalDeleteByCategory(std::int64_t category_id,
+                                 std::int64_t timestamp);
     bool DeleteAll();
 
     int CountDuplicate(const QString& title, const QString& username,

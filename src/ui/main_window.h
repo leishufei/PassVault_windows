@@ -73,6 +73,9 @@ class MainWindow : public QMainWindow {
  private slots:
     void OnNewPassword();
     void OnAddCategory();
+    void OnRenameCategory(std::int64_t category_id);
+    void OnDeleteCategory(std::int64_t category_id);
+    void PersistCategoryOrder();
     void OnSectionSelectionChanged();
     void OnCategorySelectionChanged();
     void OnPasswordSelectionChanged();
@@ -151,6 +154,9 @@ class MainWindow : public QMainWindow {
     bool suppress_selection_ = false;
     bool showing_detail_ = false;
     bool compact_sidebar_expanded_ = false;
+    enum class SortOrder { kUpdated, kCreated, kTitle };
+    SortOrder sort_order_ = SortOrder::kUpdated;
+    bool sort_ascending_ = false;
 };
 
 }  // namespace passvault::ui
