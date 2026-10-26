@@ -8,6 +8,8 @@
 #include <QList>
 #include <QPushButton>
 #include <QSignalSpy>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QToolButton>
 
 #include "model/password_entry.h"
@@ -81,13 +83,11 @@ class DetailPanelTest : public ::testing::Test {
     QPushButton* editButton() {
         return panel_.findChild<QPushButton*>(QStringLiteral("DetailHeaderButton"));
     }
-    QPushButton* copyPasswordButton() {
-        return panel_.findChild<QPushButton*>(
-            QStringLiteral("DetailSecondaryButton"));
+    QToolButton* copyPasswordButton() {
+        return NthNamed<QToolButton>(panel_, "DetailFieldButton", 2);
     }
-    QPushButton* openWebsiteButton() {
-        return panel_.findChild<QPushButton*>(
-            QStringLiteral("DetailPrimaryButton"));
+    QToolButton* openWebsiteButton() {
+        return NthNamed<QToolButton>(panel_, "DetailFieldButton", 3);
     }
     QToolButton* deleteButton() {
         return panel_.findChild<QToolButton*>(
@@ -131,7 +131,7 @@ TEST(ElidedLabelTest, ResizesTextAndPreservesFullValue) {
     EXPECT_EQ(label.text(), full_text);
 }
 
-TEST_F(DetailPanelTest, LongIdentityFieldsElideAndKeepFullValues) {
+TEST_F(DetailPanelTest, LongIdentityFieldsWrapAndKeepFullValues) {
     PasswordEntry entry = MakeEntry();
     entry.title = QStringLiteral(
         "Long Identity Entry With A Deliberately Extended Title For Clipping "
@@ -146,15 +146,15 @@ TEST_F(DetailPanelTest, LongIdentityFieldsElideAndKeepFullValues) {
     QApplication::processEvents();
 
     const QList<QPair<QLabel*, QString>> fields = {
-        {title(), entry.title},
+        {panel_.findChild<QLabel*>("DetailTitleValue"), entry.title},
         {usernameValue(), entry.username},
         {websiteValue(), entry.website},
     };
     for (const auto& [label, full_text] : fields) {
         ASSERT_NE(label, nullptr);
-        EXPECT_NE(label->text(), full_text);
-        EXPECT_TRUE(label->text().endsWith(QChar(0x2026)));
-        EXPECT_EQ(label->toolTip(), full_text);
+        EXPECT_EQ(label->text(), full_text);
+        EXPECT_TRUE(label->wordWrap());
+        EXPECT_TRUE(label->hasHeightForWidth());
         EXPECT_EQ(label->accessibleName(), full_text);
     }
 }
@@ -201,6 +201,9 @@ TEST_F(DetailPanelTest, HeaderAlignsIdentityAndActionsOnOneRow) {
     ASSERT_NE(favoriteButton(), nullptr);
     EXPECT_TRUE(favoriteButton()->isVisible());
     EXPECT_EQ(favoriteButton()->parentWidget(), actions);
+    auto* tag = panel_.findChild<QLabel*>("DetailTag");
+    ASSERT_NE(tag, nullptr);
+    EXPECT_GE(tag->width(), tag->fontMetrics().horizontalAdvance(tag->text()) + 16);
 }
 
 TEST_F(DetailPanelTest, DetailUsesUpdatedTimeWithoutSyntheticSubtitle) {
@@ -216,22 +219,29 @@ TEST_F(DetailPanelTest, DetailUsesUpdatedTimeWithoutSyntheticSubtitle) {
     EXPECT_EQ(stamp_labels.at(1)->text(), QStringLiteral("更新时间"));
 }
 
-TEST_F(DetailPanelTest, FooterFollowsTimestampCard) {
-    panel_.SetEntry(MakeEntry(), QStringLiteral("secret"));
-    auto* stamp_card = panel_.findChild<QWidget*>(
-        QStringLiteral("DetailStampCard"));
-    auto* footer_button = panel_.findChild<QWidget*>(
-        QStringLiteral("DetailSecondaryButton"));
-    ASSERT_NE(stamp_card, nullptr);
-    ASSERT_NE(footer_button, nullptr);
-    auto* footer = footer_button->parentWidget();
-    ASSERT_NE(footer, nullptr);
-    panel_.resize(400, 700);
+TEST_F(DetailPanelTest, CompleteNotesAreScrollableAndDuplicateFooterIsRemoved) {
+    auto entry = MakeEntry();
+    entry.notes = QStringLiteral("<b>Literal note</b>\n").repeated(80);
+    entry.app_package_name = QStringLiteral("example.test.app");
+    panel_.SetEntry(entry, QStringLiteral("secret"));
+    panel_.resize(400, 500);
     panel_.show();
     QApplication::processEvents();
-
-    EXPECT_GT(footer->y(), stamp_card->y());
-    EXPECT_LT(footer->y(), panel_.height());
+    auto* notes = panel_.findChild<QLabel*>("DetailNotesValue");
+    auto* scroll = panel_.findChild<QScrollArea*>("DetailScroll");
+    ASSERT_NE(notes, nullptr);
+    ASSERT_NE(scroll, nullptr);
+    EXPECT_EQ(notes->text(), entry.notes);
+    EXPECT_EQ(notes->textFormat(), Qt::PlainText);
+    EXPECT_TRUE(notes->wordWrap());
+    EXPECT_GT(scroll->verticalScrollBar()->maximum(), 0);
+    EXPECT_EQ(panel_.findChild<QLabel*>("DetailPackageValue")->text(),
+              entry.app_package_name);
+    EXPECT_EQ(panel_.findChild<QPushButton*>("DetailSecondaryButton"), nullptr);
+    EXPECT_EQ(panel_.findChild<QPushButton*>("DetailPrimaryButton"), nullptr);
+    panel_.ClearEntry();
+    EXPECT_TRUE(notes->text().isEmpty());
+    EXPECT_TRUE(notes->accessibleName().isEmpty());
 }
 
 TEST_F(DetailPanelTest, ClearEntryResetsState) {
@@ -314,7 +324,7 @@ TEST_F(DetailPanelTest, EmptyIdentityFieldsShowPlaceholdersAndDisableActions) {
     panel_.SetEntry(entry, QStringLiteral("secret"));
 
     EXPECT_EQ(usernameValue()->text(), QStringLiteral("(无用户名)"));
-    EXPECT_EQ(websiteValue()->text(), QStringLiteral("(未填写)"));
+    EXPECT_TRUE(websiteValue()->text().isEmpty());
     EXPECT_FALSE(usernameCopy()->isEnabled());
     auto* websiteButton = NthNamed<QToolButton>(panel_, "DetailFieldButton", 3);
     ASSERT_NE(websiteButton, nullptr);
@@ -323,7 +333,7 @@ TEST_F(DetailPanelTest, EmptyIdentityFieldsShowPlaceholdersAndDisableActions) {
 }
 
 TEST_F(DetailPanelTest, UnavailablePasswordShowsPlaceholderAndDisablesActions) {
-    panel_.SetEntry(MakeEntry(), QString());
+    panel_.SetEntry(MakeEntry(), std::nullopt);
 
     EXPECT_EQ(passwordValue()->text(), QStringLiteral("(无法解密)"));
     EXPECT_FALSE(passwordToggle()->isEnabled());
@@ -331,6 +341,21 @@ TEST_F(DetailPanelTest, UnavailablePasswordShowsPlaceholderAndDisablesActions) {
     ASSERT_NE(passwordCopy, nullptr);
     EXPECT_FALSE(passwordCopy->isEnabled());
     EXPECT_FALSE(copyPasswordButton()->isEnabled());
+}
+
+TEST_F(DetailPanelTest, EmptyPasswordRemainsBlankAndTimestampIncludesSeconds) {
+    auto entry = MakeEntry();
+    entry.created_at = 1700000012345;
+    entry.updated_at = 1700000067890;
+    panel_.SetEntry(entry, QString());
+    EXPECT_TRUE(passwordValue()->text().isEmpty());
+    EXPECT_FALSE(copyPasswordButton()->isEnabled());
+    const auto stamps = panel_.findChildren<QLabel*>("DetailStampValue");
+    ASSERT_EQ(stamps.size(), 2);
+    EXPECT_EQ(stamps[0]->text(), QDateTime::fromMSecsSinceEpoch(entry.created_at)
+                                  .toString("yyyy-MM-dd HH:mm:ss"));
+    EXPECT_EQ(stamps[1]->text(), QDateTime::fromMSecsSinceEpoch(entry.updated_at)
+                                  .toString("yyyy-MM-dd HH:mm:ss"));
 }
 
 }  // namespace

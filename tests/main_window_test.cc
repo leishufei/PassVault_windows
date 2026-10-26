@@ -10,7 +10,6 @@
 #include <QFontInfo>
 #include <QFontMetrics>
 #include <QImage>
-#include <QGraphicsDropShadowEffect>
 #include <QSettings>
 #include <QCheckBox>
 #include <QInputDialog>
@@ -310,56 +309,7 @@ TEST_F(MainWindowTest, WorkspaceHeaderSpansListAndDetail) {
     EXPECT_EQ(more_button->geometry().center().y(),
               search_container->geometry().center().y());
     EXPECT_EQ(list_column->y(), detail()->y());
-    EXPECT_EQ(list_column->height(), detail()->height());
-}
-
-TEST_F(MainWindowTest, ResponsiveBreakpointsSwitchColumnsAndNavigation) {
-    window_->resize(1280, 800);
-    window_->show();
-    QApplication::processEvents();
-
-    auto* sidebar = window_->findChild<QWidget*>(QStringLiteral("Sidebar"));
-    auto* list_column =
-        window_->findChild<QWidget*>(QStringLiteral("PasswordListColumn"));
-    auto* navigation = window_->findChild<QToolButton*>(
-        QStringLiteral("HeaderNavigationButton"));
-    auto* back = window_->findChild<QToolButton*>(
-        QStringLiteral("HeaderBackToListButton"));
-    ASSERT_NE(sidebar, nullptr);
-    ASSERT_NE(list_column, nullptr);
-    ASSERT_NE(navigation, nullptr);
-    ASSERT_NE(back, nullptr);
-    EXPECT_TRUE(sidebar->isVisible());
-    EXPECT_TRUE(list_column->isVisible());
-    EXPECT_TRUE(detail()->isVisible());
-    EXPECT_FALSE(navigation->isVisible());
-
-    window_->resize(1200, 800);
-    QApplication::processEvents();
-    EXPECT_TRUE(sidebar->isVisible());
-    EXPECT_TRUE(list_column->isVisible());
-    EXPECT_FALSE(detail()->isVisible());
-    passwords()->setCurrentRow(0);
-    QApplication::processEvents();
-    EXPECT_FALSE(list_column->isVisible());
-    EXPECT_TRUE(detail()->isVisible());
-    EXPECT_TRUE(back->isVisible());
-    back->click();
-    QApplication::processEvents();
-    EXPECT_TRUE(list_column->isVisible());
-    EXPECT_FALSE(detail()->isVisible());
-
-    window_->resize(900, 800);
-    QApplication::processEvents();
-    EXPECT_FALSE(sidebar->isVisible());
-    EXPECT_TRUE(navigation->isVisible());
-    navigation->click();
-    QApplication::processEvents();
-    EXPECT_TRUE(sidebar->isVisible());
-    sections()->setCurrentRow(1);
-    QApplication::processEvents();
-    EXPECT_FALSE(sidebar->isVisible());
-    EXPECT_TRUE(list_column->isVisible());
+    EXPECT_EQ(detail()->height(), window_->centralWidget()->height());
 }
 
 TEST_F(MainWindowTest, SidebarCountsAreSeparateFromLabels) {
@@ -392,7 +342,7 @@ TEST_F(MainWindowTest, PlaceholderHeaderActionsAreDisabled) {
     ASSERT_NE(more, nullptr);
     ASSERT_NE(sort, nullptr);
     EXPECT_FALSE(more->isEnabled());
-    EXPECT_FALSE(sort->isEnabled());
+    EXPECT_TRUE(sort->isEnabled());
 }
 
 TEST_F(MainWindowTest, PasswordCardsUseTargetDensityAndListStateLayer) {
@@ -405,7 +355,8 @@ TEST_F(MainWindowTest, PasswordCardsUseTargetDensityAndListStateLayer) {
     EXPECT_EQ(passwords()->spacing(), 6);
     auto* card = passwords()->itemWidget(passwords()->item(0));
     ASSERT_NE(card, nullptr);
-    EXPECT_TRUE(card->testAttribute(Qt::WA_TransparentForMouseEvents));
+    EXPECT_FALSE(card->testAttribute(Qt::WA_TransparentForMouseEvents));
+    EXPECT_NE(card->findChild<QToolButton*>("PasswordCardDeleteButton"), nullptr);
     const QString stylesheet =
         passvault::ui::ThemeManager::Instance()->LoadStyleSheet();
     EXPECT_TRUE(
@@ -417,10 +368,10 @@ TEST_F(MainWindowTest, PasswordCardsUseTargetDensityAndListStateLayer) {
 TEST_F(MainWindowTest, LongCardIdentityElidesAndKeepsFullValues) {
     const QString long_title = QStringLiteral(
         "Long Identity Entry With A Deliberately Extended Title For Clipping "
-        "Verification 0123456789");
+        "Verification 0123456789").repeated(3);
     const QString long_username = QStringLiteral(
         "long.account.identifier.for.stage.two.acceptance.with.extra.characters"
-        "@example.invalid");
+        "@example.invalid").repeated(3);
     Seed(long_title, long_username, false, 0, 4000);
     window_->Reload();
     window_->resize(1280, 800);
@@ -721,8 +672,40 @@ TEST_F(MainWindowTest, SettingsButtonSwitchesToPreferencesPage) {
     EXPECT_EQ(stack->currentWidget(), window_->preferences_page());
 }
 
-// Import/export/change-master signals are emitted by PreferencesPage and are
-// covered by preferences_page_test.
+TEST_F(MainWindowTest, BlankClickClearsSelectionAndAllowsSameRowToReopen) {
+    window_->show();
+    QApplication::processEvents();
+    passwords()->setCurrentRow(0);
+    const QPoint blank(20, passwords()->viewport()->height() - 10);
+    ASSERT_EQ(passwords()->itemAt(blank), nullptr);
+    QTest::mouseClick(passwords()->viewport(), Qt::LeftButton, Qt::NoModifier,
+                      blank);
+    EXPECT_TRUE(passwords()->selectedItems().isEmpty());
+    EXPECT_EQ(passwords()->currentItem(), nullptr);
+    EXPECT_FALSE(detail()->HasEntry());
+    EXPECT_FALSE(detail()->isVisible());
+    QTest::mouseClick(passwords()->viewport(), Qt::LeftButton, Qt::NoModifier,
+                      passwords()->visualItemRect(passwords()->item(0)).center());
+    EXPECT_TRUE(detail()->HasEntry());
+    EXPECT_TRUE(detail()->isVisible());
+}
+
+TEST_F(MainWindowTest, EscapeFromListClearsSelectionAndDetail) {
+    window_->show();
+    passwords()->setCurrentRow(0);
+    QTest::keyClick(passwords(), Qt::Key_Escape);
+    EXPECT_TRUE(passwords()->selectedItems().isEmpty());
+    EXPECT_EQ(passwords()->currentItem(), nullptr);
+    EXPECT_FALSE(detail()->HasEntry());
+    EXPECT_FALSE(detail()->isVisible());
+}
+
+TEST_F(MainWindowTest, ClearingSelectionDoesNotReopenCurrentPassword) {
+    passwords()->setCurrentRow(0);
+    passwords()->clearSelection();
+    EXPECT_EQ(passwords()->currentItem(), nullptr);
+    EXPECT_FALSE(detail()->HasEntry());
+}
 
 TEST_F(MainWindowTest, LockClearsEditorAndDetailAndRebindingAllowsValidWrites) {
     passwords()->setCurrentRow(0);
@@ -748,9 +731,40 @@ TEST_F(MainWindowTest, LockClearsEditorAndDetailAndRebindingAllowsValidWrites) {
     editor()->findChild<QPushButton*>("EditorSaveButton")->click();
     ASSERT_EQ(password_dao_->ListActive().size(), 4u);
     passwords()->setCurrentRow(0);
-    detail()->findChild<QPushButton*>("DetailSecondaryButton")->click();
+    detail()->findChildren<QToolButton*>("DetailFieldButton").at(2)->click();
     EXPECT_TRUE(QApplication::clipboard()->text() == QString(19, QLatin1Char('a')));
     QApplication::clipboard()->clear();
+}
+
+TEST_F(MainWindowTest, UndecryptableEntryCannotBeEditedOrOverwritten) {
+    auto entry = password_dao_->ListActive().front();
+    entry.encrypted_password = QByteArray(20, 'x');
+    ASSERT_TRUE(password_dao_->Update(entry));
+    window_->Reload();
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnEditRequested",
+        Q_ARG(std::int64_t, entry.id)));
+    EXPECT_FALSE(editor()->IsOpen());
+    EXPECT_EQ(password_dao_->FindById(entry.id)->encrypted_password,
+              entry.encrypted_password);
+    EXPECT_NE(window_->findChild<QWidget*>("ToastError"), nullptr);
+}
+
+TEST_F(MainWindowTest, EditRefreshesSelectedDetailAndFavoriteTimestamp) {
+    passwords()->setCurrentRow(0);
+    const auto id = detail()->entry_id();
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnEditRequested",
+        Q_ARG(std::int64_t, id)));
+    editor()->ApplyGeneratedPassword(QString(23, QLatin1Char('a')));
+    editor()->findChild<QLineEdit*>("EditorUsernameInput")->setText("new-user");
+    editor()->findChild<QPushButton*>("EditorSaveButton")->click();
+    EXPECT_EQ(detail()->findChild<QLabel*>("DetailFieldValueMono")->text().size(), 23);
+    EXPECT_EQ(detail()->findChild<QLabel*>("DetailFieldValue")->accessibleName(),
+              QStringLiteral("new-user"));
+    const auto before = password_dao_->FindById(id)->updated_at;
+    QTest::qWait(2);
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnFavoriteToggleRequested",
+        Q_ARG(std::int64_t, id), Q_ARG(bool, true)));
+    EXPECT_GT(password_dao_->FindById(id)->updated_at, before);
 }
 
 TEST_F(MainWindowTest, SortMenuSupportsBothDirectionsForEveryField) {
@@ -941,6 +955,116 @@ TEST_F(MainWindowTest, CancelCategoryDeletePreservesCategoryAndPasswords) {
         Q_ARG(std::int64_t, work_category_id_));
     EXPECT_FALSE(category_dao_->FindById(work_category_id_)->is_deleted);
     EXPECT_EQ(password_dao_->ListByCategory(work_category_id_).size(), 1u);
+}
+
+// Import/export/change-master signals are emitted by PreferencesPage and are
+// covered by preferences_page_test.
+
+TEST_F(MainWindowTest, ControlAndShiftSelectWithoutOpeningMultipleDetails) {
+    window_->show();
+    QApplication::processEvents();
+    auto click_row = [this](int row, Qt::KeyboardModifiers modifiers) {
+        const QRect rect = passwords()->visualItemRect(passwords()->item(row));
+        QTest::mouseClick(passwords()->viewport(), Qt::LeftButton, modifiers,
+                          QPoint(75, rect.center().y()));
+    };
+    click_row(0, Qt::NoModifier);
+    click_row(1, Qt::ControlModifier);
+    EXPECT_EQ(passwords()->selectedItems().size(), 2);
+    EXPECT_FALSE(detail()->isVisible());
+    EXPECT_FALSE(detail()->HasEntry());
+    click_row(2, Qt::ShiftModifier);
+    EXPECT_GE(passwords()->selectedItems().size(), 2);
+    QTest::keyClick(passwords(), Qt::Key_Escape);
+    EXPECT_TRUE(passwords()->selectedItems().isEmpty());
+    EXPECT_EQ(passwords()->currentItem(), nullptr);
+}
+
+TEST_F(MainWindowTest, DeleteKeyTrashesAllSelectedAndPreservesCiphertext) {
+    window_->show();
+    QApplication::processEvents();
+    passwords()->setCurrentRow(0);
+    passwords()->item(1)->setSelected(true);
+    const auto first = password_dao_->FindById(
+        passwords()->item(0)->data(Qt::UserRole).toLongLong());
+    const auto second = password_dao_->FindById(
+        passwords()->item(1)->data(Qt::UserRole).toLongLong());
+    QTimer::singleShot(0, []() {
+        auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        ASSERT_NE(message, nullptr);
+        EXPECT_TRUE(message->text().contains(QStringLiteral("2 条")));
+        message->button(QMessageBox::Yes)->click();
+    });
+    QTest::keyClick(passwords(), Qt::Key_Delete);
+    for (const auto& before : {first, second}) {
+        ASSERT_TRUE(before);
+        const auto after = password_dao_->FindById(before->id);
+        ASSERT_TRUE(after);
+        EXPECT_TRUE(after->is_deleted);
+        EXPECT_EQ(after->encrypted_password, before->encrypted_password);
+        EXPECT_EQ(after->password_iv, before->password_iv);
+    }
+    EXPECT_EQ(passwords()->count(), 1);
+    EXPECT_FALSE(detail()->HasEntry());
+}
+
+TEST_F(MainWindowTest, BatchDeleteFailureAndCancelKeepAllSelections) {
+    passwords()->setCurrentRow(0);
+    passwords()->item(1)->setSelected(true);
+    ASSERT_TRUE(db_->Execute(
+        "CREATE TRIGGER fail_second_delete BEFORE UPDATE ON password_entries "
+        "WHEN OLD.title = 'GitLab' BEGIN SELECT RAISE(ABORT, 'test'); END"));
+    for (const auto answer : {QMessageBox::No, QMessageBox::Yes}) {
+        QTimer::singleShot(0, [answer]() {
+            auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+            ASSERT_NE(message, nullptr);
+            message->button(answer)->click();
+        });
+        ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnDeleteSelected"));
+        EXPECT_EQ(password_dao_->ListActive().size(), 3u);
+        EXPECT_EQ(passwords()->selectedItems().size(), 2);
+    }
+}
+
+TEST_F(MainWindowTest, RowDeleteOnlyTrashesItsOwnRecord) {
+    window_->show();
+    QApplication::processEvents();
+    passwords()->setCurrentRow(0);
+    passwords()->item(1)->setSelected(true);
+    const auto id = passwords()->item(2)->data(Qt::UserRole).toLongLong();
+    auto* card = passwords()->itemWidget(passwords()->item(2));
+    auto* remove = card->findChild<QToolButton*>("PasswordCardDeleteButton");
+    ASSERT_NE(remove, nullptr);
+    QTimer::singleShot(0, []() {
+        auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        ASSERT_NE(message, nullptr);
+        message->button(QMessageBox::Yes)->click();
+    });
+    QTest::mouseClick(remove, Qt::LeftButton);
+    EXPECT_TRUE(password_dao_->FindById(id)->is_deleted);
+    EXPECT_EQ(password_dao_->ListActive().size(), 2u);
+}
+
+TEST_F(MainWindowTest, ContextMenuDeletesTheExistingMultipleSelection) {
+    window_->show();
+    QApplication::processEvents();
+    passwords()->setCurrentRow(0);
+    passwords()->item(1)->setSelected(true);
+    QTimer::singleShot(0, [this]() {
+        auto* menu = window_->findChild<QMenu*>("PasswordContextMenu");
+        ASSERT_NE(menu, nullptr);
+        ASSERT_EQ(menu->actions().size(), 1);
+        QTimer::singleShot(0, []() {
+            auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+            ASSERT_NE(message, nullptr);
+            message->button(QMessageBox::Yes)->click();
+        });
+        menu->actions().front()->trigger();
+        menu->close();
+    });
+    const auto rect = passwords()->visualItemRect(passwords()->item(1));
+    passwords()->customContextMenuRequested(QPoint(75, rect.center().y()));
+    EXPECT_EQ(password_dao_->ListActive().size(), 1u);
 }
 
 }  // namespace

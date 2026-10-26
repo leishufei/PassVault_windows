@@ -4,9 +4,11 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QFrame>
+#include <QGraphicsDropShadowEffect>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSizePolicy>
 #include <QStackedLayout>
 #include <QToolButton>
@@ -14,8 +16,8 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
-#include "ui/elided_label.h"
 #include "ui/icon_loader.h"
+#include "ui/elided_label.h"
 #include "ui/theme_manager.h"
 
 namespace passvault::ui {
@@ -30,6 +32,9 @@ constexpr int kAvatarSize = 48;
 QLabel* MakeLabel(const QString& text, const QString& object_name) {
     auto* label = new QLabel(text);
     label->setObjectName(object_name);
+    label->setTextFormat(Qt::PlainText);
+    label->setWordWrap(true);
+    label->setMinimumWidth(0);
     return label;
 }
 
@@ -61,6 +66,11 @@ DetailPanel::DetailPanel(QWidget* parent)
     setFrameShape(QFrame::NoFrame);
     setMinimumWidth(360);
     setMaximumWidth(460);
+    auto* shadow = new QGraphicsDropShadowEffect(this);
+    shadow->setBlurRadius(45);
+    shadow->setColor(ThemeManager::Instance()->Color(QStringLiteral("shadow")));
+    shadow->setOffset(-18, 0);
+    setGraphicsEffect(shadow);
     BuildUi();
     ClearEntry();
     connect(ThemeManager::Instance(), &ThemeManager::ThemeChanged, this,
@@ -112,7 +122,14 @@ QWidget* DetailPanel::BuildEmptyPage() {
 }
 
 QWidget* DetailPanel::BuildContentPage() {
-    auto* page = new QWidget(this);
+    auto* scroll = new QScrollArea(this);
+    scroll->setObjectName(QStringLiteral("DetailScroll"));
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto* page = new QWidget;
+    page->setObjectName(QStringLiteral("DetailContent"));
+    scroll->setWidget(page);
     auto* outer = new QVBoxLayout(page);
     outer->setContentsMargins(28, 28, 28, 28);
     outer->setSpacing(20);
@@ -132,18 +149,17 @@ QWidget* DetailPanel::BuildContentPage() {
     auto* title_col = new QVBoxLayout();
     title_col->setContentsMargins(0, 0, 0, 0);
     title_col->setSpacing(4);
+    title_col->setAlignment(Qt::AlignTop);
 
-    auto* title_line = new QHBoxLayout();
-    title_line->setContentsMargins(0, 0, 0, 0);
-    title_line->setSpacing(8);
-    header_title_ = new ElidedLabel(header);
+    header_title_ = new ElidedLabel();
     header_title_->setObjectName(QStringLiteral("DetailTitle"));
-    title_line->addWidget(header_title_, 1);
+    header_title_->setTextFormat(Qt::PlainText);
+    title_col->addWidget(header_title_);
     header_tag_ = MakeLabel(QString(), QStringLiteral("DetailTag"));
+    header_tag_->setWordWrap(false);
+    header_tag_->setMaximumWidth(100);
     header_tag_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Maximum);
-    title_line->addWidget(header_tag_);
-    title_line->addStretch(1);
-    title_col->addLayout(title_line);
+    title_col->addWidget(header_tag_, 0, Qt::AlignLeft);
 
     header_layout->addLayout(title_col, 1);
 
@@ -195,6 +211,11 @@ QWidget* DetailPanel::BuildContentPage() {
         if (entry_) emit DeleteRequested(entry_->id);
     });
     action_layout->addWidget(header_delete_);
+    header_close_ = MakeIconButton(QStringLiteral("x"), QStringLiteral("关闭详情"));
+    header_close_->setObjectName(QStringLiteral("DetailCloseButton"));
+    connect(header_close_, &QToolButton::clicked, this,
+            &DetailPanel::CloseRequested);
+    action_layout->addWidget(header_close_);
     header_layout->addWidget(actions, 0, Qt::AlignTop);
 
     outer->addWidget(header);
@@ -241,6 +262,9 @@ QWidget* DetailPanel::BuildContentPage() {
         auto* label = MakeLabel(label_text, QStringLiteral("DetailFieldLabel"));
         col->addWidget(label);
         value->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        auto value_policy = value->sizePolicy();
+        value_policy.setHorizontalPolicy(QSizePolicy::Ignored);
+        value->setSizePolicy(value_policy);
         col->addWidget(value);
         row_layout->addLayout(col, 1);
 
@@ -250,12 +274,16 @@ QWidget* DetailPanel::BuildContentPage() {
         info_layout->addWidget(row);
     };
 
+    title_value_ = MakeLabel(QString(), QStringLiteral("DetailTitleValue"));
+    build_row(QStringLiteral("标题"), title_value_, {});
+    info_layout->addWidget(MakeDivider());
+
     username_copy_ = MakeIconButton(QStringLiteral("copy"),
                                     QStringLiteral("复制用户名"));
     connect(username_copy_, &QToolButton::clicked, this, [this]() {
         if (entry_) emit CopyUsernameRequested(entry_->id);
     });
-    username_value_ = new ElidedLabel(info_card);
+    username_value_ = MakeLabel(QString(), QStringLiteral("DetailFieldValue"));
     username_value_->setObjectName(QStringLiteral("DetailFieldValue"));
     build_row(QStringLiteral("用户名"), username_value_, {&username_copy_});
 
@@ -284,9 +312,19 @@ QWidget* DetailPanel::BuildContentPage() {
     connect(website_open_, &QToolButton::clicked, this, [this]() {
         if (entry_) emit OpenWebsiteRequested(entry_->id);
     });
-    website_value_ = new ElidedLabel(info_card);
+    website_value_ = MakeLabel(QString(), QStringLiteral("DetailFieldValueLink"));
     website_value_->setObjectName(QStringLiteral("DetailFieldValueLink"));
     build_row(QStringLiteral("网址"), website_value_, {&website_open_});
+
+    info_layout->addWidget(MakeDivider());
+    category_value_ = MakeLabel(QString(), QStringLiteral("DetailCategoryValue"));
+    build_row(QStringLiteral("分类"), category_value_, {});
+    info_layout->addWidget(MakeDivider());
+    notes_value_ = MakeLabel(QString(), QStringLiteral("DetailNotesValue"));
+    build_row(QStringLiteral("备注"), notes_value_, {});
+    info_layout->addWidget(MakeDivider());
+    package_value_ = MakeLabel(QString(), QStringLiteral("DetailPackageValue"));
+    build_row(QStringLiteral("应用包名"), package_value_, {});
 
     outer->addWidget(info_card);
 
@@ -312,39 +350,8 @@ QWidget* DetailPanel::BuildContentPage() {
     make_stamp_row(QStringLiteral("更新时间"), &updated_value_);
     outer->addWidget(stamp_card);
 
-    auto* footer = new QWidget(page);
-    auto* footer_layout = new QHBoxLayout(footer);
-    footer_layout->setContentsMargins(0, 0, 0, 0);
-    footer_layout->setSpacing(10);
-
-    copy_password_button_ = new QPushButton(QStringLiteral("复制密码"), footer);
-    copy_password_button_->setObjectName(QStringLiteral("DetailSecondaryButton"));
-    copy_password_button_->setCursor(Qt::PointingHandCursor);
-    copy_password_button_->setIcon(IconLoader::Load(
-        QStringLiteral("copy"),
-        ThemeManager::Instance()->Color(QStringLiteral("text-primary")),
-        kIconSize));
-    copy_password_button_->setIconSize(QSize(kIconSize, kIconSize));
-    connect(copy_password_button_, &QPushButton::clicked, this, [this]() {
-        if (entry_) emit CopyPasswordRequested(entry_->id);
-    });
-    footer_layout->addWidget(copy_password_button_, 1);
-
-    open_website_button_ = new QPushButton(QStringLiteral("打开网站"), footer);
-    open_website_button_->setObjectName(QStringLiteral("DetailPrimaryButton"));
-    open_website_button_->setCursor(Qt::PointingHandCursor);
-    open_website_button_->setIcon(IconLoader::Load(
-        QStringLiteral("external-link"),
-        ThemeManager::Instance()->Color(QStringLiteral("accent-fg")),
-        kIconSize));
-    open_website_button_->setIconSize(QSize(kIconSize, kIconSize));
-    connect(open_website_button_, &QPushButton::clicked, this, [this]() {
-        if (entry_) emit OpenWebsiteRequested(entry_->id);
-    });
-    footer_layout->addWidget(open_website_button_, 1);
-
-    outer->addWidget(footer);
-    return page;
+    outer->addStretch(1);
+    return scroll;
 }
 
 void DetailPanel::SetCategories(QList<model::Category> categories) {
@@ -353,7 +360,7 @@ void DetailPanel::SetCategories(QList<model::Category> categories) {
 }
 
 void DetailPanel::SetEntry(const model::PasswordEntry& entry,
-                           const QString& decrypted_password) {
+                           const std::optional<QString>& decrypted_password) {
     entry_ = entry;
     password_plain_ = decrypted_password;
     password_visible_ = false;
@@ -363,8 +370,13 @@ void DetailPanel::SetEntry(const model::PasswordEntry& entry,
 
 void DetailPanel::ClearEntry() {
     entry_.reset();
-    password_plain_.clear();
-    password_value_->clear();
+    password_plain_.reset();
+    header_title_->SetFullText(QString());
+    for (auto* label : {title_value_, username_value_, password_value_,
+                        website_value_, notes_value_, category_value_, package_value_}) {
+        label->clear();
+        label->setAccessibleName(QString());
+    }
     password_visible_ = false;
     stack_->setCurrentWidget(empty_page_);
 }
@@ -387,6 +399,9 @@ void DetailPanel::RefreshView() {
         header_tag_->hide();
     } else {
         header_tag_->setText(tag);
+        header_tag_->ensurePolished();
+        header_tag_->setMinimumWidth(
+            qMin(100, header_tag_->fontMetrics().horizontalAdvance(tag) + 16));
         header_tag_->show();
     }
 
@@ -400,7 +415,7 @@ void DetailPanel::RefreshView() {
 
     risky_banner_->setVisible(false);
 
-    username_value_->SetFullText(e.username.isEmpty()
+    username_value_->setText(e.username.isEmpty()
                                      ? QStringLiteral("(无用户名)")
                                      : e.username);
     username_copy_->setEnabled(!e.username.isEmpty());
@@ -408,21 +423,34 @@ void DetailPanel::RefreshView() {
     UpdatePasswordDisplay();
 
     if (e.website.isEmpty()) {
-        website_value_->SetFullText(QStringLiteral("(未填写)"));
+        website_value_->setText(QString());
         website_open_->setEnabled(false);
-        open_website_button_->setEnabled(false);
     } else {
-        website_value_->SetFullText(e.website);
+        website_value_->setText(e.website);
         website_open_->setEnabled(true);
-        open_website_button_->setEnabled(true);
     }
 
-    created_value_->setText(RelativeTime(e.created_at));
-    updated_value_->setText(RelativeTime(e.updated_at));
+    created_value_->setText(FormatTimestamp(e.created_at));
+    updated_value_->setText(FormatTimestamp(e.updated_at));
+    notes_value_->setText(e.notes);
+    title_value_->setText(e.title);
+    category_value_->setText(CategoryName(e.category_id));
+    package_value_->setText(e.app_package_name);
+    for (auto* label : {title_value_, username_value_, website_value_,
+                        notes_value_, category_value_, package_value_}) {
+        label->setAccessibleName(label->text());
+    }
+    header_edit_->setEnabled(!e.is_deleted && password_plain_.has_value());
+    header_delete_->setEnabled(!e.is_deleted);
+    header_favorite_->setEnabled(!e.is_deleted);
 }
 
 void DetailPanel::RefreshThemeAssets() {
     auto* theme = ThemeManager::Instance();
+    if (auto* shadow =
+            qobject_cast<QGraphicsDropShadowEffect*>(graphicsEffect())) {
+        shadow->setColor(theme->Color(QStringLiteral("shadow")));
+    }
     const auto icon = [theme](const QString& name, const QString& token,
                               int size) {
         return IconLoader::Load(name, theme->Color(token), size);
@@ -442,6 +470,10 @@ void DetailPanel::RefreshThemeAssets() {
     if (header_delete_) {
         header_delete_->setIcon(icon(QStringLiteral("trash-2"),
                                      QStringLiteral("danger"), kIconSize));
+    }
+    if (header_close_) {
+        header_close_->setIcon(icon(QStringLiteral("x"),
+                                    QStringLiteral("text-tertiary"), kIconSize));
     }
     if (header_favorite_) {
         const QString token = entry_ && entry_->is_favorite
@@ -470,40 +502,30 @@ void DetailPanel::RefreshThemeAssets() {
                                     QStringLiteral("text-tertiary"),
                                     kIconSize));
     }
-    if (copy_password_button_) {
-        copy_password_button_->setIcon(icon(
-            QStringLiteral("copy"), QStringLiteral("text-primary"),
-            kIconSize));
-    }
-    if (open_website_button_) {
-        open_website_button_->setIcon(icon(
-            QStringLiteral("external-link"), QStringLiteral("accent-fg"),
-            kIconSize));
-    }
     if (entry_) UpdatePasswordDisplay();
 }
 
 void DetailPanel::UpdatePasswordDisplay() {
     if (!entry_) return;
-    if (password_plain_.isEmpty()) {
-        password_value_->setText(QStringLiteral("(无法解密)"));
+    if (!password_plain_.has_value() || password_plain_->isEmpty()) {
+        password_value_->setText(password_plain_.has_value()
+                                     ? QString()
+                                     : QStringLiteral("(无法解密)"));
         password_copy_->setEnabled(false);
         password_toggle_->setEnabled(false);
-        copy_password_button_->setEnabled(false);
         return;
     }
     password_copy_->setEnabled(true);
     password_toggle_->setEnabled(true);
-    copy_password_button_->setEnabled(true);
     if (password_visible_) {
-        password_value_->setText(password_plain_);
+        password_value_->setText(*password_plain_);
         password_toggle_->setIcon(IconLoader::Load(
             QStringLiteral("eye-off"),
             ThemeManager::Instance()->Color(QStringLiteral("text-tertiary")),
             kIconSize));
         password_toggle_->setToolTip(QStringLiteral("隐藏密码"));
     } else {
-        password_value_->setText(QString(password_plain_.length(),
+        password_value_->setText(QString(password_plain_->length(),
                                           QChar(0x2022)));
         password_toggle_->setIcon(IconLoader::Load(
             QStringLiteral("eye"),
@@ -521,21 +543,10 @@ QString DetailPanel::CategoryName(std::int64_t category_id) const {
     return {};
 }
 
-QString DetailPanel::RelativeTime(std::int64_t ms_since_epoch) {
+QString DetailPanel::FormatTimestamp(std::int64_t ms_since_epoch) {
     if (ms_since_epoch <= 0) return QStringLiteral("—");
-    const std::int64_t now = QDateTime::currentMSecsSinceEpoch();
-    const std::int64_t diff = now - ms_since_epoch;
-    if (diff < 60 * 1000) return QStringLiteral("刚刚");
-    if (diff < 60 * 60 * 1000) {
-        return QStringLiteral("%1 分钟前").arg(diff / (60 * 1000));
-    }
-    if (diff < 24 * 60 * 60 * 1000LL) {
-        return QStringLiteral("%1 小时前").arg(diff / (60 * 60 * 1000));
-    }
-    const std::int64_t days = diff / (24 * 60 * 60 * 1000LL);
-    if (days < 30) return QStringLiteral("%1 天前").arg(days);
     const QDateTime dt = QDateTime::fromMSecsSinceEpoch(ms_since_epoch);
-    return dt.toString(QStringLiteral("yyyy-MM-dd"));
+    return dt.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
 }
 
 QString DetailPanel::AvatarInitials(const model::PasswordEntry& entry) {

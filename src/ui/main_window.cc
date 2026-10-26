@@ -2,7 +2,6 @@
 
 #include <QAction>
 #include <QActionGroup>
-#include <QMenu>
 #include <QApplication>
 #include <QDateTime>
 #include <QDesktopServices>
@@ -18,9 +17,12 @@
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QMessageBox>
+#include <QMenu>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPushButton>
 #include <QResizeEvent>
+#include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QStackedWidget>
 #include <QStyle>
@@ -70,7 +72,6 @@ constexpr int kSearchHeight = 36;
 constexpr int kIconSize = 16;
 constexpr int kSectionIconSize = 18;
 constexpr int kCardHeight = 60;
-constexpr int kDesktopBreakpoint = 1280;
 constexpr int kSidebarBreakpoint = 1024;
 constexpr int kSidebarCountRole = Qt::UserRole + 1;
 constexpr int kSidebarSystemRole = Qt::UserRole + 2;
@@ -224,17 +225,21 @@ MainWindow::MainWindow(const Deps& deps, QWidget* parent)
 
     workspace_content_ = new QWidget(workspace_);
     workspace_content_->setObjectName(QStringLiteral("VaultWorkspaceContent"));
+    workspace_content_->installEventFilter(this);
     workspace_content_layout_ = new QHBoxLayout(workspace_content_);
     workspace_content_layout_->setContentsMargins(0, 0, 0, 0);
     workspace_content_layout_->setSpacing(0);
     password_list_column_ = BuildPasswordListColumn();
     workspace_content_layout_->addWidget(password_list_column_, 1);
-    workspace_content_layout_->addWidget(BuildDetailColumn());
+    BuildDetailColumn();
+    detail_panel_->setParent(workspace_page_);
+    detail_panel_->hide();
     workspace_layout->addWidget(workspace_content_, 1);
     ws_layout->addWidget(workspace_, 1);
     central_stack_->addWidget(workspace_page_);
 
     editor_panel_ = new EditorPanel(workspace_page_);
+    editor_panel_->installEventFilter(this);
     connect(editor_panel_, &EditorPanel::SaveRequested, this,
             &MainWindow::OnEditorSaveRequested);
     connect(editor_panel_, &EditorPanel::CancelRequested, this,
@@ -581,6 +586,7 @@ QWidget* MainWindow::BuildWorkspaceHeader() {
 QWidget* MainWindow::BuildPasswordListColumn() {
     auto* column = new QFrame();
     column->setObjectName(QStringLiteral("PasswordListColumn"));
+    column->installEventFilter(this);
     column->setMinimumWidth(kPasswordListMinWidth);
     auto* layout = new QVBoxLayout(column);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -588,6 +594,7 @@ QWidget* MainWindow::BuildPasswordListColumn() {
 
     auto* title_row = new QWidget(column);
     title_row->setObjectName(QStringLiteral("ListTitleRow"));
+    title_row->installEventFilter(this);
     auto* title_layout = new QHBoxLayout(title_row);
     title_layout->setContentsMargins(28, 28, 28, 8);
     title_layout->setSpacing(12);
@@ -661,10 +668,27 @@ QWidget* MainWindow::BuildPasswordListColumn() {
     password_list_ = new QListWidget(column);
     password_list_->setObjectName(QStringLiteral("PasswordList"));
     password_list_->setFrameShape(QFrame::NoFrame);
-    password_list_->setSelectionMode(QAbstractItemView::SingleSelection);
+    password_list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    password_list_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(password_list_, &QListWidget::customContextMenuRequested, this,
+            [this](const QPoint& pos) {
+                auto* item = password_list_->itemAt(pos);
+                if (!item || selected_category_ == kSectionTrash) return;
+                if (!item->isSelected()) password_list_->setCurrentItem(item);
+                QMenu menu(this);
+                menu.setObjectName(QStringLiteral("PasswordContextMenu"));
+                auto* remove = menu.addAction(QStringLiteral("移入回收站"));
+                connect(remove, &QAction::triggered, this,
+                        &MainWindow::OnDeleteSelected);
+                menu.exec(password_list_->viewport()->mapToGlobal(pos));
+            });
+    password_list_->installEventFilter(this);
     password_list_->setSpacing(6);
     password_list_->setUniformItemSizes(true);
+    password_list_->viewport()->installEventFilter(this);
     connect(password_list_, &QListWidget::itemSelectionChanged, this,
+            &MainWindow::OnPasswordSelectionChanged);
+    connect(password_list_, &QListWidget::itemClicked, this,
             &MainWindow::OnPasswordSelectionChanged);
     layout->addWidget(password_list_, 1);
 
@@ -681,6 +705,13 @@ QWidget* MainWindow::BuildPasswordListColumn() {
 QWidget* MainWindow::BuildDetailColumn() {
     detail_panel_ = new DetailPanel();
     detail_panel_->setFixedWidth(kDetailWidth);
+    connect(detail_panel_, &DetailPanel::CloseRequested, this,
+            &MainWindow::ShowListPane);
+    auto* close_detail = new QAction(detail_panel_);
+    close_detail->setShortcut(QKeySequence(Qt::Key_Escape));
+    close_detail->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    detail_panel_->addAction(close_detail);
+    connect(close_detail, &QAction::triggered, this, &MainWindow::ShowListPane);
     connect(detail_panel_, &DetailPanel::EditRequested, this,
             &MainWindow::OnEditRequested);
     connect(detail_panel_, &DetailPanel::DeleteRequested, this,
@@ -937,7 +968,6 @@ QWidget* MainWindow::CreatePasswordCard(const model::PasswordEntry& entry) {
     auto* card = new QFrame();
     card->setObjectName(QStringLiteral("PasswordCard"));
     card->setFrameShape(QFrame::NoFrame);
-    card->setAttribute(Qt::WA_TransparentForMouseEvents);
     auto* row = new QHBoxLayout(card);
     row->setContentsMargins(12, 12, 12, 12);
     row->setSpacing(12);
@@ -988,6 +1018,23 @@ QWidget* MainWindow::CreatePasswordCard(const model::PasswordEntry& entry) {
         right_col->addWidget(star);
     }
     row->addLayout(right_col);
+
+    auto* remove = new QToolButton(card);
+    remove->setObjectName(QStringLiteral("PasswordCardDeleteButton"));
+    remove->setToolTip(QStringLiteral("移入回收站"));
+    remove->setAccessibleName(QStringLiteral("删除密码"));
+    remove->setFixedSize(30, 30);
+    remove->setCursor(Qt::PointingHandCursor);
+    remove->setIcon(IconLoader::Load(
+        QStringLiteral("trash-2"),
+        ThemeManager::Instance()->Color(QStringLiteral("danger")), 16));
+    remove->setEnabled(!entry.is_deleted);
+    connect(remove, &QToolButton::clicked, this,
+            [this, id = entry.id]() { OnDeleteRequested(id); });
+    row->addWidget(remove);
+    for (auto* label : card->findChildren<QLabel*>()) {
+        label->setAttribute(Qt::WA_TransparentForMouseEvents);
+    }
 
     card->setMinimumHeight(kCardHeight);
     return card;
@@ -1077,8 +1124,11 @@ void MainWindow::RefreshPasswordList() {
         if (!still.has_value()) {
             detail_panel_->ClearEntry();
             showing_detail_ = false;
+        } else {
+            detail_panel_->SetEntry(*still, DecryptPassword(*still));
         }
     }
+    UpdateResponsiveLayout();
 }
 
 std::optional<model::PasswordEntry> MainWindow::FindEntry(
@@ -1092,12 +1142,17 @@ std::optional<model::PasswordEntry> MainWindow::FindEntry(
 void MainWindow::OnPasswordSelectionChanged() {
     if (suppress_selection_ || !deps_.session_key) return;
     const auto selected = password_list_->selectedItems();
-    auto* item =
-        selected.isEmpty() ? password_list_->currentItem() : selected.first();
-    if (!item) {
-        if (detail_panel_) detail_panel_->ClearEntry();
+    if (selected.isEmpty()) {
+        ShowListPane();
         return;
     }
+    if (selected.size() > 1) {
+        detail_panel_->ClearEntry();
+        showing_detail_ = false;
+        UpdateResponsiveLayout();
+        return;
+    }
+    auto* item = selected.first();
     const std::int64_t id = item->data(Qt::UserRole).toLongLong();
     auto entry = FindEntry(id);
     if (!entry.has_value()) return;
@@ -1106,12 +1161,16 @@ void MainWindow::OnPasswordSelectionChanged() {
     UpdateResponsiveLayout();
 }
 
-QString MainWindow::DecryptPassword(const model::PasswordEntry& entry) const {
-    if (!deps_.session_key) return {};
+std::optional<QString> MainWindow::DecryptPassword(
+    const model::PasswordEntry& entry) const {
+    if (!deps_.session_key) return std::nullopt;
+    if (entry.encrypted_password.isEmpty() && entry.password_iv.isEmpty()) {
+        return QString();
+    }
     if (entry.encrypted_password.isEmpty() ||
         entry.password_iv.size() !=
             static_cast<int>(crypto::CryptoService::kIvSize)) {
-        return {};
+        return std::nullopt;
     }
     const auto plaintext_opt = crypto::CryptoService::DecryptGcm(
         deps_.session_key->data(), deps_.session_key->size(),
@@ -1120,13 +1179,16 @@ QString MainWindow::DecryptPassword(const model::PasswordEntry& entry) const {
         reinterpret_cast<const std::uint8_t*>(
             entry.encrypted_password.constData()),
         entry.encrypted_password.size());
-    if (!plaintext_opt.has_value()) return {};
+    if (!plaintext_opt.has_value()) return std::nullopt;
     return QString::fromUtf8(*plaintext_opt);
 }
 
 bool MainWindow::EncryptAndAssign(model::PasswordEntry* entry,
                                    const QString& plaintext) const {
-    if (!deps_.session_key || !entry) return false;
+    if (!deps_.session_key ||
+        deps_.session_key->size() != crypto::SessionKey::kSize || !entry) {
+        return false;
+    }
     const QByteArray utf8 = plaintext.toUtf8();
     QByteArray iv(static_cast<int>(crypto::CryptoService::kIvSize), 0);
     crypto::Random::Fill(reinterpret_cast<std::uint8_t*>(iv.data()), iv.size());
@@ -1296,13 +1358,19 @@ void MainWindow::PersistCategoryOrder() {
 }
 
 void MainWindow::OpenEditDialog(std::int64_t entry_id) {
-    if (!editor_panel_) return;
+    if (!editor_panel_ || !deps_.session_key) return;
     auto found = deps_.password_dao->FindById(entry_id);
     if (!found.has_value()) return;
     QList<model::Category> cats;
     for (const auto& c : categories_) cats.append(c);
     editor_panel_->SetCategories(std::move(cats));
-    EditorPanel::DecryptedEntry decrypted{*found, DecryptPassword(*found)};
+    const auto password = DecryptPassword(*found);
+    if (!password.has_value()) {
+        Toast::Show(this, QStringLiteral("无法解密密码，未打开编辑器"),
+                    Toast::Level::kError);
+        return;
+    }
+    EditorPanel::DecryptedEntry decrypted{*found, *password};
     editor_entry_id_ = entry_id;
     editor_panel_->OpenForEdit(decrypted);
 }
@@ -1355,13 +1423,30 @@ void MainWindow::OnEditRequested(std::int64_t entry_id) {
 }
 
 void MainWindow::OnDeleteRequested(std::int64_t entry_id) {
+    DeleteEntries({entry_id});
+}
+
+void MainWindow::OnDeleteSelected() {
+    std::vector<std::int64_t> ids;
+    for (const auto* item : password_list_->selectedItems()) {
+        ids.push_back(item->data(Qt::UserRole).toLongLong());
+    }
+    DeleteEntries(ids);
+}
+
+void MainWindow::DeleteEntries(const std::vector<std::int64_t>& ids) {
+    if (!deps_.session_key || !deps_.password_dao || ids.empty() ||
+        selected_category_ == kSectionTrash) return;
     auto reply = QMessageBox::question(
         this, QStringLiteral("删除确认"),
-        QStringLiteral("确定将该密码移至回收站吗？"),
+        ids.size() == 1 ? QStringLiteral("确定将该密码移至回收站吗？")
+                        : QStringLiteral("确定将选中的 %1 条密码移至回收站吗？")
+                              .arg(ids.size()),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (reply != QMessageBox::Yes) return;
-    if (!deps_.password_dao->LogicalDelete(
-            entry_id, QDateTime::currentMSecsSinceEpoch())) {
+    if (!deps_.session_key) return;
+    if (!deps_.password_dao->BulkLogicalDelete(
+            ids, QDateTime::currentMSecsSinceEpoch())) {
         Toast::Show(this, QStringLiteral("删除失败"), Toast::Level::kError);
         return;
     }
@@ -1373,16 +1458,18 @@ void MainWindow::OnDeleteRequested(std::int64_t entry_id) {
 }
 
 void MainWindow::OnCopyPasswordRequested(std::int64_t entry_id) {
+    if (!deps_.session_key) return;
     auto entry = FindEntry(entry_id);
     if (!entry) entry = deps_.password_dao->FindById(entry_id);
     if (!entry) return;
-    const QString plain = DecryptPassword(*entry);
-    if (plain.isEmpty()) {
+    const auto plain = DecryptPassword(*entry);
+    if (!plain.has_value()) {
         Toast::Show(this, QStringLiteral("无法解密密码"),
                     Toast::Level::kError);
         return;
     }
-    ClipboardManager::Instance()->CopySensitive(plain);
+    if (plain->isEmpty()) return;
+    ClipboardManager::Instance()->CopySensitive(*plain);
     Toast::Show(this, QStringLiteral("密码已复制，%1 秒后清除")
                           .arg(ClipboardManager::Instance()->timeout_ms() /
                                 1000),
@@ -1390,6 +1477,7 @@ void MainWindow::OnCopyPasswordRequested(std::int64_t entry_id) {
 }
 
 void MainWindow::OnCopyUsernameRequested(std::int64_t entry_id) {
+    if (!deps_.session_key) return;
     auto entry = FindEntry(entry_id);
     if (!entry) entry = deps_.password_dao->FindById(entry_id);
     if (!entry || entry->username.isEmpty()) return;
@@ -1398,6 +1486,7 @@ void MainWindow::OnCopyUsernameRequested(std::int64_t entry_id) {
 }
 
 void MainWindow::OnOpenWebsiteRequested(std::int64_t entry_id) {
+    if (!deps_.session_key) return;
     auto entry = FindEntry(entry_id);
     if (!entry) entry = deps_.password_dao->FindById(entry_id);
     if (!entry || entry->website.isEmpty()) return;
@@ -1411,15 +1500,14 @@ void MainWindow::OnOpenWebsiteRequested(std::int64_t entry_id) {
 }
 
 void MainWindow::OnFavoriteToggleRequested(std::int64_t entry_id, bool desired) {
-    deps_.password_dao->SetFavorite(entry_id, desired);
+    if (!deps_.session_key) return;
+    if (!deps_.password_dao->SetFavorite(entry_id, desired)) {
+        Toast::Show(this, QStringLiteral("收藏更新失败"), Toast::Level::kError);
+        Reload();
+        return;
+    }
     if (deps_.sync_scheduler) deps_.sync_scheduler->MarkDirty();
     Reload();
-    if (detail_panel_) {
-        auto entry = FindEntry(entry_id);
-        if (entry) {
-            detail_panel_->SetEntry(*entry, DecryptPassword(*entry));
-        }
-    }
 }
 
 void MainWindow::OnSyncStarted() {
@@ -1478,50 +1566,68 @@ void MainWindow::UpdateResponsiveLayout() {
     }
 
     const int client_width = centralWidget() ? centralWidget()->width() : width();
-    const bool desktop = client_width >= kDesktopBreakpoint;
     const bool compact = client_width < kSidebarBreakpoint;
     const bool show_detail =
-        !desktop && showing_detail_ && detail_panel_->HasEntry();
+        showing_detail_ && detail_panel_->HasEntry() &&
+        (!editor_panel_ || !editor_panel_->isVisible());
 
     if (!compact) compact_sidebar_expanded_ = false;
     sidebar_->setVisible(!compact || compact_sidebar_expanded_);
     navigation_button_->setVisible(compact);
     back_to_list_button_->setVisible(show_detail);
 
-    if (desktop) {
-        password_list_column_->setMinimumWidth(kPasswordListMinWidth);
-        password_list_column_->setVisible(true);
-        detail_panel_->setMinimumWidth(kDetailWidth);
-        detail_panel_->setMaximumWidth(kDetailWidth);
-        detail_panel_->setSizePolicy(QSizePolicy::Fixed,
-                                     QSizePolicy::Expanding);
-        detail_panel_->setVisible(true);
-        workspace_content_layout_->setStretchFactor(password_list_column_, 1);
-        workspace_content_layout_->setStretchFactor(detail_panel_, 0);
-        search_container_->setMinimumWidth(kSearchWidth);
-        search_container_->setMaximumWidth(kSearchWidth);
-        return;
-    }
-
     password_list_column_->setMinimumWidth(0);
-    password_list_column_->setVisible(!show_detail);
-    detail_panel_->setMinimumWidth(0);
-    detail_panel_->setMaximumWidth(QWIDGETSIZE_MAX);
-    detail_panel_->setSizePolicy(QSizePolicy::Expanding,
-                                 QSizePolicy::Expanding);
+    password_list_column_->setVisible(true);
+    const int drawer_width = std::min(kDetailWidth, workspace_page_->width());
+    detail_panel_->setFixedWidth(drawer_width);
+    detail_panel_->setGeometry(workspace_page_->width() - drawer_width, 0,
+                               drawer_width, workspace_page_->height());
     detail_panel_->setVisible(show_detail);
-    workspace_content_layout_->setStretchFactor(password_list_column_,
-                                                show_detail ? 0 : 1);
-    workspace_content_layout_->setStretchFactor(detail_panel_,
-                                                show_detail ? 1 : 0);
+    if (show_detail) detail_panel_->raise();
     search_container_->setMinimumWidth(compact ? 120 : kSearchWidth);
     search_container_->setMaximumWidth(kSearchWidth);
 }
 
 void MainWindow::ShowListPane() {
+    if (detail_panel_) detail_panel_->ClearEntry();
     showing_detail_ = false;
     UpdateResponsiveLayout();
-    if (password_list_) password_list_->setFocus();
+    if (password_list_) {
+        const QSignalBlocker blocker(password_list_);
+        password_list_->setFocus();
+        password_list_->clearSelection();
+        password_list_->setCurrentItem(nullptr);
+    }
+}
+
+bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == editor_panel_ &&
+        (event->type() == QEvent::Show || event->type() == QEvent::Hide)) {
+        UpdateResponsiveLayout();
+    }
+    if (watched == password_list_ && event->type() == QEvent::KeyPress) {
+        const auto* key = static_cast<QKeyEvent*>(event);
+        if (key->key() == Qt::Key_Delete && key->modifiers() == Qt::NoModifier) {
+            OnDeleteSelected();
+            return true;
+        }
+    }
+    if (watched == workspace_content_ && event->type() == QEvent::Resize) {
+        UpdateResponsiveLayout();
+    }
+    if (password_list_ && event->type() == QEvent::MouseButtonPress) {
+        const auto* mouse = static_cast<QMouseEvent*>(event);
+        const bool list_blank = watched == password_list_->viewport() &&
+            !password_list_->itemAt(mouse->position().toPoint());
+        if (mouse->button() == Qt::LeftButton &&
+            (list_blank || watched == password_list_column_ ||
+             watched->objectName() == QStringLiteral("ListTitleRow") ||
+             watched == workspace_content_)) {
+            ShowListPane();
+            return true;
+        }
+    }
+    return QMainWindow::eventFilter(watched, event);
 }
 
 void MainWindow::ToggleCompactSidebar() {
@@ -1536,6 +1642,12 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
 }
 
 void MainWindow::keyPressEvent(QKeyEvent* event) {
+    if (event->key() == Qt::Key_Escape &&
+        (showing_detail_ || !password_list_->selectedItems().isEmpty())) {
+        ShowListPane();
+        event->accept();
+        return;
+    }
     if (event->key() == Qt::Key_F &&
         (event->modifiers() & Qt::ControlModifier)) {
         if (search_) search_->setFocus();

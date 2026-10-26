@@ -358,9 +358,21 @@ QMainWindow, #WorkspaceRoot {
 /* ---------- Detail panel ---------- */
 
 #DetailPanel {
-    background-color: var(--detail-bg);
+    background-color: var(--card);
+    border-left: 1px solid var(--border-panel-2);
+    border-top-right-radius: var(--radius-shell);
     border-bottom-right-radius: var(--radius-shell);
 }
+
+#DetailScroll,
+#DetailContent { background-color: var(--card); }
+
+#PasswordCardDeleteButton {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+}
+#PasswordCardDeleteButton:hover { background-color: var(--danger-soft); }
 
 #DetailEmpty { background: transparent; }
 #DetailEmptyIcon {
@@ -461,7 +473,11 @@ QMainWindow, #WorkspaceRoot {
     background: transparent;
     margin-bottom: 8px;
 }
-#DetailFieldValue {
+#DetailFieldValue,
+#DetailTitleValue,
+#DetailNotesValue,
+#DetailCategoryValue,
+#DetailPackageValue {
     color: var(--ink-2);
     font-size: 12px;
     font-weight: 500;
@@ -510,39 +526,6 @@ QMainWindow, #WorkspaceRoot {
     color: var(--muted-6);
     font-size: 11px;
     background: transparent;
-}
-
-#DetailPrimaryButton {
-    background-color: var(--primary);
-    color: var(--accent-fg);
-    border: 1px solid var(--primary);
-    border-radius: var(--radius-md);
-    min-height: 36px;
-    max-height: 36px;
-    font-weight: 600;
-    font-size: 12px;
-}
-#DetailPrimaryButton:hover {
-    background-color: var(--primary-pressed);
-    border-color: var(--primary-pressed);
-}
-#DetailPrimaryButton:pressed {
-    background-color: var(--primary-pressed);
-    border-color: var(--primary-pressed);
-}
-#DetailSecondaryButton {
-    background-color: transparent;
-    color: var(--body-2);
-    border: 1px solid var(--border-panel);
-    border-radius: var(--radius-md);
-    min-height: 36px;
-    max-height: 36px;
-    font-weight: 500;
-    font-size: 12px;
-}
-#DetailSecondaryButton:hover {
-    background-color: var(--primary-hover-surface-6);
-    border-color: var(--border-panel);
 }
 
 /* ---------- Legacy Category tree (kept for other dialogs) ---------- */

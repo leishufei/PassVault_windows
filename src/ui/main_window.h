@@ -69,6 +69,7 @@ class MainWindow : public QMainWindow {
  protected:
     void keyPressEvent(QKeyEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
  private slots:
     void OnNewPassword();
@@ -85,6 +86,7 @@ class MainWindow : public QMainWindow {
                         const QString& message);
     void OnEditRequested(std::int64_t entry_id);
     void OnDeleteRequested(std::int64_t entry_id);
+    void OnDeleteSelected();
     void OnCopyPasswordRequested(std::int64_t entry_id);
     void OnCopyUsernameRequested(std::int64_t entry_id);
     void OnOpenWebsiteRequested(std::int64_t entry_id);
@@ -103,13 +105,15 @@ class MainWindow : public QMainWindow {
     void RefreshThemeAssets();
     void UpdateResponsiveLayout();
     void ShowListPane();
+    void DeleteEntries(const std::vector<std::int64_t>& ids);
     void ToggleCompactSidebar();
     void UpdateSyncStatus(sync::SyncManager::StatusKind kind,
                           const QString& message);
     QWidget* CreatePasswordCard(const model::PasswordEntry& entry);
     std::optional<model::PasswordEntry> FindEntry(std::int64_t id) const;
 
-    QString DecryptPassword(const model::PasswordEntry& entry) const;
+    std::optional<QString> DecryptPassword(
+        const model::PasswordEntry& entry) const;
     bool EncryptAndAssign(model::PasswordEntry* entry,
                           const QString& plaintext) const;
 

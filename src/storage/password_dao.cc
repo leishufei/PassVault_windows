@@ -1,5 +1,7 @@
 #include "storage/password_dao.h"
 
+#include <QDateTime>
+
 #include <QDebug>
 
 #include <exception>
@@ -297,9 +299,10 @@ bool PasswordDao::SetFavorite(std::int64_t id, bool is_favorite) {
     try {
         Statement stmt(
             db_.handle(),
-            "UPDATE password_entries SET isFavorite = ? WHERE id = ?");
+            "UPDATE password_entries SET isFavorite = ?, updatedAt = ? WHERE id = ?");
         stmt.BindBool(1, is_favorite);
-        stmt.BindInt64(2, id);
+        stmt.BindInt64(2, QDateTime::currentMSecsSinceEpoch());
+        stmt.BindInt64(3, id);
         return stmt.StepDone() > 0;
     } catch (const std::exception& ex) {
         qWarning() << "PasswordDao::SetFavorite failed:" << ex.what();

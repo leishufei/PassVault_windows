@@ -29,13 +29,14 @@ class DetailPanel : public QFrame {
 
     void SetCategories(QList<model::Category> categories);
     void SetEntry(const model::PasswordEntry& entry,
-                  const QString& decrypted_password);
+                  const std::optional<QString>& decrypted_password);
     void ClearEntry();
 
     bool HasEntry() const;
     std::int64_t entry_id() const;
 
  signals:
+    void CloseRequested();
     void EditRequested(std::int64_t entry_id);
     void DeleteRequested(std::int64_t entry_id);
     void CopyPasswordRequested(std::int64_t entry_id);
@@ -52,7 +53,7 @@ class DetailPanel : public QFrame {
     void UpdatePasswordDisplay();
 
     QString CategoryName(std::int64_t category_id) const;
-    static QString RelativeTime(std::int64_t ms_since_epoch);
+    static QString FormatTimestamp(std::int64_t ms_since_epoch);
     static QString AvatarInitials(const model::PasswordEntry& entry);
 
     QStackedLayout* stack_ = nullptr;
@@ -66,27 +67,30 @@ class DetailPanel : public QFrame {
     QToolButton* header_favorite_ = nullptr;
     QPushButton* header_edit_ = nullptr;
     QToolButton* header_delete_ = nullptr;
+    QToolButton* header_close_ = nullptr;
 
     QWidget* risky_banner_ = nullptr;
     QLabel* risky_icon_ = nullptr;
 
-    ElidedLabel* username_value_ = nullptr;
+    QLabel* username_value_ = nullptr;
     QToolButton* username_copy_ = nullptr;
     QLabel* password_value_ = nullptr;
     QToolButton* password_toggle_ = nullptr;
     QToolButton* password_copy_ = nullptr;
-    ElidedLabel* website_value_ = nullptr;
+    QLabel* website_value_ = nullptr;
     QToolButton* website_open_ = nullptr;
 
     QLabel* created_value_ = nullptr;
     QLabel* updated_value_ = nullptr;
 
-    QPushButton* copy_password_button_ = nullptr;
-    QPushButton* open_website_button_ = nullptr;
+    QLabel* notes_value_ = nullptr;
+    QLabel* title_value_ = nullptr;
+    QLabel* category_value_ = nullptr;
+    QLabel* package_value_ = nullptr;
 
     QList<model::Category> categories_;
     std::optional<model::PasswordEntry> entry_;
-    QString password_plain_;
+    std::optional<QString> password_plain_;
     bool password_visible_ = false;
 };
 
