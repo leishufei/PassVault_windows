@@ -112,12 +112,6 @@ QString MasterPasswordDialog::NewPassword() const {
     return new_edit_ ? new_edit_->text() : QString();
 }
 
-void MasterPasswordDialog::SetHelloAvailable(bool available) {
-    if (hello_button_) {
-        hello_button_->setVisible(available && mode_ == Mode::kUnlock);
-    }
-}
-
 void MasterPasswordDialog::SetErrorText(const QString& text) {
     if (!error_) return;
     error_->setText(text);
@@ -244,14 +238,6 @@ void MasterPasswordDialog::BuildUi() {
     error_->setVisible(false);
     body_layout->addWidget(error_);
 
-    hello_button_ =
-        new QPushButton(QStringLiteral("使用 Windows Hello"), body);
-    hello_button_->setObjectName(QStringLiteral("HelloButton"));
-    hello_button_->setVisible(false);
-    hello_button_->setProperty("flat", true);
-    connect(hello_button_, &QPushButton::clicked, this,
-            &MasterPasswordDialog::HelloRequested);
-    body_layout->addWidget(hello_button_);
     card_layout->addWidget(body);
 
     auto* footer = new QWidget(card);
@@ -284,8 +270,7 @@ void MasterPasswordDialog::BuildUi() {
     if (old_edit_) setTabOrder(old_edit_, new_edit_);
     if (confirm_edit_) setTabOrder(new_edit_, confirm_edit_);
     setTabOrder(confirm_edit_ ? confirm_edit_ : new_edit_, preview_);
-    setTabOrder(preview_, hello_button_);
-    setTabOrder(hello_button_, cancel);
+    setTabOrder(preview_, cancel);
     setTabOrder(cancel, primary_);
     setTabOrder(primary_, close_button_);
     setTabOrder(close_button_, old_edit_ ? old_edit_ : new_edit_);

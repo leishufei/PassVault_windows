@@ -15,9 +15,9 @@
 #include <QPainter>
 #include <QPushButton>
 #include <QScrollArea>
-#include <QSignalSpy>
 #include <QSettings>
-#include <QSpinBox>
+#include <QSignalSpy>
+#include <QTest>
 #include <QStyle>
 #include <QStyleOptionButton>
 #include <QTabWidget>
@@ -103,11 +103,11 @@ class PreferencesPageTest : public ::testing::Test {
     QComboBox* themeCombo() {
         return page_.findChild<QComboBox*>(QStringLiteral("ThemeCombo"));
     }
-    QSpinBox* autoLockSpin() {
-        return page_.findChild<QSpinBox*>(QStringLiteral("AutoLockSpin"));
+    QComboBox* autoLockCombo() {
+        return page_.findChild<QComboBox*>(QStringLiteral("AutoLockCombo"));
     }
-    QSpinBox* clipboardSpin() {
-        return page_.findChild<QSpinBox*>(QStringLiteral("ClipboardSpin"));
+    QComboBox* clipboardCombo() {
+        return page_.findChild<QComboBox*>(QStringLiteral("ClipboardCombo"));
     }
     QPushButton* driveConnect() {
         return page_.findChild<QPushButton*>(QStringLiteral("DriveConnectButton"));
@@ -126,9 +126,6 @@ class PreferencesPageTest : public ::testing::Test {
     }
     QPushButton* changeMaster() {
         return page_.findChild<QPushButton*>(QStringLiteral("ChangeMasterButton"));
-    }
-    QCheckBox* helloToggle() {
-        return page_.findChild<QCheckBox*>(QStringLiteral("HelloToggle"));
     }
     QLabel* driveStatus() {
         return page_.findChild<QLabel*>(QStringLiteral("SyncStateText"));
@@ -165,22 +162,22 @@ TEST_F(PreferencesPageTest, ThemeComboEmitsSignal) {
     EXPECT_EQ(spy.at(0).at(0).toInt(), combo->itemData(1).toInt());
 }
 
-TEST_F(PreferencesPageTest, AutoLockSpinEmitsSignal) {
-    auto* spin = autoLockSpin();
+TEST_F(PreferencesPageTest, AutoLockComboEmitsSignal) {
+    auto* spin = autoLockCombo();
     ASSERT_NE(spin, nullptr);
     QSignalSpy spy(&page_, &PreferencesPage::AutoLockChanged);
-    spin->setValue(10);
+    spin->setCurrentIndex(spin->currentData().toInt() == 10 ? 2 : 1);
     EXPECT_EQ(spy.count(), 1);
-    EXPECT_EQ(spy.at(0).at(0).toInt(), 10);
+    EXPECT_EQ(spy.at(0).at(0).toInt(), spin->currentData().toInt());
 }
 
-TEST_F(PreferencesPageTest, ClipboardSpinEmitsSignal) {
-    auto* spin = clipboardSpin();
+TEST_F(PreferencesPageTest, ClipboardComboEmitsSignal) {
+    auto* spin = clipboardCombo();
     ASSERT_NE(spin, nullptr);
     QSignalSpy spy(&page_, &PreferencesPage::ClipboardTimeoutChanged);
-    spin->setValue(60);
+    spin->setCurrentIndex(spin->currentData().toInt() == 60 ? 3 : 2);
     EXPECT_EQ(spy.count(), 1);
-    EXPECT_EQ(spy.at(0).at(0).toInt(), 60);
+    EXPECT_EQ(spy.at(0).at(0).toInt(), spin->currentData().toInt());
 }
 
 TEST_F(PreferencesPageTest, DriveConnectButtonEmitsSignal) {
@@ -251,82 +248,20 @@ TEST_F(PreferencesPageTest, ChangeMasterGateControlsRequestWithoutChangingCopy) 
     }
 }
 
-TEST_F(PreferencesPageTest, UnavailableSecurityActionsCannotBeActivated) {
-    auto* leave_lock = page_.findChild<QCheckBox*>(
-        QStringLiteral("LeaveLockToggle"));
-    auto* wipe = page_.findChild<QToolButton*>(
-        QStringLiteral("ClearLocalDataButton"));
-    ASSERT_NE(leave_lock, nullptr);
+TEST_F(PreferencesPageTest, LeaveLockPersistsAndDangerousActionsStayGated) {
+    auto* toggle = page_.findChild<QCheckBox*>("LeaveLockToggle");
+    auto* wipe = page_.findChild<QToolButton*>("ClearLocalDataButton");
+    ASSERT_NE(toggle, nullptr);
     ASSERT_NE(wipe, nullptr);
-    EXPECT_FALSE(leave_lock->isEnabled());
-    EXPECT_FALSE(wipe->isEnabled());
-    QSignalSpy toggled(leave_lock, &QCheckBox::toggled);
-    QSignalSpy clicked(wipe, &QToolButton::clicked);
-    leave_lock->click();
-    wipe->click();
-    EXPECT_EQ(toggled.count(), 0);
-    EXPECT_EQ(clicked.count(), 0);
-}
-
-TEST_F(PreferencesPageTest, HelloToggleEmitsEnableSignal) {
-    auto* toggle = helloToggle();
-    ASSERT_NE(toggle, nullptr);
-    toggle->setEnabled(true);
-    QSignalSpy spy(&page_, &PreferencesPage::EnableHelloRequested);
+    EXPECT_TRUE(toggle->isEnabled());
     toggle->setChecked(true);
-    EXPECT_EQ(spy.count(), 1);
-}
-
-TEST_F(PreferencesPageTest, HelloToggleEmitsDisableSignal) {
-    auto* toggle = helloToggle();
-    ASSERT_NE(toggle, nullptr);
-    toggle->setEnabled(true);
-    toggle->setChecked(true);
-    QSignalSpy spy(&page_, &PreferencesPage::DisableHelloRequested);
+    PreferencesPage reopened;
+    EXPECT_TRUE(reopened.findChild<QCheckBox*>("LeaveLockToggle")->isChecked());
     toggle->setChecked(false);
-    EXPECT_EQ(spy.count(), 1);
-}
-
-TEST_F(PreferencesPageTest, HelloUnavailableDisablesAndUnchecksToggle) {
-    page_.SetHelloState(false, true);
-    auto* toggle = helloToggle();
-    ASSERT_NE(toggle, nullptr);
-    EXPECT_FALSE(toggle->isEnabled());
-    EXPECT_FALSE(toggle->isChecked());
-}
-
-TEST_F(PreferencesPageTest, HelloAvailableEnablesToggle) {
-    page_.SetHelloState(true, false);
-    auto* toggle = helloToggle();
-    ASSERT_NE(toggle, nullptr);
-    EXPECT_TRUE(toggle->isEnabled());
-}
-
-TEST_F(PreferencesPageTest, HelloEnrolledChecksToggle) {
-    page_.SetHelloState(true, true);
-    auto* toggle = helloToggle();
-    ASSERT_NE(toggle, nullptr);
-    EXPECT_TRUE(toggle->isEnabled());
-    EXPECT_TRUE(toggle->isChecked());
-}
-
-TEST_F(PreferencesPageTest, HelloAvailableButNotEnrolledLeavesToggleOff) {
-    page_.SetHelloState(true, true);
-    page_.SetHelloState(true, false);
-    auto* toggle = helloToggle();
-    ASSERT_NE(toggle, nullptr);
-    EXPECT_TRUE(toggle->isEnabled());
-    EXPECT_FALSE(toggle->isChecked());
-}
-
-TEST_F(PreferencesPageTest, HelloStateChangeDoesNotEmitRequests) {
-    QSignalSpy enable(&page_, &PreferencesPage::EnableHelloRequested);
-    QSignalSpy disable(&page_, &PreferencesPage::DisableHelloRequested);
-    page_.SetHelloState(true, true);
-    page_.SetHelloState(true, false);
-    page_.SetHelloState(false, false);
-    EXPECT_EQ(enable.count(), 0);
-    EXPECT_EQ(disable.count(), 0);
+    EXPECT_FALSE(QSettings().value("session/lock_on_minimize").toBool());
+    EXPECT_FALSE(wipe->isEnabled());
+    EXPECT_FALSE(changeMaster()->isEnabled());
+    EXPECT_EQ(page_.findChild<QCheckBox*>("HelloToggle"), nullptr);
 }
 
 TEST_F(PreferencesPageTest, SetGoogleDriveConnectedUpdatesStatus) {
@@ -479,14 +414,14 @@ TEST_F(PreferencesPageTest, LongAccountEmailDoesNotOverflowCard) {
     EXPECT_FALSE(email->wordWrap());
 }
 
-TEST_F(PreferencesPageTest, HelloToggleUsesSwitchVariant) {
-    EXPECT_EQ(helloToggle()->property("variant").toString(),
+TEST_F(PreferencesPageTest, LeaveLockToggleUsesSwitchVariant) {
+    EXPECT_EQ(page_.findChild<QCheckBox*>("LeaveLockToggle")->property("variant").toString(),
               QStringLiteral("switch"));
 }
 
-TEST_F(PreferencesPageTest, HelloToggleIndicatorMatchesFigmaSize) {
+TEST_F(PreferencesPageTest, LeaveLockToggleIndicatorMatchesFigmaSize) {
     auto* tabs = page_.findChild<QTabWidget*>(QStringLiteral("PreferencesTabs"));
-    auto* toggle = helloToggle();
+    auto* toggle = page_.findChild<QCheckBox*>("LeaveLockToggle");
     ASSERT_NE(tabs, nullptr);
     ASSERT_NE(toggle, nullptr);
     tabs->setCurrentIndex(2);
@@ -512,14 +447,14 @@ TEST_F(PreferencesPageTest, SwitchResourcesExist) {
     }
 }
 
-TEST_F(PreferencesPageTest, HelloToggleRendersDistinctSwitchStates) {
+TEST_F(PreferencesPageTest, LeaveLockToggleRendersDistinctSwitchStates) {
     QWidget parent;
     parent.resize(1200, 800);
     PreferencesPage page(&parent);
     page.resize(parent.size());
     auto* tabs =
         page.findChild<QTabWidget*>(QStringLiteral("PreferencesTabs"));
-    auto* toggle = page.findChild<QCheckBox*>(QStringLiteral("HelloToggle"));
+    auto* toggle = page.findChild<QCheckBox*>(QStringLiteral("LeaveLockToggle"));
     ASSERT_NE(tabs, nullptr);
     ASSERT_NE(toggle, nullptr);
     tabs->setCurrentIndex(2);
@@ -646,20 +581,20 @@ TEST(PreferencesPageThemeTest, ThemeRefreshPreservesTabAndControlValues) {
     theme->ApplyTheme(passvault::ui::Theme::kLight);
     PreferencesPage page;
     auto* tabs = page.findChild<QTabWidget*>(QStringLiteral("PreferencesTabs"));
-    auto* auto_lock = page.findChild<QSpinBox*>(QStringLiteral("AutoLockSpin"));
+    auto* auto_lock = page.findChild<QComboBox*>(QStringLiteral("AutoLockCombo"));
     auto* back = page.findChild<QToolButton*>(QStringLiteral("PreferencesBack"));
     ASSERT_NE(tabs, nullptr);
     ASSERT_NE(auto_lock, nullptr);
     ASSERT_NE(back, nullptr);
     tabs->setCurrentIndex(2);
-    auto_lock->setValue(17);
+    auto_lock->setCurrentIndex(auto_lock->findData(30));
     const QByteArray light_icon = IconPixels(back->icon());
 
     theme->ApplyTheme(passvault::ui::Theme::kDark);
 
     EXPECT_NE(IconPixels(back->icon()), light_icon);
     EXPECT_EQ(tabs->currentIndex(), 2);
-    EXPECT_EQ(auto_lock->value(), 17);
+    EXPECT_EQ(auto_lock->currentData().toInt(), 30);
 }
 
 TEST_F(PreferencesPageTest, OuterCardMaxWidthIsDefined) {
@@ -722,15 +657,46 @@ TEST_F(PreferencesPageTest, DefaultValuesWhenUnset) {
     settings.remove("session/auto_lock_minutes");
     settings.remove("ui/clipboard_seconds");
     PreferencesPage page;
-    auto* auto_lock = page.findChild<QSpinBox*>(QStringLiteral("AutoLockSpin"));
-    auto* clipboard = page.findChild<QSpinBox*>(QStringLiteral("ClipboardSpin"));
+    auto* auto_lock = page.findChild<QComboBox*>(QStringLiteral("AutoLockCombo"));
+    auto* clipboard = page.findChild<QComboBox*>(QStringLiteral("ClipboardCombo"));
     auto* theme = page.findChild<QComboBox*>(QStringLiteral("ThemeCombo"));
     ASSERT_NE(auto_lock, nullptr);
     ASSERT_NE(clipboard, nullptr);
     ASSERT_NE(theme, nullptr);
-    EXPECT_EQ(auto_lock->value(), 5);
-    EXPECT_EQ(clipboard->value(), 30);
+    EXPECT_EQ(auto_lock->currentData().toInt(), 5);
+    EXPECT_EQ(clipboard->currentData().toInt(), 30);
     EXPECT_EQ(theme->count(), 3);
+}
+
+TEST_F(PreferencesPageTest, TimeChoicesPersistAndLegacyValuesUseDefaults) {
+    auto* auto_lock = autoLockCombo();
+    auto* clipboard = clipboardCombo();
+    ASSERT_NE(auto_lock, nullptr);
+    ASSERT_NE(clipboard, nullptr);
+    ASSERT_EQ(auto_lock->count(), 4);
+    ASSERT_EQ(clipboard->count(), 5);
+    for (int i = 0; i < auto_lock->count(); ++i) {
+        EXPECT_EQ(auto_lock->itemData(i).toInt(), (QList<int>{5, 10, 30, 60})[i]);
+        auto_lock->setCurrentIndex(i);
+        PreferencesPage reopened;
+        EXPECT_EQ(reopened.findChild<QComboBox*>("AutoLockCombo")->currentData(),
+                  auto_lock->currentData());
+    }
+    for (int i = 0; i < clipboard->count(); ++i) {
+        EXPECT_EQ(clipboard->itemData(i).toInt(),
+                  (QList<int>{15, 30, 60, 120, 300})[i]);
+        clipboard->setCurrentIndex(i);
+        PreferencesPage reopened;
+        EXPECT_EQ(reopened.findChild<QComboBox*>("ClipboardCombo")->currentData(),
+                  clipboard->currentData());
+    }
+    QSettings().setValue("session/auto_lock_minutes", 17);
+    QSettings().setValue("ui/clipboard_seconds", 42);
+    PreferencesPage migrated;
+    EXPECT_EQ(migrated.findChild<QComboBox*>("AutoLockCombo")->currentData().toInt(), 5);
+    EXPECT_EQ(migrated.findChild<QComboBox*>("ClipboardCombo")->currentData().toInt(), 30);
+    EXPECT_EQ(QSettings().value("session/auto_lock_minutes").toInt(), 5);
+    EXPECT_EQ(QSettings().value("ui/clipboard_seconds").toInt(), 30);
 }
 
 }  // namespace

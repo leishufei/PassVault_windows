@@ -22,6 +22,7 @@
 #include <QPainter>
 #include <QPushButton>
 #include <QResizeEvent>
+#include <QSettings>
 #include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QStackedWidget>
@@ -29,6 +30,8 @@
 #include <QStyledItemDelegate>
 #include <QStyleOptionViewItem>
 #include <QToolButton>
+#include <QTimer>
+#include <QWindowStateChangeEvent>
 #include <QUrl>
 #include <QUuid>
 #include <QVBoxLayout>
@@ -1641,7 +1644,24 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
     UpdateResponsiveLayout();
 }
 
+void MainWindow::changeEvent(QEvent* event) {
+    QMainWindow::changeEvent(event);
+    if (event->type() != QEvent::WindowStateChange || !isMinimized()) return;
+    const auto* state = static_cast<QWindowStateChangeEvent*>(event);
+    if ((state->oldState() & Qt::WindowMinimized) || !deps_.session_key ||
+        !QSettings().value("session/lock_on_minimize", false).toBool()) return;
+    QTimer::singleShot(0, this, [this]() {
+        if (deps_.session_key) emit LockRequested();
+    });
+}
+
 void MainWindow::keyPressEvent(QKeyEvent* event) {
+    if (event->key() == Qt::Key_Escape &&
+        central_stack_->currentWidget() == preferences_page_) {
+        central_stack_->setCurrentWidget(workspace_page_);
+        event->accept();
+        return;
+    }
     if (event->key() == Qt::Key_Escape &&
         (showing_detail_ || !password_list_->selectedItems().isEmpty())) {
         ShowListPane();

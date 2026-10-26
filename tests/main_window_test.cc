@@ -1067,4 +1067,36 @@ TEST_F(MainWindowTest, ContextMenuDeletesTheExistingMultipleSelection) {
     EXPECT_EQ(password_dao_->ListActive().size(), 1u);
 }
 
+TEST_F(MainWindowTest, EscapeFromSettingsReturnsToWorkspace) {
+    window_->show();
+    QApplication::processEvents();
+    settingsButton()->click();
+    auto* tabs = window_->preferences_page()->findChild<QTabWidget*>("PreferencesTabs");
+    ASSERT_NE(tabs, nullptr);
+    tabs->setFocus();
+    QTest::keyClick(tabs, Qt::Key_Escape);
+    EXPECT_FALSE(window_->preferences_page()->isVisible());
+    EXPECT_TRUE(passwords()->isVisible());
+}
+
+TEST_F(MainWindowTest, MinimizeLockRespectsSettingAndSession) {
+    QSignalSpy locked(window_.get(), &MainWindow::LockRequested);
+    QSettings().setValue("session/lock_on_minimize", false);
+    window_->show();
+    window_->showMinimized();
+    QApplication::processEvents();
+    EXPECT_EQ(locked.count(), 0);
+    window_->showNormal();
+    QSettings().setValue("session/lock_on_minimize", true);
+    window_->showMinimized();
+    QApplication::processEvents();
+    EXPECT_EQ(locked.count(), 1);
+    window_->showNormal();
+    window_->SetSessionKey(nullptr);
+    window_->showMinimized();
+    QApplication::processEvents();
+    EXPECT_EQ(locked.count(), 1);
+    QSettings().setValue("session/lock_on_minimize", false);
+}
+
 }  // namespace

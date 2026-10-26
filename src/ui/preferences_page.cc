@@ -10,7 +10,7 @@
 #include <QScrollArea>
 #include <QSettings>
 #include <QSignalBlocker>
-#include <QSpinBox>
+#include <QShortcut>
 #include <QTabWidget>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -171,6 +171,9 @@ PreferencesPage::PreferencesPage(QWidget* parent) : QWidget(parent) {
     root->setSpacing(0);
 
     root->addWidget(BuildHeader());
+    auto* back = new QShortcut(QKeySequence(Qt::Key_Escape), this);
+    back->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(back, &QShortcut::activated, this, &PreferencesPage::BackRequested);
 
     auto* scroll = new QScrollArea(this);
     scroll->setObjectName(QStringLiteral("PreferencesScroll"));
@@ -290,42 +293,54 @@ QWidget* PreferencesPage::BuildGeneralTab() {
                                  theme_combo_, page));
     v->addWidget(MakeRowSeparator(page));
 
-    auto_lock_spin_ = new QSpinBox;
-    auto_lock_spin_->setObjectName(QStringLiteral("AutoLockSpin"));
-    auto_lock_spin_->setRange(1, 120);
-    auto_lock_spin_->setSuffix(QStringLiteral(" 分钟"));
-    auto_lock_spin_->setValue(LoadInt(kAutoLockKey, 5));
-    auto_lock_spin_->setMinimumWidth(140);
-    connect(auto_lock_spin_,
-            static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), this,
-            [this](int val) {
-                SaveInt(kAutoLockKey, val);
-                emit AutoLockChanged(val);
+    auto_lock_combo_ = new QComboBox;
+    auto_lock_combo_->setObjectName(QStringLiteral("AutoLockCombo"));
+    for (int minutes : {5, 10, 30, 60}) {
+        auto_lock_combo_->addItem(
+            minutes == 60 ? QStringLiteral("1 小时")
+                          : QStringLiteral("%1 分钟").arg(minutes), minutes);
+    }
+    int auto_lock_index = auto_lock_combo_->findData(LoadInt(kAutoLockKey, 5));
+    if (auto_lock_index < 0) auto_lock_index = 0;
+    auto_lock_combo_->setCurrentIndex(auto_lock_index);
+    SaveInt(kAutoLockKey, auto_lock_combo_->currentData().toInt());
+    auto_lock_combo_->setMinimumWidth(140);
+    connect(auto_lock_combo_, &QComboBox::currentIndexChanged, this,
+            [this](int) {
+                const int minutes = auto_lock_combo_->currentData().toInt();
+                SaveInt(kAutoLockKey, minutes);
+                emit AutoLockChanged(minutes);
             });
     v->addWidget(MakeSectionHeader(QStringLiteral("安全"), page));
     v->addWidget(MakeSettingRow(QStringLiteral("lock-keyhole"),
                                  QStringLiteral("空闲自动锁定"),
                                  QStringLiteral("无操作超过设定时间后自动锁定应用"),
-                                 auto_lock_spin_, page));
+                                 auto_lock_combo_, page));
     v->addWidget(MakeRowSeparator(page));
 
     v->addWidget(MakeSectionHeader(QStringLiteral("隐私"), page));
-    clipboard_spin_ = new QSpinBox;
-    clipboard_spin_->setObjectName(QStringLiteral("ClipboardSpin"));
-    clipboard_spin_->setRange(5, 300);
-    clipboard_spin_->setSuffix(QStringLiteral(" 秒"));
-    clipboard_spin_->setValue(LoadInt(kClipboardKey, 30));
-    clipboard_spin_->setMinimumWidth(140);
-    connect(clipboard_spin_,
-            static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), this,
-            [this](int val) {
-                SaveInt(kClipboardKey, val);
-                emit ClipboardTimeoutChanged(val);
+    clipboard_combo_ = new QComboBox;
+    clipboard_combo_->setObjectName(QStringLiteral("ClipboardCombo"));
+    for (int seconds : {15, 30, 60, 120, 300}) {
+        clipboard_combo_->addItem(
+            seconds < 60 ? QStringLiteral("%1 秒").arg(seconds)
+                         : QStringLiteral("%1 分钟").arg(seconds / 60), seconds);
+    }
+    int clipboard_index = clipboard_combo_->findData(LoadInt(kClipboardKey, 30));
+    if (clipboard_index < 0) clipboard_index = 1;
+    clipboard_combo_->setCurrentIndex(clipboard_index);
+    SaveInt(kClipboardKey, clipboard_combo_->currentData().toInt());
+    clipboard_combo_->setMinimumWidth(140);
+    connect(clipboard_combo_, &QComboBox::currentIndexChanged, this,
+            [this](int) {
+                const int seconds = clipboard_combo_->currentData().toInt();
+                SaveInt(kClipboardKey, seconds);
+                emit ClipboardTimeoutChanged(seconds);
             });
     v->addWidget(MakeSettingRow(QStringLiteral("copy"),
                                  QStringLiteral("剪贴板自动清空"),
                                  QStringLiteral("复制密码后经过设定时间自动清除"),
-                                 clipboard_spin_, page));
+                                 clipboard_combo_, page));
     v->addWidget(MakeRowSeparator(page));
 
     v->addWidget(MakeSectionHeader(QStringLiteral("数据导入与导出"), page));
@@ -584,35 +599,15 @@ QWidget* PreferencesPage::BuildSecurityTab() {
         change_master_desc_, change_master_button_, page));
     v->addWidget(MakeRowSeparator(page));
 
-    hello_toggle_ = new QCheckBox;
-    hello_toggle_->setObjectName(QStringLiteral("HelloToggle"));
-    hello_toggle_->setProperty("variant", "switch");
-    hello_toggle_->setAccessibleName(QStringLiteral("Windows Hello"));
-    hello_toggle_->setEnabled(false);
-    connect(hello_toggle_, &QCheckBox::toggled, this, [this](bool on) {
-        if (on) {
-            emit EnableHelloRequested();
-        } else {
-            emit DisableHelloRequested();
-        }
-    });
-
-    hello_desc_ = new QLabel(QStringLiteral("检测中..."));
-    hello_desc_->setObjectName(QStringLiteral("SettingRowDesc"));
-    hello_desc_->setWordWrap(true);
-
-    v->addWidget(MakeSettingRowWithLabel(
-        QStringLiteral("shield-check"), QStringLiteral("Windows Hello"),
-        hello_desc_, hello_toggle_, page));
-    v->addWidget(MakeRowSeparator(page));
-
-    // Keep unavailable actions disabled until their behavior is verified.
     auto* leave_lock = new QCheckBox;
     leave_lock->setObjectName(QStringLiteral("LeaveLockToggle"));
     leave_lock->setProperty("variant", "switch");
     leave_lock->setAccessibleName(QStringLiteral("离开时锁定"));
-    leave_lock->setEnabled(false);
-    leave_lock->setToolTip(QStringLiteral("离开时锁定暂不可用"));
+    leave_lock->setChecked(QSettings().value("session/lock_on_minimize", false)
+                               .toBool());
+    connect(leave_lock, &QCheckBox::toggled, this, [](bool enabled) {
+        QSettings().setValue("session/lock_on_minimize", enabled);
+    });
     v->addWidget(MakeSettingRow(
         QStringLiteral("lock-keyhole"), QStringLiteral("离开时锁定"),
         QStringLiteral("最小化主窗口时锁定保险库"),
@@ -681,36 +676,6 @@ void PreferencesPage::RefreshThemeAssets() {
                             name, ThemeManager::Instance()->Color(token), size)
                             .pixmap(size, size));
     }
-}
-
-void PreferencesPage::SetHelloState(bool available, bool enrolled) {
-    hello_available_ = available;
-    hello_enrolled_ = enrolled;
-    if (!hello_toggle_) return;
-    {
-        QSignalBlocker b(hello_toggle_);
-        hello_toggle_->setEnabled(available);
-        hello_toggle_->setChecked(available && enrolled);
-    }
-    if (!hello_desc_) return;
-    if (!available) {
-        hello_desc_->setText(
-            QStringLiteral("当前设备未启用 Windows Hello 或不支持"));
-    } else if (enrolled) {
-        hello_desc_->setText(
-            QStringLiteral("已启用 Windows Hello。解锁时可跳过主密码。"));
-    } else {
-        hello_desc_->setText(
-            QStringLiteral("使用生物识别或 PIN 快速解锁，无需输入主密码。"));
-    }
-}
-
-void PreferencesPage::SetHelloAvailable(bool available) {
-    SetHelloState(available, hello_enrolled_);
-}
-
-void PreferencesPage::SetHelloEnabled(bool enabled) {
-    SetHelloState(hello_available_, enabled);
 }
 
 void PreferencesPage::SetChangeMasterPasswordEnabled(bool enabled,

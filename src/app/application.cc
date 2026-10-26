@@ -24,7 +24,6 @@
 #include "csv/csv_importer.h"
 #include "csv/csv_reader.h"
 #include "csv/csv_validator.h"
-#include "hello/windows_hello_unlock.h"
 #include "master_password/master_password_manager.h"
 #include "master_password/master_password_store.h"
 #include "model/category.h"
@@ -55,7 +54,6 @@ namespace passvault::app {
 
 namespace {
 
-constexpr const char* kSettingsHelloEnabled = "session/hello_enabled";
 // Keep the migration draft gated until stage 7 recovery checks pass.
 constexpr bool kMasterPasswordChangeReady = false;
 
@@ -117,7 +115,6 @@ class Application::Impl {
             std::make_unique<master_password::MasterPasswordManager>(
                 *master_store_);
         master_manager_->set_password_dao(password_dao_.get());
-        hello_ = std::make_unique<hello::WindowsHelloUnlock>();
         token_store_ = std::make_unique<oauth::TokenStore>();
         oauth_client_ =
             std::make_unique<oauth::GoogleOAuthClient>(token_store_.get());
@@ -181,45 +178,9 @@ class Application::Impl {
             return true;
         }
 
-        const bool hello_wanted = QSettings()
-                                       .value(kSettingsHelloEnabled, false)
-                                       .toBool();
-        if (hello_wanted && hello_->IsAvailable() && hello_->IsEnrolled()) {
-            auto pwd_opt = hello_->Unlock();
-            if (pwd_opt.has_value()) {
-                auto payload = master_manager_->VerifyLocal(
-                    pwd_opt->toStdString());
-                if (payload.has_value()) {
-                    session::SessionManager::Instance()->Unlock(
-                        std::move(payload->session_key),
-                        std::move(payload->master_password));
-                    return true;
-                }
-            }
-        }
-
         for (;;) {
             ui::MasterPasswordDialog dlg(
                 ui::MasterPasswordDialog::Mode::kUnlock);
-            dlg.SetHelloAvailable(hello_->IsAvailable() &&
-                                   hello_->IsEnrolled());
-            QObject::connect(&dlg, &ui::MasterPasswordDialog::HelloRequested,
-                              [this, &dlg]() {
-                                  auto pwd_opt = hello_->Unlock();
-                                  if (!pwd_opt.has_value()) return;
-                                  auto payload = master_manager_->VerifyLocal(
-                                      pwd_opt->toStdString());
-                                  if (!payload.has_value()) {
-                                      dlg.SetErrorText(
-                                          QStringLiteral(
-                                              "已存储的 Hello 凭证与当前主密码不匹配。"));
-                                      return;
-                                  }
-                                  session::SessionManager::Instance()->Unlock(
-                                      std::move(payload->session_key),
-                                      std::move(payload->master_password));
-                                  dlg.accept();
-                              });
             if (dlg.exec() != QDialog::Accepted) return false;
             if (session::SessionManager::Instance()->IsUnlocked()) return true;
 
@@ -269,7 +230,10 @@ class Application::Impl {
     void WirePreferencesPage() {
         auto* page = window_->preferences_page();
         if (!page) return;
-        page->SetHelloState(hello_->IsAvailable(), hello_->IsEnrolled());
+        auto_lock_->SetTimeoutMs(
+            QSettings().value("session/auto_lock_minutes", 5).toInt() * 60000);
+        ui::ClipboardManager::Instance()->set_default_timeout_ms(
+            QSettings().value("ui/clipboard_seconds", 30).toInt() * 1000);
         page->SetChangeMasterPasswordEnabled(
             kMasterPasswordChangeReady,
             QStringLiteral("修改主密码暂不可用"));
@@ -282,46 +246,6 @@ class Application::Impl {
         QObject::connect(page,
                           &ui::PreferencesPage::ChangeMasterPasswordRequested,
                           [this, page]() { ChangeMasterPassword(page); });
-        QObject::connect(
-            page, &ui::PreferencesPage::EnableHelloRequested, [this, page]() {
-                const auto* pwd = session::SessionManager::Instance()
-                                       ->master_password();
-                if (!pwd) return;
-                QByteArray view(reinterpret_cast<const char*>(pwd->data()),
-                                pwd->size());
-                if (!hello_->Enroll(QString::fromUtf8(view))) {
-                    ui::Toast::Show(page,
-                                    QStringLiteral("Windows Hello 注册失败"),
-                                    ui::Toast::Level::kError);
-                    page->SetHelloState(hello_->IsAvailable(),
-                                        hello_->IsEnrolled());
-                    return;
-                }
-                QSettings().setValue(kSettingsHelloEnabled, true);
-                page->SetHelloState(hello_->IsAvailable(), hello_->IsEnrolled());
-                ui::Toast::Show(page,
-                                QStringLiteral("已启用 Windows Hello"),
-                                ui::Toast::Level::kSuccess);
-            });
-        QObject::connect(page, &ui::PreferencesPage::DisableHelloRequested,
-                          [this, page]() {
-                              if (!hello_->Disable()) {
-                                  ui::Toast::Show(
-                                      page,
-                                      QStringLiteral("关闭 Windows Hello 失败"),
-                                      ui::Toast::Level::kError);
-                                  page->SetHelloState(hello_->IsAvailable(),
-                                                      hello_->IsEnrolled());
-                                  return;
-                              }
-                              QSettings().setValue(kSettingsHelloEnabled, false);
-                              page->SetHelloState(hello_->IsAvailable(),
-                                                  hello_->IsEnrolled());
-                              ui::Toast::Show(
-                                  page,
-                                  QStringLiteral("已关闭 Windows Hello"),
-                                  ui::Toast::Level::kInfo);
-                          });
         QObject::connect(page,
                           &ui::PreferencesPage::ConnectGoogleDriveRequested,
                           [this, page]() {
@@ -456,14 +380,6 @@ class Application::Impl {
                 session::SessionManager::Instance()->session_key());
         }
 
-        // The stored Hello credential still holds the old master password, so
-        // it must be dropped rather than left to fail at the next unlock.
-        hello_->Disable();
-        QSettings().setValue(kSettingsHelloEnabled, false);
-        if (window_ && window_->preferences_page()) {
-            auto* page = window_->preferences_page();
-            page->SetHelloState(hello_->IsAvailable(), hello_->IsEnrolled());
-        }
         if (window_) window_->Reload();
 
         ui::Toast::Show(parent, QStringLiteral("主密码已更新"),
@@ -597,7 +513,6 @@ class Application::Impl {
     std::unique_ptr<storage::CategoryDao> category_dao_;
     std::unique_ptr<master_password::MasterPasswordStore> master_store_;
     std::unique_ptr<master_password::MasterPasswordManager> master_manager_;
-    std::unique_ptr<hello::WindowsHelloUnlock> hello_;
     std::unique_ptr<oauth::TokenStore> token_store_;
     std::unique_ptr<oauth::GoogleOAuthClient> oauth_client_;
     std::unique_ptr<sync::GoogleDriveProvider> drive_provider_;

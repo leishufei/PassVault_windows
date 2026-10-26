@@ -21,7 +21,7 @@ class MasterPasswordDialog : public QDialog {
  public:
     enum class Mode {
         kSetup,   // first-time creation: new + confirm
-        kUnlock,  // single input; optional Windows Hello button
+        kUnlock,  // single password input
         kChange,  // old + new + confirm
     };
 
@@ -34,11 +34,7 @@ class MasterPasswordDialog : public QDialog {
     QString OldPassword() const;
     QString NewPassword() const;
 
-    void SetHelloAvailable(bool available);
     void SetErrorText(const QString& text);
-
- signals:
-    void HelloRequested();
 
  protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -66,7 +62,6 @@ class MasterPasswordDialog : public QDialog {
     QLineEdit* new_edit_ = nullptr;
     QLineEdit* confirm_edit_ = nullptr;
     QCheckBox* preview_ = nullptr;
-    QPushButton* hello_button_ = nullptr;
     QPushButton* primary_ = nullptr;
 };
 

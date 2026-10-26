@@ -82,24 +82,10 @@ TEST(MasterPasswordDialogTest, SetupRejectsTooShort) {
     EXPECT_FALSE(ErrorLabel(d)->isHidden());
 }
 
-TEST(MasterPasswordDialogTest, UnlockHelloButtonHiddenByDefault) {
-    MasterPasswordDialog d(Mode::kUnlock);
-    EXPECT_TRUE(Button(d, "HelloButton")->isHidden());
-}
-
-TEST(MasterPasswordDialogTest, UnlockHelloButtonEmitsSignal) {
-    MasterPasswordDialog d(Mode::kUnlock);
-    d.SetHelloAvailable(true);
-    QSignalSpy spy(&d, &MasterPasswordDialog::HelloRequested);
-    Button(d, "HelloButton")->click();
-    EXPECT_EQ(spy.count(), 1);
-}
-
-TEST(MasterPasswordDialogTest, HelloCannotAppearInSetupOrChange) {
-    for (const Mode mode : {Mode::kSetup, Mode::kChange}) {
+TEST(MasterPasswordDialogTest, HelloEntryIsRemovedInAllModes) {
+    for (const Mode mode : {Mode::kSetup, Mode::kUnlock, Mode::kChange}) {
         MasterPasswordDialog dialog(mode);
-        dialog.SetHelloAvailable(true);
-        EXPECT_TRUE(Button(dialog, "HelloButton")->isHidden());
+        EXPECT_EQ(Button(dialog, "HelloButton"), nullptr);
     }
 }
 
@@ -221,17 +207,14 @@ TEST(MasterPasswordDialogTest, EnterSubmitsPrimaryActionForEveryMode) {
             last_edit->setText(input);
         } else {
             last_edit = Edit(dialog, "NewPasswordEdit");
-            dialog.SetHelloAvailable(true);
         }
         dialog.show();
         QApplication::processEvents();
         QSignalSpy accepted(&dialog, &QDialog::accepted);
         QSignalSpy rejected(&dialog, &QDialog::rejected);
-        QSignalSpy hello(&dialog, &MasterPasswordDialog::HelloRequested);
         QTest::keyClick(last_edit, Qt::Key_Return);
         EXPECT_EQ(accepted.count(), 1);
         EXPECT_EQ(rejected.count(), 0);
-        EXPECT_EQ(hello.count(), 0);
     }
 }
 
@@ -259,11 +242,10 @@ TEST(MasterPasswordDialogTest, CancelCloseAndEscapeNeverAccept) {
     }
 }
 
-TEST(MasterPasswordDialogTest, EnterActivatesFocusedCancelOrHelloButton) {
-    for (const char* name : {"CancelButton", "HelloButton"}) {
+TEST(MasterPasswordDialogTest, EnterActivatesFocusedCancelButton) {
+    for (const char* name : {"CancelButton"}) {
         SCOPED_TRACE(name);
         MasterPasswordDialog dialog(Mode::kUnlock);
-        dialog.SetHelloAvailable(true);
         Edit(dialog, "NewPasswordEdit")->setText(QStringLiteral("existing"));
         dialog.show();
         QApplication::processEvents();
