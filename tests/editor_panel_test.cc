@@ -282,8 +282,12 @@ TEST_F(EditorPanelTest, ApplyGeneratedPasswordSetsField) {
 
 TEST_F(EditorPanelTest, PasswordChangeUpdatesStrengthLabel) {
     panel_.OpenForCreate();
-    passwordInput()->setText(QStringLiteral("A1b!c9D#eF2xY"));
+    passwordInput()->setText(QStringLiteral("mQ7!vR2#xT9@pL4$"));
     EXPECT_EQ(strengthLabel()->text(), QStringLiteral("强"));
+    passwordInput()->setText(QStringLiteral("!{?%]-@#^&=+;:*/~"));
+    EXPECT_EQ(strengthLabel()->text(), QStringLiteral("强"));
+    passwordInput()->setText(QStringLiteral("ab!ab!ab!ab!ab!ab!"));
+    EXPECT_EQ(strengthLabel()->text(), QStringLiteral("弱"));
 }
 
 TEST_F(EditorPanelTest, MatchesFigmaDrawerSkeleton) {
