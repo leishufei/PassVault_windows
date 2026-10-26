@@ -18,6 +18,9 @@ class AutoLockTimer : public QObject {
 
     bool IsActive() const { return timer_.isActive(); }
 
+ protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
  public slots:
     void Start();
     void Stop();

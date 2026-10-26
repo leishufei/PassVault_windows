@@ -18,9 +18,10 @@ class ClipboardManager : public QObject {
 
     static ClipboardManager* Instance();
 
-    void CopySensitive(const QString& text, int timeout_ms = kDefaultTimeoutMs);
+    void CopySensitive(const QString& text, int timeout_ms = 0);
     void CopyPlain(const QString& text);
     void CancelPendingClear();
+    void ClearSensitive();
 
     int timeout_ms() const { return default_timeout_ms_; }
     void set_default_timeout_ms(int ms) { default_timeout_ms_ = ms; }

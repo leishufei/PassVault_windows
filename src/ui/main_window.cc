@@ -260,6 +260,15 @@ MainWindow::MainWindow(const Deps& deps, QWidget* parent)
 
 MainWindow::~MainWindow() = default;
 
+void MainWindow::SetSessionKey(const crypto::SessionKey* session_key) {
+    deps_.session_key = session_key;
+    if (session_key) return;
+    detail_panel_->ClearEntry();
+    editor_panel_->ClearSensitiveState();
+    editor_entry_id_ = -1;
+    ShowListPane();
+}
+
 QWidget* MainWindow::BuildSidebar() {
     auto* sidebar = new QFrame();
     sidebar->setObjectName(QStringLiteral("Sidebar"));
@@ -1003,7 +1012,7 @@ std::optional<model::PasswordEntry> MainWindow::FindEntry(
 }
 
 void MainWindow::OnPasswordSelectionChanged() {
-    if (suppress_selection_) return;
+    if (suppress_selection_ || !deps_.session_key) return;
     const auto selected = password_list_->selectedItems();
     auto* item =
         selected.isEmpty() ? password_list_->currentItem() : selected.first();
@@ -1105,7 +1114,7 @@ void MainWindow::OnAddCategory() {
 }
 
 void MainWindow::ShowPasswordCreate() {
-    if (!editor_panel_) return;
+    if (!editor_panel_ || !deps_.session_key) return;
     QList<model::Category> cats;
     for (const auto& c : categories_) cats.append(c);
     editor_panel_->SetCategories(std::move(cats));
@@ -1126,7 +1135,7 @@ void MainWindow::OpenEditDialog(std::int64_t entry_id) {
 }
 
 void MainWindow::OnEditorSaveRequested() {
-    if (!editor_panel_) return;
+    if (!editor_panel_ || !editor_panel_->IsOpen() || !deps_.session_key) return;
     auto result = editor_panel_->Result();
     if (editor_entry_id_ < 0) {
         model::PasswordEntry entry = result.entry;

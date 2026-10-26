@@ -1,6 +1,10 @@
 #include <gtest/gtest.h>
 
 #include <QSignalSpy>
+#include <QCoreApplication>
+#include <QKeyEvent>
+#include <QTest>
+#include <QWidget>
 
 #include "session/auto_lock_timer.h"
 
@@ -69,4 +73,21 @@ TEST(AutoLockTimer, SetTimeoutIgnoresNonPositive) {
     EXPECT_EQ(timer.timeout_ms(), 1234);
     timer.SetTimeoutMs(-1);
     EXPECT_EQ(timer.timeout_ms(), 1234);
+}
+
+TEST(AutoLockTimer, ApplicationKeyboardActivityDefersTimeout) {
+    AutoLockTimer timer;
+    timer.SetTimeoutMs(100);
+    QSignalSpy spy(&timer, &AutoLockTimer::TimedOut);
+    QWidget target;
+    timer.Start();
+    for (int i = 0; i < 3; ++i) {
+        QTest::qWait(60);
+        QKeyEvent key(QEvent::KeyPress, Qt::Key_A, Qt::NoModifier);
+        QCoreApplication::sendEvent(&target, &key);
+        EXPECT_EQ(spy.count(), 0);
+    }
+    ASSERT_TRUE(spy.wait(500));
+    timer.Start();
+    EXPECT_TRUE(timer.IsActive());
 }

@@ -136,6 +136,13 @@ class Application::Impl {
         sync_scheduler_ =
             std::make_unique<sync::SyncScheduler>(sync_manager_.get());
         auto_lock_ = std::make_unique<session::AutoLockTimer>();
+        QSettings settings;
+        auto_lock_->SetTimeoutMs(
+            qBound(1, settings.value("session/auto_lock_minutes", 5).toInt(), 120) *
+            60 * 1000);
+        ui::ClipboardManager::Instance()->set_default_timeout_ms(
+            qBound(5, settings.value("ui/clipboard_seconds", 30).toInt(), 300) *
+            1000);
 
         QObject::connect(session::SessionManager::Instance(),
                           &session::SessionManager::LockChanged,
@@ -562,9 +569,27 @@ class Application::Impl {
     }
 
     void OnLocked() {
-        if (window_) window_->hide();
-        UnlockFlow();
-        if (window_) window_->show();
+        auto_lock_->Stop();
+        ui::ClipboardManager::Instance()->ClearSensitive();
+        if (window_) {
+            window_->SetSessionKey(nullptr);
+            window_->hide();
+        }
+        if (!UnlockFlow()) {
+            QApplication::quit();
+            return;
+        }
+        if (window_) {
+            window_->SetSessionKey(
+                session::SessionManager::Instance()->session_key());
+            window_->Reload();
+            if (window_->isMinimized()) {
+                window_->showNormal();
+            } else {
+                window_->show();
+            }
+        }
+        auto_lock_->Start();
     }
 
     std::unique_ptr<storage::Database> database_;

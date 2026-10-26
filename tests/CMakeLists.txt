@@ -29,6 +29,7 @@ add_executable(passvault_tests
     sync_manager_test.cc
     windows_hello_unlock_test.cc
     toast_test.cc
+    clipboard_manager_test.cc
     generator_dialog_test.cc
     preferences_page_test.cc
     oauth_wizard_dialog_test.cc

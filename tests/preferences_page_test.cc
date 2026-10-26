@@ -16,6 +16,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSignalSpy>
+#include <QSettings>
 #include <QSpinBox>
 #include <QStyle>
 #include <QStyleOptionButton>
@@ -717,8 +718,9 @@ TEST_F(PreferencesPageTest, TabsSwitchBetweenPages) {
 }
 
 TEST_F(PreferencesPageTest, DefaultValuesWhenUnset) {
-    // 测试二进制未设置组织/应用名，QSettings 读不到任何持久化值，
-    // 因此必然回退到默认值；此处断言默认值常量。
+    QSettings settings;
+    settings.remove("session/auto_lock_minutes");
+    settings.remove("ui/clipboard_seconds");
     PreferencesPage page;
     auto* auto_lock = page.findChild<QSpinBox*>(QStringLiteral("AutoLockSpin"));
     auto* clipboard = page.findChild<QSpinBox*>(QStringLiteral("ClipboardSpin"));

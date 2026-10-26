@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
 #include <QApplication>
+#include <QAction>
+#include <QClipboard>
 #include <QColor>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -8,6 +10,9 @@
 #include <QFontInfo>
 #include <QFontMetrics>
 #include <QImage>
+#include <QGraphicsDropShadowEffect>
+#include <QSettings>
+#include <QCheckBox>
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
@@ -15,14 +20,17 @@
 #include <QList>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QMenu>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QStackedWidget>
 #include <QTest>
 #include <QTimer>
 #include <QToolButton>
+#include <QTabWidget>
 #include <QWidget>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -37,6 +45,10 @@
 #include "storage/database.h"
 #include "storage/password_dao.h"
 #include "storage/schema.h"
+#include "session/session_manager.h"
+#include "sync/google_drive_provider.h"
+#include "sync/sync_manager.h"
+#include "sync/sync_scheduler.h"
 #include "ui/detail_panel.h"
 #include "ui/editor_panel.h"
 #include "ui/main_window.h"
@@ -711,5 +723,34 @@ TEST_F(MainWindowTest, SettingsButtonSwitchesToPreferencesPage) {
 
 // Import/export/change-master signals are emitted by PreferencesPage and are
 // covered by preferences_page_test.
+
+TEST_F(MainWindowTest, LockClearsEditorAndDetailAndRebindingAllowsValidWrites) {
+    passwords()->setCurrentRow(0);
+    newButton()->click();
+    editor()->ApplyGeneratedPassword(QStringLiteral("temporary-value"));
+    window_->SetSessionKey(nullptr);
+    EXPECT_FALSE(detail()->HasEntry());
+    EXPECT_TRUE(detail()->findChild<QLabel*>("DetailFieldValueMono")->text().isEmpty());
+    EXPECT_FALSE(editor()->IsOpen());
+    EXPECT_TRUE(editor()->findChild<QLineEdit*>("EditorPasswordInput")->text().isEmpty());
+    newButton()->click();
+    EXPECT_FALSE(editor()->IsOpen());
+
+    std::array<std::uint8_t, crypto::SessionKey::kSize> raw{};
+    for (std::size_t i = 0; i < raw.size(); ++i) raw[i] = static_cast<std::uint8_t>(i + 1);
+    session_key_.reset();
+    session_key_ = crypto::SessionKey::FromSecureBytes(
+        crypto::SecureBytes(raw.data(), raw.size()));
+    window_->SetSessionKey(&*session_key_);
+    newButton()->click();
+    editor()->findChild<QLineEdit*>("EditorTitleInput")->setText("After unlock");
+    editor()->ApplyGeneratedPassword(QString(19, QLatin1Char('a')));
+    editor()->findChild<QPushButton*>("EditorSaveButton")->click();
+    ASSERT_EQ(password_dao_->ListActive().size(), 4u);
+    passwords()->setCurrentRow(0);
+    detail()->findChild<QPushButton*>("DetailSecondaryButton")->click();
+    EXPECT_TRUE(QApplication::clipboard()->text() == QString(19, QLatin1Char('a')));
+    QApplication::clipboard()->clear();
+}
 
 }  // namespace

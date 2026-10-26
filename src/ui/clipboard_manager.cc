@@ -40,6 +40,12 @@ void ClipboardManager::CancelPendingClear() {
     expected_text_.clear();
 }
 
+void ClipboardManager::ClearSensitive() {
+    if (!timer_->isActive()) return;
+    timer_->stop();
+    OnTimeout();
+}
+
 void ClipboardManager::OnTimeout() {
     QClipboard* clip = QGuiApplication::clipboard();
     if (!clip) return;

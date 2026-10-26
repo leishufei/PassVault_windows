@@ -39,6 +39,7 @@ class EditorPanel : public QFrame {
     void OpenForCreate();
     void OpenForEdit(const DecryptedEntry& entry);
     void Close();
+    void ClearSensitiveState();
     bool IsOpen() const { return is_open_; }
 
     DecryptedEntry Result() const;

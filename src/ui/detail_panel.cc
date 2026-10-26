@@ -364,6 +364,7 @@ void DetailPanel::SetEntry(const model::PasswordEntry& entry,
 void DetailPanel::ClearEntry() {
     entry_.reset();
     password_plain_.clear();
+    password_value_->clear();
     password_visible_ = false;
     stack_->setCurrentWidget(empty_page_);
 }

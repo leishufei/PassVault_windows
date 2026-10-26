@@ -649,6 +649,17 @@ void EditorPanel::Close() {
     AnimateOut();
 }
 
+void EditorPanel::ClearSensitiveState() {
+    anim_->stop();
+    disconnect(anim_, &QPropertyAnimation::finished, this, nullptr);
+    is_open_ = false;
+    entry_ = {};
+    ResetFields();
+    generator_preview_->clear();
+    pages_->setCurrentWidget(editor_page_);
+    hide();
+}
+
 void EditorPanel::ResetFields() {
     title_input_->clear();
     website_input_->clear();

@@ -1,6 +1,8 @@
 #include <QApplication>
 #include <QFont>
 #include <QFontDatabase>
+#include <QSettings>
+#include <QTemporaryDir>
 
 #include <gtest/gtest.h>
 
@@ -11,6 +13,15 @@ int main(int argc, char** argv) {
         qputenv("QT_QPA_PLATFORM", "offscreen");
     }
     QApplication app(argc, argv);
+    QTemporaryDir settings_dir;
+    if (!settings_dir.isValid()) return 1;
+    app.setOrganizationName("PassVaultTests");
+    app.setApplicationName("PassVaultTests");
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope,
+                        settings_dir.path());
+    QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope,
+                        settings_dir.path());
 
     static constexpr const char* kFontResources[] = {
         ":/fonts/NotoSansSC-VariableFont_wght.ttf",
