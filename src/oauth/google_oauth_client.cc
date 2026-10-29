@@ -37,7 +37,102 @@ GoogleOAuthClient::GoogleOAuthClient(TokenStore* token_store, QObject* parent)
       token_store_(token_store),
       client_id_(QString::fromLatin1(kGoogleDesktopClientId)),
       client_secret_(QString::fromLatin1(kGoogleDesktopClientSecret)),
-      scope_(QString::fromLatin1(kDefaultScope)) {}
+      scope_(QString::fromLatin1(kDefaultScope)) {
+    connect(this, &GoogleOAuthClient::AccessTokenRefreshed, this, [this]() {
+        account_refresh_reply_.clear();
+        if (account_lookup_pending_) RequestAccountEmail();
+    });
+    connect(this, &GoogleOAuthClient::AccessTokenRefreshFailed, this,
+            [this](const QString&) {
+                account_refresh_reply_.clear();
+                if (!account_lookup_pending_) return;
+                account_lookup_pending_ = false;
+                emit AccountLookupFinished(
+                    refresh_requires_authorization_
+                        ? AccountStatus::kNeedsAuthorization
+                        : AccountStatus::kNetworkError, QString());
+            });
+}
+
+void GoogleOAuthClient::CancelAccountLookup() {
+    ++account_generation_;
+    account_lookup_pending_ = false;
+    if (account_refresh_reply_) {
+        ++generation_;
+        auto* reply = account_refresh_reply_.data();
+        account_refresh_reply_.clear();
+        replies_.remove(reply);
+        reply->abort();
+    }
+    if (account_reply_) {
+        auto* reply = account_reply_.data();
+        account_reply_.clear();
+        replies_.remove(reply);
+        reply->abort();
+    }
+}
+
+void GoogleOAuthClient::LookupAccount() {
+    CancelAccountLookup();
+    if (paused_ || is_busy()) {
+        emit AccountLookupFinished(AccountStatus::kNetworkError, QString());
+        return;
+    }
+    account_lookup_pending_ = true;
+    if (!access_token_.isEmpty() &&
+        access_token_expires_at_ > QDateTime::currentDateTimeUtc().addSecs(60)) {
+        RequestAccountEmail();
+    } else {
+        RefreshAccessToken();
+    }
+}
+
+void GoogleOAuthClient::SetPaused(bool paused) {
+    if (paused) CancelAccountLookup();
+    paused_ = paused;
+}
+
+void GoogleOAuthClient::RequestAccountEmail() {
+    EnsureNetwork();
+    QNetworkRequest request{QUrl(QStringLiteral(
+        "https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)"))};
+    request.setTransferTimeout(15000);
+    request.setRawHeader("Authorization", "Bearer " + access_token_.toUtf8());
+    auto* reply = network_->get(request);
+    account_reply_ = reply;
+    replies_.insert(reply);
+    const auto generation = account_generation_;
+    connect(reply, &QNetworkReply::finished, this, [this, reply, generation]() {
+        replies_.remove(reply);
+        reply->deleteLater();
+        if (generation != account_generation_ || !account_lookup_pending_) return;
+        account_reply_.clear();
+        account_lookup_pending_ = false;
+        const int http = reply->attribute(
+            QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (http == 401) {
+            access_token_.clear();
+            access_token_expires_at_ = {};
+            emit AccountLookupFinished(AccountStatus::kNeedsAuthorization, QString());
+            return;
+        }
+        if (reply->error() != QNetworkReply::NoError || http != 200) {
+            emit AccountLookupFinished(AccountStatus::kNetworkError, QString());
+            return;
+        }
+        QJsonParseError error;
+        const auto document = QJsonDocument::fromJson(reply->readAll(), &error);
+        if (error.error != QJsonParseError::NoError || !document.isObject()) {
+            emit AccountLookupFinished(AccountStatus::kNetworkError, QString());
+            return;
+        }
+        const QString email = document.object().value(QStringLiteral("user"))
+            .toObject().value(QStringLiteral("emailAddress")).toString().trimmed();
+        emit AccountLookupFinished(email.isEmpty() ? AccountStatus::kMissingEmail
+                                                  : AccountStatus::kConnected,
+                                   email);
+    });
+}
 
 GoogleOAuthClient::~GoogleOAuthClient() {
     if (owns_network_ && network_ != nullptr) {
@@ -56,6 +151,7 @@ void GoogleOAuthClient::EnsureNetwork() {
 }
 
 void GoogleOAuthClient::Authorize() {
+    CancelAccountLookup();
     if (paused_ || is_busy()) return;
     if (client_id_.isEmpty() || client_secret_.isEmpty()) {
         emit AuthorizationFailed(
@@ -119,6 +215,7 @@ void GoogleOAuthClient::Authorize() {
 }
 
 void GoogleOAuthClient::CancelAuthorization() {
+    CancelAccountLookup();
     ++generation_;
     authorizing_ = false;
     expected_state_.clear();
@@ -197,7 +294,7 @@ QString GoogleOAuthClient::EnsureAccessToken() {
                                 &loop, [&]() { done = true; loop.quit(); });
     connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
     timeout.start(30000);
-    RefreshAccessToken();
+    if (!account_refresh_reply_) RefreshAccessToken();
     if (!done) loop.exec();
     if (!done) ++generation_;
     disconnect(ok);
@@ -206,6 +303,7 @@ QString GoogleOAuthClient::EnsureAccessToken() {
 }
 
 void GoogleOAuthClient::RefreshAccessToken() {
+    refresh_requires_authorization_ = false;
     if (paused_ || !replies_.isEmpty()) {
         emit AccessTokenRefreshFailed(QStringLiteral("OAuth paused or busy"));
         return;
@@ -216,6 +314,7 @@ void GoogleOAuthClient::RefreshAccessToken() {
     }
     const auto refresh = token_store_->LoadRefreshToken();
     if (!refresh.has_value()) {
+        refresh_requires_authorization_ = true;
         emit AccessTokenRefreshFailed(
             QStringLiteral("no refresh token stored"));
         return;
@@ -234,6 +333,7 @@ void GoogleOAuthClient::RefreshAccessToken() {
     body.addQueryItem(QStringLiteral("client_secret"), client_secret_);
     QNetworkReply* reply =
         network_->post(req, body.toString(QUrl::FullyEncoded).toUtf8());
+    if (account_lookup_pending_) account_refresh_reply_ = reply;
     replies_.insert(reply);
     const auto generation = generation_;
     connect(reply, &QNetworkReply::finished, this, [this, reply, generation]() {
@@ -249,6 +349,15 @@ void GoogleOAuthClient::RefreshAccessToken() {
 void GoogleOAuthClient::ApplyTokenResponse(QNetworkReply* reply,
                                            bool from_refresh) {
     reply->deleteLater();
+    const QByteArray payload = reply->readAll();
+    if (from_refresh) {
+        const int http = reply->attribute(
+            QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QString error = QJsonDocument::fromJson(payload).object()
+            .value(QStringLiteral("error")).toString();
+        refresh_requires_authorization_ =
+            http == 400 && error == QStringLiteral("invalid_grant");
+    }
     if (reply->error() != QNetworkReply::NoError) {
         const QString msg = reply->errorString();
         if (from_refresh) {
@@ -258,7 +367,6 @@ void GoogleOAuthClient::ApplyTokenResponse(QNetworkReply* reply,
         }
         return;
     }
-    const QByteArray payload = reply->readAll();
     QJsonParseError err{};
     const auto doc = QJsonDocument::fromJson(payload, &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject()) {
@@ -307,6 +415,7 @@ bool GoogleOAuthClient::ForgetCredentials() {
 }
 
 void GoogleOAuthClient::RevokeTokens() {
+    CancelAccountLookup();
     if (paused_ || is_busy()) return;
     if (token_store_ == nullptr) {
         emit RevokeFailed(QStringLiteral("no token store"));

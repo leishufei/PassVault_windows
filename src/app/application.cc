@@ -297,11 +297,20 @@ class Application::Impl {
         window_->show();
     }
 
-
+    void LookupGoogleAccount() {
+        account_startup_pending_ = false;
+        if (reset_confirming_ || resetting_ || migration_active_) return;
+        account_connection_ready_ = false;
+        window_->preferences_page()->SetSyncState(
+            ui::PreferencesPage::SyncUiState::kConnecting, QString());
+        oauth_client_->LookupAccount();
+    }
 
     void WirePreferencesPage() {
         auto* page = window_->preferences_page();
         if (!page) return;
+        account_connection_ready_ = provider_override_ != nullptr;
+        account_startup_pending_ = false;
         auto_lock_->SetTimeoutMs(
             QSettings().value("session/auto_lock_minutes", 5).toInt() * 60000);
         ui::ClipboardManager::Instance()->set_default_timeout_ms(
@@ -309,7 +318,37 @@ class Application::Impl {
         page->SetChangeMasterPasswordEnabled(
             kMasterPasswordChangeReady,
             QStringLiteral("修改主密码暂不可用"));
-        page->SetGoogleDriveConnected(token_store_->Exists(), QString());
+        page->SetSyncState(ui::PreferencesPage::SyncUiState::kDisconnected,
+                           QString());
+        QObject::connect(oauth_client_.get(),
+                         &oauth::GoogleOAuthClient::AccountLookupFinished,
+                         runtime_context_.get(),
+                         [this, page](oauth::GoogleOAuthClient::AccountStatus status,
+                                      const QString& email) {
+            using Status = oauth::GoogleOAuthClient::AccountStatus;
+            using State = ui::PreferencesPage::SyncUiState;
+            account_connection_ready_ = status == Status::kConnected;
+            State state = State::kConnectionError;
+            switch (status) {
+                case Status::kConnected: state = State::kConnected; break;
+                case Status::kNeedsAuthorization: state = State::kNeedsAuthorization; break;
+                case Status::kMissingEmail: state = State::kMissingEmail; break;
+                case Status::kNetworkError: break;
+            }
+            page->SetSyncState(state, email);
+        });
+        QObject::connect(page, &ui::PreferencesPage::RetryAccountRequested,
+                         runtime_context_.get(), [this]() { LookupGoogleAccount(); });
+        if (token_store_->Exists() && !provider_override_) {
+            account_startup_pending_ = true;
+            page->SetSyncState(ui::PreferencesPage::SyncUiState::kConnecting, QString());
+            QTimer::singleShot(0, runtime_context_.get(), [this]() {
+                if (account_startup_pending_ && token_store_->Exists()) {
+                    LookupGoogleAccount();
+                }
+            });
+        }
+
         QObject::connect(page, &ui::PreferencesPage::ClearLocalDataRequested,
                          runtime_context_.get(), [this]() { RequestLocalReset(); });
         QObject::connect(page,
@@ -319,6 +358,9 @@ class Application::Impl {
                           &ui::PreferencesPage::ConnectGoogleDriveRequested,
                           runtime_context_.get(), [this, page]() {
                               if (reset_confirming_ || resetting_ || migration_active_) return;
+                              account_connection_ready_ = false;
+                              account_startup_pending_ = false;
+                              oauth_client_->CancelAccountLookup();
                               drive_provider_->SignOut();
                               page->SetSyncState(
                                   ui::PreferencesPage::SyncUiState::kAuthorizing,
@@ -339,12 +381,13 @@ class Application::Impl {
                                   return;
                               }
                               sync_manager_->set_provider(drive_provider_.get());
-                              page->SetSyncState(ui::PreferencesPage::SyncUiState::kConnected,
-                                                 drive_provider_->AccountHint());
+                              LookupGoogleAccount();
                           });
         QObject::connect(page,
                           &ui::PreferencesPage::AuthorizeCancelled,
                           runtime_context_.get(), [this, page]() {
+                              account_connection_ready_ = false;
+                              account_startup_pending_ = false;
                               oauth_client_->CancelAuthorization();
                               page->SetSyncState(
                                   ui::PreferencesPage::SyncUiState::kDisconnected,
@@ -354,6 +397,9 @@ class Application::Impl {
                           &ui::PreferencesPage::DisconnectGoogleDriveRequested,
                           runtime_context_.get(), [this, page]() {
                               if (reset_confirming_ || resetting_ || migration_active_) return;
+                              account_connection_ready_ = false;
+                              account_startup_pending_ = false;
+                              oauth_client_->CancelAccountLookup();
                               drive_provider_->SignOut();
                               oauth_client_->RevokeTokens();
                               sync_manager_->set_provider(nullptr);
@@ -367,6 +413,7 @@ class Application::Impl {
             QObject::connect(
                 sync_manager_.get(), &sync::SyncManager::SyncStarted,
                 runtime_context_.get(), [this, page]() {
+                    if (!account_connection_ready_) return;
                     page->SetSyncState(
                         ui::PreferencesPage::SyncUiState::kSyncing, QString());
                 });
@@ -374,6 +421,7 @@ class Application::Impl {
                 sync_manager_.get(), &sync::SyncManager::SyncFinished,
                 runtime_context_.get(), [this, page](sync::SyncManager::StatusKind kind,
                              const QString& message) {
+                    if (!account_connection_ready_) return;
                     using SyncUiState = ui::PreferencesPage::SyncUiState;
                     using StatusKind = sync::SyncManager::StatusKind;
                     SyncUiState state = SyncUiState::kError;
@@ -754,6 +802,8 @@ class Application::Impl {
     std::unique_ptr<QObject> application_context_;
     std::unique_ptr<QObject> runtime_context_;
     bool initialization_failed_ = false;
+    bool account_connection_ready_ = false;
+    bool account_startup_pending_ = false;
     bool reset_confirming_ = false;
     bool resetting_ = false;
     bool migration_active_ = false;

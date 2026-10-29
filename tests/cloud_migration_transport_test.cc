@@ -3,6 +3,8 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QSignalSpy>
+#include <QTest>
 #include <QTemporaryDir>
 #include <QTimer>
 
@@ -208,3 +210,122 @@ TEST_F(CloudMigrationTransportTest, ExpectedFolderDisappearsWithoutCreatingRepla
     ASSERT_EQ(network_.operations.size(), 1);
     EXPECT_EQ(network_.operations.front(), QNetworkAccessManager::GetOperation);
 }
+
+namespace {
+
+using AccountStatus = passvault::oauth::GoogleOAuthClient::AccountStatus;
+
+class GoogleAccountLookupTest : public testing::Test {
+ protected:
+    GoogleAccountLookupTest() : store_(directory_.filePath("account-token.dat")),
+                               client_(&store_) {
+        client_.set_network_manager(&network_);
+    }
+    void SetUp() override {
+        ASSERT_TRUE(directory_.isValid());
+        ASSERT_TRUE(store_.SaveRefreshToken("isolated-refresh"));
+    }
+    void QueueToken() {
+        network_.responses.push_back({R"({"access_token":"isolated-access","expires_in":3600})"});
+    }
+    void WaitFor(QSignalSpy& result) {
+        for (int i = 0; i < 100 && result.isEmpty(); ++i) QTest::qWait(1);
+        ASSERT_EQ(result.count(), 1);
+    }
+    QTemporaryDir directory_;
+    passvault::oauth::TokenStore store_;
+    ScriptedNetwork network_;
+    passvault::oauth::GoogleOAuthClient client_;
+};
+
+TEST_F(GoogleAccountLookupTest, RestartLoadsCredentialAndQueriesEmailWithoutBackupAccess) {
+    QueueToken();
+    network_.responses.push_back({R"({"user":{"emailAddress":"current@example.invalid"}})"});
+    QSignalSpy result(&client_, &passvault::oauth::GoogleOAuthClient::AccountLookupFinished);
+    client_.LookupAccount();
+    EXPECT_TRUE(result.isEmpty());
+    WaitFor(result);
+    ASSERT_EQ(result.count(), 1);
+    EXPECT_EQ(result.first().first().value<AccountStatus>(), AccountStatus::kConnected);
+    EXPECT_EQ(result.first().at(1).toString(), "current@example.invalid");
+    ASSERT_EQ(network_.urls.size(), 2);
+    EXPECT_EQ(network_.urls.back().path(), "/drive/v3/about");
+    EXPECT_EQ(network_.operations.back(), QNetworkAccessManager::GetOperation);
+}
+
+TEST_F(GoogleAccountLookupTest, NetworkFailurePreservesCredentialAndCanRetry) {
+    network_.responses.push_back({{}, 0, QNetworkReply::TimeoutError});
+    QSignalSpy result(&client_, &passvault::oauth::GoogleOAuthClient::AccountLookupFinished);
+    client_.LookupAccount();
+    WaitFor(result);
+    ASSERT_EQ(result.count(), 1);
+    EXPECT_EQ(result.first().first().value<AccountStatus>(), AccountStatus::kNetworkError);
+    EXPECT_EQ(store_.LoadRefreshToken().value_or(QString()), "isolated-refresh");
+    result.clear();
+    QueueToken();
+    network_.responses.push_back({R"({"user":{"emailAddress":"retry@example.invalid"}})"});
+    client_.LookupAccount();
+    WaitFor(result);
+    ASSERT_EQ(result.count(), 1);
+    EXPECT_EQ(result.first().at(1).toString(), "retry@example.invalid");
+}
+
+TEST_F(GoogleAccountLookupTest, ExplicitInvalidGrantRequiresAuthorization) {
+    network_.responses.push_back({R"({"error":"invalid_grant"})", 400,
+                                  QNetworkReply::ContentOperationNotPermittedError});
+    QSignalSpy result(&client_, &passvault::oauth::GoogleOAuthClient::AccountLookupFinished);
+    client_.LookupAccount();
+    WaitFor(result);
+    ASSERT_EQ(result.count(), 1);
+    EXPECT_EQ(result.first().first().value<AccountStatus>(), AccountStatus::kNeedsAuthorization);
+    EXPECT_EQ(network_.urls.size(), 1);
+}
+
+TEST_F(GoogleAccountLookupTest, SuccessfulResponseWithoutEmailIsExplicit) {
+    QueueToken();
+    network_.responses.push_back({R"({"user":{}})"});
+    QSignalSpy result(&client_, &passvault::oauth::GoogleOAuthClient::AccountLookupFinished);
+    client_.LookupAccount();
+    WaitFor(result);
+    ASSERT_EQ(result.count(), 1);
+    EXPECT_EQ(result.first().first().value<AccountStatus>(), AccountStatus::kMissingEmail);
+    EXPECT_TRUE(result.first().at(1).toString().isEmpty());
+}
+
+TEST_F(GoogleAccountLookupTest, CancelDuringRefreshIgnoresLateResponse) {
+    QueueToken();
+    QSignalSpy result(&client_, &passvault::oauth::GoogleOAuthClient::AccountLookupFinished);
+    client_.LookupAccount();
+    client_.CancelAccountLookup();
+    QTest::qWait(10);
+    EXPECT_TRUE(result.isEmpty());
+    EXPECT_EQ(network_.urls.size(), 1);
+    EXPECT_FALSE(client_.HasAccessToken());
+}
+
+TEST_F(GoogleAccountLookupTest, ReplacingAccountQueryIgnoresOldEmail) {
+    QueueToken();
+    ASSERT_EQ(client_.EnsureAccessToken(), "isolated-access");
+    network_.responses.push_back({R"({"user":{"emailAddress":"old@example.invalid"}})"});
+    network_.responses.push_back({R"({"user":{"emailAddress":"new@example.invalid"}})"});
+    QSignalSpy result(&client_, &passvault::oauth::GoogleOAuthClient::AccountLookupFinished);
+    client_.LookupAccount();
+    client_.CancelAccountLookup();
+    client_.LookupAccount();
+    WaitFor(result);
+    ASSERT_EQ(result.count(), 1);
+    EXPECT_EQ(result.first().at(1).toString(), "new@example.invalid");
+}
+
+TEST_F(GoogleAccountLookupTest, CancelDuringEmailQueryIgnoresLateResponse) {
+    QueueToken();
+    ASSERT_EQ(client_.EnsureAccessToken(), "isolated-access");
+    network_.responses.push_back({R"({"user":{"emailAddress":"old@example.invalid"}})"});
+    QSignalSpy result(&client_, &passvault::oauth::GoogleOAuthClient::AccountLookupFinished);
+    client_.LookupAccount();
+    client_.CancelAccountLookup();
+    QTest::qWait(10);
+    EXPECT_TRUE(result.isEmpty());
+}
+
+}  // namespace

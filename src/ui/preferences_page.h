@@ -30,6 +30,10 @@ class PreferencesPage : public QWidget {
         kSuccess,
         kConflict,
         kError,
+        kConnecting,
+        kConnectionError,
+        kNeedsAuthorization,
+        kMissingEmail,
     };
 
  signals:
@@ -42,6 +46,7 @@ class PreferencesPage : public QWidget {
     void AuthorizeCancelled();
     void DisconnectGoogleDriveRequested();
     void SyncNowRequested();
+    void RetryAccountRequested();
     void ImportCsvRequested();
     void ExportCsvRequested();
 
@@ -77,6 +82,7 @@ class PreferencesPage : public QWidget {
     QPushButton* drive_connect_button_ = nullptr;
     QPushButton* drive_disconnect_button_ = nullptr;
     QPushButton* sync_now_button_ = nullptr;
+    QPushButton* account_retry_button_ = nullptr;
 
     QWidget* sync_authorize_card_ = nullptr;
     QWidget* sync_account_card_ = nullptr;

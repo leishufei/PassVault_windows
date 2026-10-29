@@ -509,6 +509,11 @@ QWidget* PreferencesPage::BuildLastSyncCard() {
     connect(sync_now_button_, &QPushButton::clicked, this,
             &PreferencesPage::SyncNowRequested);
     h->addWidget(sync_now_button_);
+    account_retry_button_ = new QPushButton(QStringLiteral("重试连接"), card);
+    account_retry_button_->setObjectName(QStringLiteral("AccountRetryButton"));
+    connect(account_retry_button_, &QPushButton::clicked, this,
+            &PreferencesPage::RetryAccountRequested);
+    h->addWidget(account_retry_button_);
     v->addLayout(h);
     return card;
 }
@@ -714,9 +719,18 @@ void PreferencesPage::ApplySyncState(SyncUiState state,
                             state == SyncUiState::kSyncing ||
                             state == SyncUiState::kSuccess ||
                             state == SyncUiState::kConflict ||
-                            state == SyncUiState::kError;
+                            state == SyncUiState::kError ||
+                            state == SyncUiState::kConnecting ||
+                            state == SyncUiState::kConnectionError ||
+                            state == SyncUiState::kMissingEmail;
+    const bool retry = state == SyncUiState::kConnectionError ||
+                       state == SyncUiState::kMissingEmail;
+    if (account_retry_button_) account_retry_button_->setVisible(retry);
     if (auto* title = findChild<QLabel*>(QStringLiteral("SyncAccountTitle"))) {
         QString text = QStringLiteral("已连接");
+        if (state == SyncUiState::kConnecting) text = QStringLiteral("正在连接");
+        if (state == SyncUiState::kConnectionError) text = QStringLiteral("连接失败");
+        if (state == SyncUiState::kMissingEmail) text = QStringLiteral("未获取到邮箱");
         title->setText(text);
     }
 
@@ -724,13 +738,16 @@ void PreferencesPage::ApplySyncState(SyncUiState state,
     if (auto* title = findChild<QLabel*>(QStringLiteral("SyncAuthTitle"))) {
         title->setText(state == SyncUiState::kAuthorizing
                            ? QStringLiteral("正在授权 Google 账号")
-                           : QStringLiteral("未授权 Google 账号"));
+                           : state == SyncUiState::kNeedsAuthorization
+                                 ? QStringLiteral("需要重新授权")
+                                 : QStringLiteral("未授权 Google 账号"));
     }
     if (sync_account_card_) sync_account_card_->setVisible(authorized);
     if (sync_last_card_) sync_last_card_->setVisible(authorized);
     if (sync_now_button_) {
         sync_now_button_->setEnabled(authorized &&
-                                     state != SyncUiState::kSyncing);
+                                     state != SyncUiState::kSyncing &&
+                                     state != SyncUiState::kConnecting && !retry);
         sync_now_button_->setText(state == SyncUiState::kSyncing
                                       ? QStringLiteral("同步中...")
                                       : QStringLiteral("立即同步"));
@@ -738,6 +755,12 @@ void PreferencesPage::ApplySyncState(SyncUiState state,
 
     QString text;
     switch (state) {
+        case SyncUiState::kConnectionError:
+            text = QStringLiteral("无法连接 Google，请检查网络后重试");
+            break;
+        case SyncUiState::kMissingEmail:
+            text = QStringLiteral("Google 未返回邮箱，请重试");
+            break;
         case SyncUiState::kAuthorizing:
             text = QStringLiteral("等待授权...");
             break;
@@ -776,7 +799,8 @@ void PreferencesPage::ApplySyncState(SyncUiState state,
 void PreferencesPage::SetSyncState(SyncUiState state,
                                    const QString& account_hint,
                                    const QString& message) {
-    if (state == SyncUiState::kAuthorizing) sync_account_hint_.clear();
+    if (state == SyncUiState::kConnecting || state == SyncUiState::kAuthorizing ||
+        state == SyncUiState::kNeedsAuthorization) sync_account_hint_.clear();
     if (!account_hint.isEmpty()) sync_account_hint_ = account_hint;
     if (sync_account_email_) {
         sync_account_email_->SetFullText(

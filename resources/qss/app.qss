@@ -1156,6 +1156,7 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
 #SyncStateDot[state="conflict"] { background-color: var(--warn); }
 #SyncStateDot[state="error"]    { background-color: var(--danger); }
 #DriveConnectButton,
+#AccountRetryButton,
 #DriveDisconnectButton,
 #SyncNowButton,
 #AuthorizeCancelButton,

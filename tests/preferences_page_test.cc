@@ -751,3 +751,24 @@ TEST_F(PreferencesPageTest, DefaultPasswordVisibilityDefaultsOffAndPersists) {
     EXPECT_TRUE(reopened.DefaultPasswordVisible());
     toggle->setChecked(false);
 }
+
+TEST_F(PreferencesPageTest, AccountConnectionStatesClearOldEmailAndOfferRetry) {
+    page_.SetSyncState(PreferencesPage::SyncUiState::kConnected,
+                       QStringLiteral("previous@example.invalid"));
+    page_.SetSyncState(PreferencesPage::SyncUiState::kConnecting, QString());
+    EXPECT_TRUE(accountEmail()->accessibleName().isEmpty());
+    EXPECT_FALSE(syncNow()->isEnabled());
+    auto* retry = page_.findChild<QPushButton*>("AccountRetryButton");
+    ASSERT_NE(retry, nullptr);
+    EXPECT_TRUE(retry->isHidden());
+    page_.SetSyncState(PreferencesPage::SyncUiState::kConnectionError, QString());
+    EXPECT_FALSE(retry->isHidden());
+    EXPECT_FALSE(syncNow()->isEnabled());
+    QSignalSpy requested(&page_, &PreferencesPage::RetryAccountRequested);
+    retry->click();
+    EXPECT_EQ(requested.count(), 1);
+    page_.SetSyncState(PreferencesPage::SyncUiState::kNeedsAuthorization, QString());
+    EXPECT_FALSE(authorizeCard()->isHidden());
+    EXPECT_TRUE(accountCard()->isHidden());
+    EXPECT_TRUE(retry->isHidden());
+}

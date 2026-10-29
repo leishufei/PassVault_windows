@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 #include <QSet>
 
@@ -42,10 +43,15 @@ class GoogleOAuthClient : public QObject {
 
     void RefreshAccessToken();
     QString EnsureAccessToken();
+    enum class AccountStatus { kConnected, kNetworkError, kNeedsAuthorization,
+                               kMissingEmail };
+    Q_ENUM(AccountStatus)
+    void LookupAccount();
+    void CancelAccountLookup();
 
     void RevokeTokens();
     bool is_busy() const { return authorizing_ || refreshing_ || !replies_.isEmpty(); }
-    void SetPaused(bool paused) { paused_ = paused; }
+    void SetPaused(bool paused);
     bool ForgetCredentials();
 
     bool HasAccessToken() const { return !access_token_.isEmpty(); }
@@ -59,6 +65,7 @@ class GoogleOAuthClient : public QObject {
     void AccessTokenRefreshFailed(const QString& message);
     void Revoked();
     void RevokeFailed(const QString& message);
+    void AccountLookupFinished(AccountStatus status, const QString& email);
 
  private:
     void EnsureNetwork();
@@ -67,6 +74,7 @@ class GoogleOAuthClient : public QObject {
     void ExchangeCode(const QString& code, const QString& redirect_uri,
                       const QString& verifier);
     void ApplyTokenResponse(QNetworkReply* reply, bool from_refresh);
+    void RequestAccountEmail();
 
     TokenStore* token_store_ = nullptr;
     QNetworkAccessManager* network_ = nullptr;
@@ -87,7 +95,11 @@ class GoogleOAuthClient : public QObject {
     QSet<QNetworkReply*> replies_;
     QString access_token_;
     QDateTime access_token_expires_at_;
-
+    bool account_lookup_pending_ = false;
+    bool refresh_requires_authorization_ = false;
+    quint64 account_generation_ = 0;
+    QPointer<QNetworkReply> account_reply_;
+    QPointer<QNetworkReply> account_refresh_reply_;
 };
 
 }  // namespace passvault::oauth
