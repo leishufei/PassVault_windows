@@ -4,7 +4,9 @@
 
 #include <QDebug>
 
+#include <algorithm>
 #include <exception>
+#include <limits>
 #include <set>
 #include <string>
 #include <string_view>
@@ -17,10 +19,15 @@ namespace passvault::storage {
 
 namespace {
 
-constexpr const char* kSelectAllColumns =
+constexpr const char* kStoredColumns =
     "id, uuid, title, username, encryptedPassword, passwordIv, "
     "website, appPackageName, notes, isFavorite, iconColor, strength, "
     "categoryId, createdAt, updatedAt, isDeleted";
+
+const std::string kSelectAllColumns = std::string(kStoredColumns) +
+    ", COALESCE((SELECT contentUpdatedAt FROM password_content_updates "
+    "WHERE password_content_updates.uuid = password_entries.uuid "
+    "AND versionUpdatedAt = password_entries.updatedAt), updatedAt)";
 
 model::PasswordEntry ReadRow(const Statement& stmt) {
     model::PasswordEntry e;
@@ -40,7 +47,20 @@ model::PasswordEntry ReadRow(const Statement& stmt) {
     e.created_at = stmt.ColumnInt64(13);
     e.updated_at = stmt.ColumnInt64(14);
     e.is_deleted = stmt.ColumnBool(15);
+    e.content_updated_at = stmt.ColumnInt64(16);
     return e;
+}
+
+void SaveContentTimestamp(Database& db, const model::PasswordEntry& entry) {
+    Statement stmt(db.handle(),
+        "INSERT INTO password_content_updates(uuid, contentUpdatedAt, "
+        "versionUpdatedAt) VALUES (?, ?, ?) ON CONFLICT(uuid) DO UPDATE SET "
+        "contentUpdatedAt = excluded.contentUpdatedAt, "
+        "versionUpdatedAt = excluded.versionUpdatedAt");
+    stmt.BindText(1, entry.uuid);
+    stmt.BindInt64(2, entry.ContentUpdatedAt());
+    stmt.BindInt64(3, entry.updated_at);
+    stmt.StepDone();
 }
 
 void BindFields(Statement& stmt, int start, const model::PasswordEntry& e) {
@@ -64,7 +84,7 @@ void BindFields(Statement& stmt, int start, const model::PasswordEntry& e) {
 std::int64_t InsertOne(Database& db, const model::PasswordEntry& entry) {
     const std::string sql =
         std::string("INSERT OR REPLACE INTO password_entries (") +
-        kSelectAllColumns + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+        kStoredColumns + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
     Statement stmt(db.handle(), sql);
     if (entry.id == 0) {
         stmt.BindNull(1);
@@ -310,13 +330,24 @@ bool PasswordDao::Update(const model::PasswordEntry& entry) {
 
 bool PasswordDao::SetFavorite(std::int64_t id, bool is_favorite) {
     try {
+        Transaction tx(db_);
+        auto entry = FindById(id);
+        if (!entry) return false;
+        if (entry->is_favorite == is_favorite) return tx.Commit();
+        if (entry->updated_at == std::numeric_limits<std::int64_t>::max()) {
+            return false;
+        }
+        entry->updated_at = std::max(entry->updated_at + 1,
+                                    QDateTime::currentMSecsSinceEpoch());
         Statement stmt(
             db_.handle(),
             "UPDATE password_entries SET isFavorite = ?, updatedAt = ? WHERE id = ?");
         stmt.BindBool(1, is_favorite);
-        stmt.BindInt64(2, QDateTime::currentMSecsSinceEpoch());
+        stmt.BindInt64(2, entry->updated_at);
         stmt.BindInt64(3, id);
-        return stmt.StepDone() > 0;
+        if (stmt.StepDone() == 0) return false;
+        SaveContentTimestamp(db_, *entry);
+        return tx.Commit();
     } catch (const std::exception& ex) {
         qWarning() << "PasswordDao::SetFavorite failed:" << ex.what();
         return false;
@@ -634,6 +665,7 @@ bool PasswordDao::ApplySyncedEntry(const model::PasswordEntry& entry) {
             }
         }
         InsertOne(db_, entry);
+        if (entry.content_updated_at) SaveContentTimestamp(db_, entry);
         Statement remove(db_.handle(),
                          "DELETE FROM password_deletion_markers WHERE uuid = ?");
         remove.BindText(1, entry.uuid);

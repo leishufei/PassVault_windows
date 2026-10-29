@@ -3,6 +3,7 @@
 #include <QByteArray>
 #include <QString>
 #include <cstdint>
+#include <optional>
 
 namespace passvault::model {
 
@@ -23,6 +24,12 @@ struct PasswordEntry {
     std::int64_t created_at = 0;
     std::int64_t updated_at = 0;
     bool is_deleted = false;
+    // Local display metadata; updated_at remains the cross-device sync version.
+    std::optional<std::int64_t> content_updated_at;
+
+    std::int64_t ContentUpdatedAt() const {
+        return content_updated_at.value_or(updated_at);
+    }
 };
 
 }  // namespace passvault::model

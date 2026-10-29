@@ -11,6 +11,9 @@
 #include <QFontMetrics>
 #include <QImage>
 #include <QSettings>
+#include <QScrollArea>
+#include <QScrollBar>
+#include <QPointer>
 #include <QCheckBox>
 #include <QInputDialog>
 #include <QLabel>
@@ -205,31 +208,6 @@ class MainWindowTest : public ::testing::Test {
 TEST_F(MainWindowTest, RendersSeedEntriesWithCount) {
     EXPECT_EQ(passwords()->count(), 3);
     EXPECT_EQ(listCount()->text(), QStringLiteral("3 项"));
-}
-
-TEST_F(MainWindowTest, SidebarBrandBadgeUsesFigmaSizeAndBackground) {
-    ThemeGuard guard;
-    passvault::ui::ThemeManager::Instance()->ApplyTheme(
-        passvault::ui::Theme::kLight);
-    window_->show();
-    QApplication::processEvents();
-
-    auto* badge = window_->findChild<QLabel*>(
-        QStringLiteral("SidebarBrandBadge"));
-    ASSERT_NE(badge, nullptr);
-    EXPECT_EQ(badge->size(), QSize(34, 34));
-
-    QImage image(badge->size(), QImage::Format_ARGB32_Premultiplied);
-    image.fill(Qt::transparent);
-    badge->render(&image);
-    const QColor accent(QStringLiteral("#276cf0"));
-    int accent_pixels = 0;
-    for (int y = 0; y < image.height(); ++y) {
-        for (int x = 0; x < image.width(); ++x) {
-            if (image.pixelColor(x, y) == accent) ++accent_pixels;
-        }
-    }
-    EXPECT_GT(accent_pixels, 500);
 }
 
 TEST_F(MainWindowTest, ThemeRefreshPreservesSelectionAndChangesIcons) {
@@ -1889,4 +1867,162 @@ TEST_F(MainWindowTest, RecreatedWindowReadsPersistedVisibilityForNormalAndTrash)
     passwords()->setCurrentRow(0);
     EXPECT_EQ(value->text(), QStringLiteral("pw-GitHub"));
     QSettings().setValue("ui/default_show_passwords", false);
+}
+
+TEST_F(MainWindowTest, FavoritePreservesContentTimesAndUpdatedSortOrder) {
+    window_->show();
+    QApplication::processEvents();
+    const auto target = passwords()->item(2)->data(Qt::UserRole).toLongLong();
+    passwords()->setCurrentRow(2);
+    auto* stamp = detail()->findChildren<QLabel*>("DetailStampValue").last();
+    const auto timestamp = stamp->text();
+    const auto first = passwords()->item(0)->data(Qt::UserRole).toLongLong();
+    auto* star = detail()->findChild<QToolButton*>("DetailHeaderButton");
+    ASSERT_NE(star, nullptr);
+    for (const bool expected : {true, false}) {
+        star->click();
+        const auto entry = password_dao_->FindById(target);
+        ASSERT_TRUE(entry);
+        EXPECT_EQ(entry->is_favorite, expected);
+        EXPECT_EQ(entry->ContentUpdatedAt(), 1000);
+        EXPECT_GT(entry->updated_at, 1000);
+        EXPECT_EQ(passwords()->item(0)->data(Qt::UserRole).toLongLong(), first);
+        EXPECT_EQ(detail()->entry_id(), target);
+        EXPECT_EQ(stamp->text(), timestamp);
+    }
+}
+
+TEST_F(MainWindowTest, SavingUnchangedEntryDoesNotAdvanceContentOrSyncTime) {
+    passwords()->setCurrentRow(0);
+    const auto id = detail()->entry_id();
+    const auto before = password_dao_->FindById(id);
+    ASSERT_TRUE(before);
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnEditRequested",
+                                         Q_ARG(std::int64_t, id)));
+    editor()->findChild<QPushButton*>("EditorSaveButton")->click();
+    const auto after = password_dao_->FindById(id);
+    ASSERT_TRUE(after);
+    EXPECT_EQ(after->updated_at, before->updated_at);
+    EXPECT_EQ(after->ContentUpdatedAt(), before->ContentUpdatedAt());
+    EXPECT_EQ(after->encrypted_password, before->encrypted_password);
+    EXPECT_EQ(after->password_iv, before->password_iv);
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnEditRequested",
+                                         Q_ARG(std::int64_t, id)));
+    editor()->findChild<QLineEdit*>("EditorTitleInput")->setText("Changed title");
+    editor()->findChild<QPushButton*>("EditorSaveButton")->click();
+    const auto changed = password_dao_->FindById(id);
+    ASSERT_TRUE(changed);
+    EXPECT_GT(changed->ContentUpdatedAt(), before->ContentUpdatedAt());
+    EXPECT_EQ(changed->ContentUpdatedAt(), changed->updated_at);
+}
+
+TEST_F(MainWindowTest, ClickingInsideDetailNeverDismissesItInWideOrCompactLayout) {
+    for (const int width : {1280, 760}) {
+        window_->resize(width, 800);
+        window_->show();
+        QApplication::processEvents();
+        passwords()->setCurrentRow(0);
+        ASSERT_TRUE(detail()->HasEntry());
+        const auto id = detail()->entry_id();
+        auto* scroll = detail()->findChild<QScrollArea*>("DetailScroll");
+        ASSERT_NE(scroll, nullptr);
+        for (QWidget* target : {static_cast<QWidget*>(detail()),
+                                scroll->viewport(),
+                                static_cast<QWidget*>(detail()->findChild<QLabel*>(
+                                    "DetailFieldLabel"))}) {
+            ASSERT_NE(target, nullptr);
+            QTest::mouseClick(target, Qt::LeftButton);
+            EXPECT_TRUE(detail()->HasEntry());
+            EXPECT_EQ(detail()->entry_id(), id);
+        }
+        auto* content = window_->findChild<QWidget*>("VaultWorkspaceContent");
+        ASSERT_NE(content, nullptr);
+        QTest::mouseClick(content, Qt::LeftButton, Qt::NoModifier, QPoint(2, 2));
+        EXPECT_FALSE(detail()->HasEntry());
+    }
+}
+
+TEST_F(MainWindowTest, FavoriteUpdatesInPlaceAndFailurePreservesListPosition) {
+    for (int i = 0; i < 60; ++i) {
+        Seed(QStringLiteral("scroll-entry-%1").arg(i), QStringLiteral("user"),
+             false, 0, 4000 + i);
+    }
+    window_->Reload();
+    window_->resize(1280, 800);
+    window_->show();
+    QApplication::processEvents();
+    auto* list = passwords();
+    auto* item = list->item(35);
+    ASSERT_NE(item, nullptr);
+    list->setCurrentItem(item);
+    list->scrollToItem(item, QAbstractItemView::PositionAtCenter);
+    QApplication::processEvents();
+    const auto id = item->data(Qt::UserRole).toLongLong();
+    QPointer<QWidget> card = list->itemWidget(item);
+    ASSERT_FALSE(card.isNull());
+    const int scroll = list->verticalScrollBar()->value();
+    const int row_top = list->visualItemRect(item).top();
+    ASSERT_GT(scroll, 0);
+    const int count = list->count();
+    const int favorites = sections()->item(1)->data(kSidebarCountRole).toInt();
+    QSignalSpy selection_changed(list, &QListWidget::itemSelectionChanged);
+    auto* favorite = detail()->findChild<QToolButton*>("DetailHeaderButton");
+    ASSERT_NE(favorite, nullptr);
+    const auto expect_stable_list = [&]() {
+        EXPECT_FALSE(card.isNull());
+        EXPECT_EQ(list->count(), count);
+        EXPECT_EQ(list->item(35), item);
+        EXPECT_EQ(list->itemWidget(item), card.data());
+        EXPECT_EQ(list->currentItem(), item);
+        EXPECT_TRUE(item->isSelected());
+        EXPECT_EQ(list->verticalScrollBar()->value(), scroll);
+        EXPECT_EQ(list->visualItemRect(item).top(), row_top);
+        EXPECT_EQ(detail()->entry_id(), id);
+        EXPECT_EQ(selection_changed.count(), 0);
+    };
+    for (const bool expected : {true, false}) {
+        favorite->click();
+        QApplication::processEvents();
+        ASSERT_FALSE(card.isNull());
+        ASSERT_EQ(list->item(35), item);
+        expect_stable_list();
+        const auto saved = password_dao_->FindById(id);
+        ASSERT_TRUE(saved);
+        EXPECT_EQ(saved->is_favorite, expected);
+        EXPECT_EQ(favorite->isChecked(), expected);
+        EXPECT_EQ(card->findChild<QLabel*>("PasswordCardStar") != nullptr, expected);
+        EXPECT_EQ(sections()->item(1)->data(kSidebarCountRole).toInt(),
+                  favorites + (expected ? 1 : 0));
+    }
+    ASSERT_TRUE(db_->Execute(
+        "CREATE TRIGGER reject_favorite BEFORE UPDATE OF isFavorite ON "
+        "password_entries BEGIN SELECT RAISE(ABORT, 'blocked'); END"));
+    favorite->click();
+    QApplication::processEvents();
+    ASSERT_FALSE(card.isNull());
+    ASSERT_EQ(list->item(35), item);
+    expect_stable_list();
+    EXPECT_FALSE(password_dao_->FindById(id)->is_favorite);
+    EXPECT_FALSE(favorite->isChecked());
+    EXPECT_EQ(card->findChild<QLabel*>("PasswordCardStar"), nullptr);
+    EXPECT_EQ(sections()->item(1)->data(kSidebarCountRole).toInt(), favorites);
+}
+
+TEST_F(MainWindowTest, UnfavoriteKeepsCurrentFavoriteRowUntilNavigation) {
+    sections()->setCurrentRow(1);
+    ASSERT_EQ(passwords()->count(), 1);
+    passwords()->setCurrentRow(0);
+    auto* item = passwords()->item(0);
+    const auto id = item->data(Qt::UserRole).toLongLong();
+    QPointer<QWidget> card = passwords()->itemWidget(item);
+    detail()->findChild<QToolButton*>("DetailHeaderButton")->click();
+    EXPECT_FALSE(password_dao_->FindById(id)->is_favorite);
+    ASSERT_EQ(passwords()->count(), 1);
+    EXPECT_EQ(passwords()->item(0), item);
+    EXPECT_EQ(passwords()->itemWidget(item), card.data());
+    EXPECT_EQ(detail()->entry_id(), id);
+    EXPECT_EQ(sections()->item(1)->data(kSidebarCountRole).toInt(), 0);
+    sections()->setCurrentRow(0);
+    sections()->setCurrentRow(1);
+    EXPECT_EQ(passwords()->count(), 0);
 }

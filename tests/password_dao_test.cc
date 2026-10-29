@@ -164,6 +164,48 @@ TEST_F(PasswordDaoTest, SetFavoriteToggles) {
     EXPECT_FALSE(dao_->FindById(*id)->is_favorite);
 }
 
+TEST_F(PasswordDaoTest, FavoriteChangesSyncVersionButPreservesContentTimestamp) {
+    const auto initial = MakeEntry(1);
+    const auto id = dao_->Insert(initial);
+    ASSERT_TRUE(id);
+    for (const bool favorite : {true, false}) {
+        const auto before = dao_->FindById(*id);
+        ASSERT_TRUE(before);
+        ASSERT_TRUE(dao_->SetFavorite(*id, favorite));
+        const auto after = dao_->FindById(*id);
+        ASSERT_TRUE(after);
+        EXPECT_EQ(after->is_favorite, favorite);
+        EXPECT_GT(after->updated_at, before->updated_at);
+        EXPECT_EQ(after->ContentUpdatedAt(), initial.updated_at);
+        EXPECT_EQ(after->encrypted_password, initial.encrypted_password);
+        EXPECT_EQ(after->password_iv, initial.password_iv);
+    }
+    auto current = dao_->FindById(*id);
+    ASSERT_TRUE(current);
+    const auto version = current->updated_at;
+    ASSERT_TRUE(dao_->SetFavorite(*id, false));
+    EXPECT_EQ(dao_->FindById(*id)->updated_at, version);
+    current->notes = QStringLiteral("changed content");
+    current->updated_at = version + 1;
+    ASSERT_TRUE(dao_->Update(*current));
+    EXPECT_EQ(dao_->FindById(*id)->ContentUpdatedAt(), version + 1);
+}
+
+TEST_F(PasswordDaoTest, FailedFavoriteTimestampWriteRollsBackFavoriteAndVersion) {
+    const auto initial = MakeEntry(1);
+    const auto id = dao_->Insert(initial);
+    ASSERT_TRUE(id);
+    ASSERT_TRUE(db_->Execute(
+        "CREATE TRIGGER reject_content_time BEFORE INSERT ON "
+        "password_content_updates BEGIN SELECT RAISE(ABORT, 'blocked'); END"));
+    EXPECT_FALSE(dao_->SetFavorite(*id, true));
+    const auto after = dao_->FindById(*id);
+    ASSERT_TRUE(after);
+    EXPECT_FALSE(after->is_favorite);
+    EXPECT_EQ(after->updated_at, initial.updated_at);
+    EXPECT_EQ(after->ContentUpdatedAt(), initial.updated_at);
+}
+
 TEST_F(PasswordDaoTest, HardDeleteRemovesRow) {
     const auto id = dao_->Insert(MakeEntry(1));
     ASSERT_TRUE(id.has_value());

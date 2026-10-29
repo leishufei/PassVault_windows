@@ -31,6 +31,7 @@ class DetailPanel : public QFrame {
     void SetEntry(const model::PasswordEntry& entry,
                   const std::optional<QString>& decrypted_password);
     void ClearEntry();
+    void SetFavorite(bool favorite);
     void SetDefaultPasswordVisible(bool visible);
 
     bool HasEntry() const;

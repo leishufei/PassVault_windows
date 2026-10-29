@@ -850,3 +850,46 @@ TEST_F(SyncManagerTest, PermanentDeletionDuringUploadRetainsDirtyAfterBusyTimeou
     EXPECT_TRUE(pwd_dao_->ListTrashIds()->empty());
     EXPECT_EQ(provider_.upload_count(), 2);
 }
+
+TEST_F(SyncManagerTest, FavoriteSyncPreservesContentTimeAndContentChangesAdvanceIt) {
+    const auto initial = MakeEntry(1, QStringLiteral("original password"), 1000);
+    const auto id = pwd_dao_->Insert(initial);
+    ASSERT_TRUE(id);
+    manager_->set_provider(&provider_);
+    ASSERT_TRUE(manager_->PerformSync().success);
+    for (const bool favorite : {true, false}) {
+        ASSERT_TRUE(pwd_dao_->SetFavorite(*id, favorite));
+        const int uploads = provider_.upload_count();
+        ASSERT_TRUE(manager_->PerformSync().success);
+        EXPECT_EQ(provider_.upload_count(), uploads + 1);
+        const auto cloud = DecodeCloud(provider_);
+        ASSERT_TRUE(cloud);
+        ASSERT_EQ(cloud->passwords.size(), 1);
+        EXPECT_EQ(cloud->passwords.front().is_favorite, favorite);
+        EXPECT_GT(cloud->passwords.front().updated_at, initial.updated_at);
+        EXPECT_EQ(pwd_dao_->FindById(*id)->ContentUpdatedAt(), initial.updated_at);
+    }
+    auto cloud = DecodeCloud(provider_);
+    ASSERT_TRUE(cloud);
+    auto& remote = cloud->passwords.front();
+    remote.is_favorite = true;
+    ++remote.updated_at;
+    auto backup = CloudCryptoService::EncryptForCloud(
+        cloud->ToJsonBytes(), std::string_view(kMasterPassword));
+    ASSERT_TRUE(backup);
+    provider_.SetCloudDirectly(backup->ToJsonBytes(), QStringLiteral("remote-favorite"));
+    ASSERT_TRUE(manager_->PerformSync().success);
+    EXPECT_TRUE(pwd_dao_->FindById(*id)->is_favorite);
+    EXPECT_EQ(pwd_dao_->FindById(*id)->ContentUpdatedAt(), initial.updated_at);
+    remote.password = QStringLiteral("changed password");
+    ++remote.updated_at;
+    backup = CloudCryptoService::EncryptForCloud(
+        cloud->ToJsonBytes(), std::string_view(kMasterPassword));
+    ASSERT_TRUE(backup);
+    provider_.SetCloudDirectly(backup->ToJsonBytes(), QStringLiteral("remote-content"));
+    ASSERT_TRUE(manager_->PerformSync().success);
+    const auto changed = pwd_dao_->FindById(*id);
+    ASSERT_TRUE(changed);
+    EXPECT_EQ(changed->ContentUpdatedAt(), remote.updated_at);
+    EXPECT_EQ(changed->updated_at, remote.updated_at);
+}

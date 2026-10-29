@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -360,6 +361,20 @@ SyncManager::DoSyncOutcome SyncManager::DoSyncOnce(const QString& remote_name) {
         entry.created_at = sync_pw.created_at;
         entry.updated_at = sync_pw.updated_at;
         entry.is_deleted = sync_pw.is_deleted;
+        entry.content_updated_at = sync_pw.updated_at;
+        if (existing && existing->category_id == entry.category_id) {
+            const auto previous = PasswordEntryToSyncItem(
+                *existing, cat_id_to_uuid, *session_key);
+            if (previous &&
+                std::tie(previous->title, previous->username, previous->password,
+                         previous->website, previous->notes, previous->icon_color,
+                         previous->created_at, previous->is_deleted) ==
+                    std::tie(sync_pw.title, sync_pw.username, sync_pw.password,
+                             sync_pw.website, sync_pw.notes, sync_pw.icon_color,
+                             sync_pw.created_at, sync_pw.is_deleted)) {
+                entry.content_updated_at = existing->ContentUpdatedAt();
+            }
+        }
         if (!pwd_dao_->ApplySyncedEntry(entry)) {
             return {DoSyncStatus::kFatal, QStringLiteral("保存同步密码失败")};
         }

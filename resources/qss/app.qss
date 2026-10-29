@@ -26,27 +26,6 @@ QMainWindow, #WorkspaceRoot {
 }
 #Sidebar QLabel { background: transparent; }
 
-#SidebarBrand { background: transparent; }
-#Sidebar #SidebarBrandBadge {
-    background-color: var(--accent);
-    border-radius: var(--radius-lg);
-    min-width: 34px;
-    max-width: 34px;
-    min-height: 34px;
-    max-height: 34px;
-}
-#SidebarBrandName {
-    color: var(--text-primary);
-    font-size: 16px;
-    font-weight: 700;
-    letter-spacing: -0.3px;
-}
-#SidebarBrandTagline {
-    color: var(--text-tertiary);
-    font-size: 11px;
-    letter-spacing: 0.2px;
-}
-
 #NewPasswordButton {
     background-color: var(--accent);
     color: var(--accent-fg);
@@ -486,7 +465,7 @@ QMainWindow, #WorkspaceRoot {
     background-color: var(--card);
     border: 1px solid var(--border-panel-4);
     border-radius: var(--radius-xl);
-    padding: 16px 18px;
+    padding: 20px 18px;
 }
 #DetailCardRow { background: transparent; }
 #DetailCardDivider {
@@ -547,7 +526,7 @@ QMainWindow, #WorkspaceRoot {
     background-color: var(--soft-bg);
     border: 1px solid var(--border-section);
     border-radius: var(--radius-xl);
-    padding: 14px 18px;
+    padding: 18px 18px;
 }
 #DetailStampLabel {
     color: var(--text-tertiary);

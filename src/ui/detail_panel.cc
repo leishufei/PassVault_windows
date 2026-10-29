@@ -131,7 +131,7 @@ QWidget* DetailPanel::BuildContentPage() {
     scroll->setWidget(page);
     auto* outer = new QVBoxLayout(page);
     outer->setContentsMargins(24, 24, 24, 24);
-    outer->setSpacing(16);
+    outer->setSpacing(24);
 
     auto* header = new QWidget(page);
     header->setObjectName(QStringLiteral("DetailHeader"));
@@ -147,7 +147,7 @@ QWidget* DetailPanel::BuildContentPage() {
 
     auto* title_col = new QVBoxLayout();
     title_col->setContentsMargins(0, 0, 0, 0);
-    title_col->setSpacing(4);
+    title_col->setSpacing(8);
     title_col->setAlignment(Qt::AlignTop);
 
     header_title_ = new ElidedLabel();
@@ -254,19 +254,20 @@ QWidget* DetailPanel::BuildContentPage() {
     info_card->setFrameShape(QFrame::NoFrame);
     auto* info_layout = new QVBoxLayout(info_card);
     info_layout->setContentsMargins(0, 0, 0, 0);
-    info_layout->setSpacing(12);
+    info_layout->setSpacing(16);
 
     auto build_row = [&](const QString& label_text, QLabel* value,
                          std::initializer_list<QToolButton**> buttons) {
         auto* row = new QWidget(info_card);
         row->setObjectName(QStringLiteral("DetailCardRow"));
+        row->setMinimumHeight(64);
         auto* row_layout = new QHBoxLayout(row);
         row_layout->setContentsMargins(0, 0, 0, 0);
         row_layout->setSpacing(8);
 
         auto* col = new QVBoxLayout();
         col->setContentsMargins(0, 0, 0, 0);
-        col->setSpacing(4);
+        col->setSpacing(8);
         auto* label = MakeLabel(label_text, QStringLiteral("DetailFieldLabel"));
         col->addWidget(label);
         value->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -337,7 +338,7 @@ QWidget* DetailPanel::BuildContentPage() {
     stamp_card->setFrameShape(QFrame::NoFrame);
     auto* stamp_layout = new QVBoxLayout(stamp_card);
     stamp_layout->setContentsMargins(0, 0, 0, 0);
-    stamp_layout->setSpacing(8);
+    stamp_layout->setSpacing(12);
 
     auto make_stamp_row = [&](const QString& label_text, QLabel** value_ptr) {
         auto* row = new QHBoxLayout();
@@ -374,6 +375,12 @@ void DetailPanel::SetEntry(const model::PasswordEntry& entry,
     RefreshView();
 }
 
+void DetailPanel::SetFavorite(bool favorite) {
+    if (!entry_) return;
+    entry_->is_favorite = favorite;
+    RefreshView();
+}
+
 void DetailPanel::SetDefaultPasswordVisible(bool visible) {
     default_password_visible_ = visible;
     password_visible_ = visible;
@@ -407,15 +414,11 @@ void DetailPanel::RefreshView() {
     header_title_->SetFullText(e.title.isEmpty() ? QStringLiteral("(无标题)")
                                                  : e.title);
     const QString tag = CategoryName(e.category_id);
-    if (tag.isEmpty()) {
-        header_tag_->hide();
-    } else {
-        header_tag_->setText(tag);
-        header_tag_->ensurePolished();
-        header_tag_->setMinimumWidth(
-            qMin(120, header_tag_->fontMetrics().horizontalAdvance(tag) + 16));
-        header_tag_->show();
-    }
+    header_tag_->setText(tag);
+    header_tag_->ensurePolished();
+    header_tag_->setMinimumWidth(
+        qMin(120, header_tag_->fontMetrics().horizontalAdvance(tag) + 16));
+    header_tag_->show();
 
     QSignalBlocker blocker(header_favorite_);
     header_favorite_->setChecked(e.is_favorite);
@@ -430,23 +433,22 @@ void DetailPanel::RefreshView() {
     const bool has_username = !e.username.isEmpty();
     username_value_->setText(e.username);
     username_copy_->setEnabled(has_username);
-    if (username_row_) username_row_->setVisible(has_username);
-    if (username_divider_) username_divider_->setVisible(has_username);
+    if (username_row_) username_row_->show();
+    if (username_divider_) username_divider_->show();
 
     UpdatePasswordDisplay();
 
     const bool has_website = !e.website.isEmpty();
-    website_value_->setText(has_website ? e.website : QString());
+    website_value_->setText(e.website);
     website_open_->setEnabled(has_website);
-    if (website_row_) website_row_->setVisible(has_website);
-    if (website_divider_) website_divider_->setVisible(has_website);
+    if (website_row_) website_row_->show();
+    if (website_divider_) website_divider_->show();
 
     created_value_->setText(FormatTimestamp(e.created_at));
-    updated_value_->setText(FormatTimestamp(e.updated_at));
-    const bool has_notes = !e.notes.isEmpty();
+    updated_value_->setText(FormatTimestamp(e.ContentUpdatedAt()));
     notes_value_->setText(e.notes);
-    if (notes_row_) notes_row_->setVisible(has_notes);
-    if (notes_divider_) notes_divider_->setVisible(has_notes);
+    if (notes_row_) notes_row_->show();
+    if (notes_divider_) notes_divider_->show();
     for (auto* label : {username_value_, website_value_, notes_value_}) {
         label->setAccessibleName(label->text());
     }

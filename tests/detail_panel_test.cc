@@ -333,17 +333,41 @@ TEST_F(DetailPanelTest, PasswordToggleSwitchesMaskedAndPlain) {
     EXPECT_NE(passwordValue()->text(), QStringLiteral("secret"));
 }
 
-TEST_F(DetailPanelTest, EmptyIdentityFieldsStayBlankAndDisableActions) {
+TEST_F(DetailPanelTest, EmptyFieldsStayVisibleAndDisableEmptyActions) {
     PasswordEntry entry = MakeEntry();
+    panel_.SetEntry(entry, QStringLiteral("secret"));
     entry.username.clear();
     entry.website.clear();
-    panel_.SetEntry(entry, QStringLiteral("secret"));
+    entry.notes.clear();
+    entry.category_id = 99;
+    panel_.SetEntry(entry, QString());
+    panel_.resize(400, 700);
+    panel_.show();
+    QApplication::processEvents();
 
     EXPECT_TRUE(usernameValue()->text().isEmpty());
     EXPECT_TRUE(websiteValue()->text().isEmpty());
-    EXPECT_TRUE(usernameValue()->parentWidget()->isHidden());
-    EXPECT_TRUE(websiteValue()->parentWidget()->isHidden());
+    EXPECT_TRUE(passwordValue()->text().isEmpty());
+    auto* notes = panel_.findChild<QLabel*>("DetailNotesValue");
+    ASSERT_NE(notes, nullptr);
+    EXPECT_TRUE(notes->text().isEmpty());
+    for (auto* value : {usernameValue(), passwordValue(), websiteValue(), notes}) {
+        EXPECT_TRUE(value->isVisible());
+        EXPECT_TRUE(value->parentWidget()->isVisible());
+    }
+    const auto dividers = panel_.findChildren<QFrame*>("DetailCardDivider");
+    ASSERT_EQ(dividers.size(), 3);
+    for (auto* divider : dividers) EXPECT_TRUE(divider->isVisible());
+    const auto stamps = panel_.findChildren<QLabel*>("DetailStampValue");
+    ASSERT_EQ(stamps.size(), 2);
+    for (auto* stamp : stamps) EXPECT_TRUE(stamp->isVisible());
+    auto* tag = panel_.findChild<QLabel*>("DetailTag");
+    ASSERT_NE(tag, nullptr);
+    EXPECT_TRUE(tag->text().isEmpty());
+    EXPECT_TRUE(tag->isVisible());
     EXPECT_FALSE(usernameCopy()->isEnabled());
+    EXPECT_FALSE(copyPasswordButton()->isEnabled());
+    EXPECT_FALSE(passwordToggle()->isEnabled());
     QSignalSpy copied(&panel_, &DetailPanel::CopyUsernameRequested);
     usernameCopy()->click();
     EXPECT_EQ(copied.count(), 0);

@@ -16,7 +16,14 @@ file(GLOB _icon_files CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
 file(GLOB _font_files CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
      "${CMAKE_CURRENT_SOURCE_DIR}/fonts/*.ttf")
 
-set(_resource_files ${_qss_files} ${_icon_files} ${_font_files})
+set(_resource_files ${_qss_files} ${_icon_files} ${_font_files}
+    icons/passvault.png
+)
+
+if(WIN32)
+    target_include_directories(passvault PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_sources(passvault PRIVATE passvault.rc)
+endif()
 
 qt_add_resources(passvault "passvault_resources"
     PREFIX "/"
