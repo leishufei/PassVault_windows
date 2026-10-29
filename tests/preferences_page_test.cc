@@ -271,7 +271,7 @@ TEST_F(PreferencesPageTest, SetGoogleDriveConnectedUpdatesStatus) {
     page_.SetGoogleDriveConnected(true, QStringLiteral("test@example.com"));
     auto* email = accountEmail();
     ASSERT_NE(email, nullptr);
-    EXPECT_TRUE(email->text().contains(QStringLiteral("test@example.com")));
+    EXPECT_EQ(email->accessibleName(), QStringLiteral("test@example.com"));
     EXPECT_TRUE(syncNow()->isEnabled());
 }
 
@@ -291,6 +291,8 @@ TEST_F(PreferencesPageTest, DisconnectedShowsAuthorizeCard) {
     EXPECT_TRUE(accountCard()->isHidden());
     EXPECT_TRUE(lastSyncCard()->isHidden());
     EXPECT_FALSE(syncNow()->isEnabled());
+    EXPECT_TRUE(driveStatus()->parentWidget()->isHidden());
+    EXPECT_TRUE(page_.findChild<QPushButton*>("AuthorizeCancelButton")->isHidden());
 }
 
 TEST_F(PreferencesPageTest, AuthorizingShowsWaitingAndDisablesSync) {
@@ -299,6 +301,8 @@ TEST_F(PreferencesPageTest, AuthorizingShowsWaitingAndDisablesSync) {
     EXPECT_TRUE(accountCard()->isHidden());
     EXPECT_FALSE(syncNow()->isEnabled());
     EXPECT_EQ(driveStatus()->text(), QStringLiteral("等待授权..."));
+    EXPECT_FALSE(driveStatus()->parentWidget()->isHidden());
+    EXPECT_FALSE(page_.findChild<QPushButton*>("AuthorizeCancelButton")->isHidden());
 }
 
 TEST_F(PreferencesPageTest, ConnectedShowsAccountAndLastSyncCards) {
@@ -308,7 +312,22 @@ TEST_F(PreferencesPageTest, ConnectedShowsAccountAndLastSyncCards) {
     EXPECT_FALSE(accountCard()->isHidden());
     EXPECT_FALSE(lastSyncCard()->isHidden());
     EXPECT_TRUE(syncNow()->isEnabled());
-    EXPECT_EQ(accountEmail()->text(), QStringLiteral("user@example.com"));
+    EXPECT_EQ(accountEmail()->accessibleName(), QStringLiteral("user@example.com"));
+    EXPECT_TRUE(driveStatus()->parentWidget()->isHidden());
+}
+
+TEST_F(PreferencesPageTest, ConnectedWithoutAccountHintDoesNotSayDisconnected) {
+    page_.SetSyncState(PreferencesPage::SyncUiState::kConnected, QString());
+    EXPECT_TRUE(accountEmail()->accessibleName().isEmpty());
+    EXPECT_EQ(page_.findChild<QLabel*>("SyncAccountTitle")->text(),
+              QStringLiteral("已连接"));
+    EXPECT_FALSE(accountCard()->isHidden());
+    EXPECT_TRUE(syncNow()->isEnabled());
+    page_.SetSyncState(PreferencesPage::SyncUiState::kDisconnected, QString());
+    EXPECT_FALSE(authorizeCard()->isHidden());
+    EXPECT_TRUE(accountCard()->isHidden());
+    EXPECT_EQ(page_.findChild<QLabel*>("SyncAuthTitle")->text(),
+              QStringLiteral("未授权 Google 账号"));
 }
 
 TEST_F(PreferencesPageTest, SyncingDisablesSyncNowButton) {
@@ -317,6 +336,7 @@ TEST_F(PreferencesPageTest, SyncingDisablesSyncNowButton) {
     page_.SetSyncState(PreferencesPage::SyncUiState::kSyncing, QString());
     EXPECT_FALSE(syncNow()->isEnabled());
     EXPECT_EQ(driveStatus()->text(), QStringLiteral("同步中..."));
+    EXPECT_FALSE(driveStatus()->parentWidget()->isHidden());
 }
 
 TEST_F(PreferencesPageTest, SuccessEnablesSyncNowAndClearsStatus) {
@@ -325,6 +345,7 @@ TEST_F(PreferencesPageTest, SuccessEnablesSyncNowAndClearsStatus) {
     page_.SetSyncState(PreferencesPage::SyncUiState::kSuccess, QString());
     EXPECT_TRUE(syncNow()->isEnabled());
     EXPECT_TRUE(driveStatus()->text().isEmpty());
+    EXPECT_TRUE(driveStatus()->parentWidget()->isHidden());
     EXPECT_EQ(syncNow()->text(), QStringLiteral("立即同步"));
 }
 
@@ -335,6 +356,7 @@ TEST_F(PreferencesPageTest, ConflictShowsConflictTextAndKeepsSyncEnabled) {
     EXPECT_TRUE(syncNow()->isEnabled());
     EXPECT_EQ(driveStatus()->text(),
               QStringLiteral("同步冲突，请稍后重试"));
+    EXPECT_FALSE(driveStatus()->parentWidget()->isHidden());
 }
 
 TEST_F(PreferencesPageTest, ErrorShowsFailureTextAndKeepsSyncEnabled) {
@@ -345,6 +367,7 @@ TEST_F(PreferencesPageTest, ErrorShowsFailureTextAndKeepsSyncEnabled) {
     EXPECT_TRUE(syncNow()->isEnabled());
     EXPECT_EQ(driveStatus()->text(),
               QStringLiteral("同步失败：多次重试后仍存在并发冲突"));
+    EXPECT_FALSE(driveStatus()->parentWidget()->isHidden());
 }
 
 TEST_F(PreferencesPageTest, ChangeAccountButtonEmitsConnectRequested) {
@@ -402,7 +425,8 @@ TEST_F(PreferencesPageTest, CsvButtonsLiveInGeneralTab) {
 }
 
 TEST_F(PreferencesPageTest, LongAccountEmailDoesNotOverflowCard) {
-    page_.resize(1200, 800);
+    page_.resize(640, 800);
+    tabs()->setCurrentIndex(1);
     page_.show();
     QApplication::processEvents();
     page_.SetSyncState(
@@ -413,7 +437,14 @@ TEST_F(PreferencesPageTest, LongAccountEmailDoesNotOverflowCard) {
     auto* card = accountCard();
     ASSERT_NE(email, nullptr);
     ASSERT_NE(card, nullptr);
-    EXPECT_LE(email->sizeHint().width(), card->width());
+    EXPECT_TRUE(card->rect().contains(
+        QRect(email->mapTo(card, QPoint(0, 0)), email->size())));
+    EXPECT_EQ(email->toolTip(),
+              QStringLiteral("a-very-long-mailbox-name-for-acceptance@example-domain.com"));
+    EXPECT_EQ(email->accessibleName(), email->toolTip());
+    EXPECT_NE(email->text(), email->toolTip());
+    EXPECT_LE(email->fontMetrics().horizontalAdvance(email->text()),
+              email->contentsRect().width());
     EXPECT_FALSE(email->wordWrap());
 }
 
@@ -703,3 +734,20 @@ TEST_F(PreferencesPageTest, TimeChoicesPersistAndLegacyValuesUseDefaults) {
 }
 
 }  // namespace
+
+TEST_F(PreferencesPageTest, DefaultPasswordVisibilityDefaultsOffAndPersists) {
+    QSettings().remove("ui/default_show_passwords");
+    passvault::ui::PreferencesPage page;
+    EXPECT_FALSE(page.DefaultPasswordVisible());
+    QSignalSpy changed(&page, &passvault::ui::PreferencesPage::DefaultPasswordVisibilityChanged);
+    auto* toggle = page.findChild<QCheckBox*>("DefaultShowPasswords");
+    ASSERT_NE(toggle, nullptr);
+    toggle->setChecked(true);
+    ASSERT_EQ(changed.count(), 1);
+    EXPECT_TRUE(changed.front().front().toBool());
+    QSettings().sync();
+    EXPECT_TRUE(QSettings().value("ui/default_show_passwords").toBool());
+    passvault::ui::PreferencesPage reopened;
+    EXPECT_TRUE(reopened.DefaultPasswordVisible());
+    toggle->setChecked(false);
+}

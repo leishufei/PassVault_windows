@@ -40,6 +40,7 @@ class EditorPanel : public QFrame {
     void OpenForEdit(const DecryptedEntry& entry);
     void Close();
     void ClearSensitiveState();
+    void SetDefaultPasswordVisible(bool visible);
     bool IsOpen() const { return is_open_; }
 
     DecryptedEntry Result() const;
@@ -78,11 +79,14 @@ class EditorPanel : public QFrame {
     void AnimateOut();
     void RefreshMode();
     void RefreshThemeAssets();
+    void ApplyPasswordVisibility(bool visible);
+    void RefreshCategoryPopup();
 
     Mode mode_ = Mode::kCreate;
     QList<model::Category> categories_;
     DecryptedEntry entry_;
     bool is_open_ = false;
+    bool default_password_visible_ = false;
 
     QStackedWidget* pages_ = nullptr;
     QWidget* editor_page_ = nullptr;

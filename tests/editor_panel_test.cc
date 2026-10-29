@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 
 #include <QApplication>
+#include <QAbstractItemView>
+#include <QTest>
+#include <QScrollBar>
 #include <QBoxLayout>
 #include <QCheckBox>
 #include <QComboBox>
@@ -140,7 +143,7 @@ TEST_F(EditorPanelTest, CreateModeUsesFigmaActionText) {
     EXPECT_EQ(saveButton()->text(), QStringLiteral("创建密码"));
 }
 
-TEST_F(EditorPanelTest, PasswordInputUsesMonoTypography) {
+TEST_F(EditorPanelTest, PasswordInputUsesBodyTypography) {
     QWidget parent;
     parent.resize(1200, 800);
     EditorPanel panel(&parent);
@@ -155,7 +158,12 @@ TEST_F(EditorPanelTest, PasswordInputUsesMonoTypography) {
     QApplication::processEvents();
 
     const QFontInfo password_font_info(password->font());
-    EXPECT_EQ(password_font_info.family(), QStringLiteral("DM Mono"));
+    auto* username =
+        panel.findChild<QLineEdit*>(QStringLiteral("EditorUsernameInput"));
+    ASSERT_NE(username, nullptr);
+    const QFontInfo username_font_info(username->font());
+    EXPECT_EQ(password_font_info.family(), username_font_info.family());
+    EXPECT_EQ(password->font().letterSpacing(), username->font().letterSpacing());
     EXPECT_EQ(password_font_info.pixelSize(), 12);
 }
 
@@ -482,3 +490,85 @@ TEST_F(EditorPanelTest, CloseSetsNotOpen) {
 }
 
 }  // namespace
+
+TEST_F(EditorPanelTest, DefaultVisibilityAndSensitiveClear) {
+    EditorPanel::DecryptedEntry entry;
+    entry.entry.id = 10;
+    entry.entry.uuid = QStringLiteral("entry-a");
+    entry.password = QStringLiteral("demo-value");
+    panel_.OpenForEdit(entry);
+    EXPECT_EQ(passwordInput()->echoMode(), QLineEdit::Password);
+    panel_.SetDefaultPasswordVisible(true);
+    EXPECT_EQ(passwordInput()->echoMode(), QLineEdit::Normal);
+    previewToggle()->click();
+    panel_.OpenForEdit(entry);
+    EXPECT_EQ(passwordInput()->echoMode(), QLineEdit::Password);
+    ++entry.entry.id;
+    panel_.OpenForEdit(entry);
+    EXPECT_EQ(passwordInput()->echoMode(), QLineEdit::Normal);
+    previewToggle()->click();
+    panel_.Close();
+    panel_.OpenForEdit(entry);
+    EXPECT_EQ(passwordInput()->echoMode(), QLineEdit::Normal);
+    panel_.ClearSensitiveState();
+    EXPECT_TRUE(passwordInput()->text().isEmpty());
+    EXPECT_EQ(passwordInput()->echoMode(), QLineEdit::Password);
+    panel_.OpenForCreate();
+    EXPECT_EQ(passwordInput()->echoMode(), QLineEdit::Normal);
+    panel_.SetDefaultPasswordVisible(false);
+    EXPECT_EQ(passwordInput()->echoMode(), QLineEdit::Password);
+}
+
+TEST_F(EditorPanelTest, CategoryPopupSurfacesAndKeyboardKeepModelState) {
+    ThemeGuard guard;
+    QList<passvault::model::Category> categories;
+    for (int i = 1; i <= 35; ++i) {
+        passvault::model::Category category;
+        category.id = i;
+        category.name = QString(90, QChar('a' + i % 20));
+        categories.append(category);
+    }
+    panel_.SetCategories(categories);
+    panel_.OpenForCreate();
+    auto* combo = categoryCombo();
+    combo->setCurrentIndex(12);
+    auto* model = combo->model();
+    for (auto theme : {passvault::ui::Theme::kLight, passvault::ui::Theme::kDark}) {
+        passvault::ui::ThemeManager::Instance()->ApplyTheme(theme);
+        combo->showPopup();
+        QApplication::processEvents();
+        auto* view = combo->view();
+        const auto background = passvault::ui::ThemeManager::Instance()->Color("bg-elevated");
+        for (auto* surface : {view->window(), static_cast<QWidget*>(view), view->viewport()}) {
+            EXPECT_EQ(surface->palette().color(QPalette::Base), background);
+            EXPECT_EQ(surface->palette().color(QPalette::Window), background);
+        }
+        EXPECT_EQ(combo->model(), model);
+        EXPECT_EQ(combo->currentIndex(), 12);
+        EXPECT_EQ(view->frameShape(), QFrame::NoFrame);
+        EXPECT_EQ(view->textElideMode(), Qt::ElideRight);
+        EXPECT_EQ(combo->itemData(12, Qt::ToolTipRole).toString(), combo->itemText(12));
+        QTest::keyClick(view, Qt::Key_Down);
+        QTest::keyClick(view, Qt::Key_Return);
+        EXPECT_EQ(combo->currentIndex(), 13);
+        combo->showPopup();
+        QTest::keyClick(view, Qt::Key_End);
+        EXPECT_EQ(view->currentIndex().row(), combo->count() - 1);
+        EXPECT_GT(view->verticalScrollBar()->maximum(), 0);
+        QTest::keyClick(view, Qt::Key_Escape);
+        EXPECT_EQ(combo->currentIndex(), 13);
+        combo->setCurrentIndex(12);
+    }
+    EditorPanel::DecryptedEntry entry;
+    entry.entry.id = 1;
+    entry.entry.category_id = 12;
+    entry.entry.title = QStringLiteral("popup-edit-demo");
+    panel_.OpenForEdit(entry);
+    combo->showPopup();
+    QApplication::processEvents();
+    EXPECT_EQ(combo->currentData().toLongLong(), 12);
+    EXPECT_EQ(titleInput()->text(), entry.entry.title);
+    EXPECT_EQ(combo->view()->window()->palette().color(QPalette::Base),
+              passvault::ui::ThemeManager::Instance()->Color("bg-elevated"));
+    combo->hidePopup();
+}

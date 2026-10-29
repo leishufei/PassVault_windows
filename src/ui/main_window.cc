@@ -82,6 +82,37 @@ constexpr int kSidebarCountRole = Qt::UserRole + 1;
 constexpr int kSidebarSystemRole = Qt::UserRole + 2;
 constexpr int kSidebarIconRole = Qt::UserRole + 3;
 
+class PasswordList final : public QListWidget {
+ public:
+    using QListWidget::QListWidget;
+    bool selection_only_gesture() const { return selection_only_gesture_; }
+
+ protected:
+    void mousePressEvent(QMouseEvent* event) override {
+        selection_only_gesture_ = event->button() == Qt::RightButton ||
+                                  event->modifiers().testFlag(Qt::ControlModifier) ||
+                                  event->modifiers().testFlag(Qt::ShiftModifier);
+        QListWidget::mousePressEvent(event);
+    }
+    void mouseReleaseEvent(QMouseEvent* event) override {
+        QListWidget::mouseReleaseEvent(event);
+        selection_only_gesture_ = false;
+    }
+
+ private:
+    bool selection_only_gesture_ = false;
+};
+
+class PasswordCard final : public QFrame {
+ protected:
+    void resizeEvent(QResizeEvent* event) override {
+        QFrame::resizeEvent(event);
+        if (auto* time = findChild<QLabel*>(QStringLiteral("PasswordCardTime"))) {
+            time->setVisible(width() >= 360);
+        }
+    }
+};
+
 class SidebarItemDelegate final : public QStyledItemDelegate {
  public:
     using QStyledItemDelegate::QStyledItemDelegate;
@@ -223,6 +254,7 @@ MainWindow::MainWindow(const Deps& deps, QWidget* parent)
 
     workspace_ = new QWidget(workspace_page_);
     workspace_->setObjectName(QStringLiteral("VaultWorkspace"));
+    workspace_->setFocusPolicy(Qt::StrongFocus);
     auto* workspace_layout = new QVBoxLayout(workspace_);
     workspace_layout->setContentsMargins(0, 0, 0, 0);
     workspace_layout->setSpacing(0);
@@ -254,6 +286,13 @@ MainWindow::MainWindow(const Deps& deps, QWidget* parent)
     connect(preferences_page_, &PreferencesPage::BackRequested, this,
             [this]() { central_stack_->setCurrentWidget(workspace_page_); });
     central_stack_->addWidget(preferences_page_);
+    const auto apply_visibility = [this](bool visible) {
+        detail_panel_->SetDefaultPasswordVisible(visible);
+        editor_panel_->SetDefaultPasswordVisible(visible);
+    };
+    apply_visibility(preferences_page_->DefaultPasswordVisible());
+    connect(preferences_page_, &PreferencesPage::DefaultPasswordVisibilityChanged,
+            this, apply_visibility);
 
     root_layout->addWidget(container);
     setCentralWidget(root);
@@ -301,6 +340,7 @@ void MainWindow::SetSessionKey(const crypto::SessionKey* session_key) {
     if (session_key) return;
     detail_panel_->ClearEntry();
     editor_panel_->ClearSensitiveState();
+    ClipboardManager::Instance()->ClearSensitive();
     editor_entry_id_ = -1;
     ShowListPane();
 }
@@ -338,6 +378,7 @@ QWidget* MainWindow::BuildSidebar() {
     layout->addSpacing(30);
 
     auto* new_button = new QPushButton(QStringLiteral("新建密码"), sidebar);
+    new_button->setFocusPolicy(Qt::TabFocus);
     new_button->setObjectName(QStringLiteral("NewPasswordButton"));
     new_button->setProperty("accent", true);
     new_button->setCursor(Qt::PointingHandCursor);
@@ -433,16 +474,18 @@ QWidget* MainWindow::BuildSidebar() {
     auto* footer = new QWidget(sidebar);
     footer->setObjectName(QStringLiteral("SidebarFooter"));
     auto* footer_layout = new QVBoxLayout(footer);
-    footer_layout->setContentsMargins(0, 0, 0, 0);
-    footer_layout->setSpacing(10);
+    footer_layout->setContentsMargins(0, 12, 0, 0);
+    footer_layout->setSpacing(0);
 
     auto* sync_row = new QWidget(footer);
     sync_row->setObjectName(QStringLiteral("SyncStatusRow"));
+    sync_row->setFixedHeight(36);
     auto* sync_layout = new QHBoxLayout(sync_row);
-    sync_layout->setContentsMargins(0, 0, 0, 0);
+    sync_layout->setContentsMargins(12, 0, 12, 0);
     sync_layout->setSpacing(8);
     auto* cloud_icon = new QLabel(sync_row);
     cloud_icon->setObjectName(QStringLiteral("SyncStatusIcon"));
+    cloud_icon->setFixedSize(kIconSize, kIconSize);
     cloud_icon->setPixmap(
         IconLoader::Load(
             QStringLiteral("cloud"),
@@ -460,15 +503,29 @@ QWidget* MainWindow::BuildSidebar() {
     sync_layout->addWidget(sync_status_dot_);
     footer_layout->addWidget(sync_row);
 
-    auto* settings_button = new QPushButton(QStringLiteral("设置"), footer);
+    auto* settings_button = new QPushButton(footer);
+    settings_button->setAccessibleName(QStringLiteral("设置"));
+    settings_button->setFixedHeight(36);
     settings_button->setObjectName(QStringLiteral("SidebarSettingsButton"));
     settings_button->setProperty("flat", true);
     settings_button->setCursor(Qt::PointingHandCursor);
-    settings_button->setIcon(IconLoader::Load(
-        QStringLiteral("settings-2"),
-        ThemeManager::Instance()->Color(QStringLiteral("text-secondary")),
-        kIconSize));
-    settings_button->setIconSize(QSize(kIconSize, kIconSize));
+    auto* settings_layout = new QHBoxLayout(settings_button);
+    settings_layout->setContentsMargins(12, 0, 12, 0);
+    settings_layout->setSpacing(8);
+    auto* settings_icon = new QLabel(settings_button);
+    settings_icon->setObjectName(QStringLiteral("SidebarSettingsIcon"));
+    settings_icon->setFixedSize(kIconSize, kIconSize);
+    settings_icon->setPixmap(
+        IconLoader::Load(
+            QStringLiteral("settings-2"),
+            ThemeManager::Instance()->Color(QStringLiteral("text-secondary")),
+            kIconSize).pixmap(kIconSize, kIconSize));
+    settings_icon->setAttribute(Qt::WA_TransparentForMouseEvents);
+    settings_layout->addWidget(settings_icon);
+    auto* settings_text = new QLabel(QStringLiteral("设置"), settings_button);
+    settings_text->setObjectName(QStringLiteral("SidebarSettingsText"));
+    settings_text->setAttribute(Qt::WA_TransparentForMouseEvents);
+    settings_layout->addWidget(settings_text, 1);
     connect(settings_button, &QPushButton::clicked, this, [this]() {
         central_stack_->setCurrentWidget(preferences_page_);
     });
@@ -536,6 +593,7 @@ QWidget* MainWindow::BuildWorkspaceHeader() {
 
     search_ = new QLineEdit(search_container_);
     search_->setObjectName(QStringLiteral("SearchBar"));
+    search_->installEventFilter(this);
     search_->setPlaceholderText(QStringLiteral("搜索标题、用户名、网址或备注"));
     search_->setClearButtonEnabled(true);
     search_action_ = search_->addAction(
@@ -716,7 +774,7 @@ QWidget* MainWindow::BuildPasswordListColumn() {
     list_content_stack_ = new QStackedWidget(column);
     list_content_stack_->setObjectName(QStringLiteral("ListContentStack"));
     layout->addWidget(list_content_stack_, 1);
-    password_list_ = new QListWidget(list_content_stack_);
+    password_list_ = new PasswordList(list_content_stack_);
     password_list_->setObjectName(QStringLiteral("PasswordList"));
     password_list_->setFrameShape(QFrame::NoFrame);
     password_list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -725,7 +783,11 @@ QWidget* MainWindow::BuildPasswordListColumn() {
             [this](const QPoint& pos) {
                 auto* item = password_list_->itemAt(pos);
                 if (!item) return;
-                if (!item->isSelected()) password_list_->setCurrentItem(item);
+                if (!item->isSelected()) {
+                    QSignalBlocker blocker(password_list_);
+                    password_list_->setCurrentItem(item);
+                }
+                UpdateTrashActions();
                 QMenu menu(this);
                 menu.setObjectName(QStringLiteral("PasswordContextMenu"));
                 if (selected_category_ == kSectionTrash) {
@@ -825,10 +887,12 @@ void MainWindow::RefreshThemeAssets() {
             icon(QStringLiteral("cloud"), QStringLiteral("primary"), 16)
                 .pixmap(16, 16));
     }
-    if (auto* button = findChild<QPushButton*>(
-            QStringLiteral("SidebarSettingsButton"))) {
-        button->setIcon(icon(QStringLiteral("settings-2"),
-                             QStringLiteral("text-secondary"), kIconSize));
+    if (auto* settings_icon = findChild<QLabel*>(
+            QStringLiteral("SidebarSettingsIcon"))) {
+        settings_icon->setPixmap(
+            icon(QStringLiteral("settings-2"),
+                 QStringLiteral("text-secondary"), kIconSize)
+                .pixmap(kIconSize, kIconSize));
     }
     if (search_action_) {
         search_action_->setIcon(icon(QStringLiteral("search"),
@@ -1023,12 +1087,12 @@ void MainWindow::OnSearchChanged(const QString& text) {
 }
 
 QWidget* MainWindow::CreatePasswordCard(const model::PasswordEntry& entry) {
-    auto* card = new QFrame();
+    auto* card = new PasswordCard();
     card->setObjectName(QStringLiteral("PasswordCard"));
     card->setFrameShape(QFrame::NoFrame);
     auto* row = new QHBoxLayout(card);
     row->setContentsMargins(12, 12, 12, 12);
-    row->setSpacing(12);
+    row->setSpacing(8);
 
     auto* avatar = new QLabel(AvatarInitial(entry), card);
     avatar->setObjectName(QStringLiteral("PasswordCardIcon"));
@@ -1047,22 +1111,27 @@ QWidget* MainWindow::CreatePasswordCard(const model::PasswordEntry& entry) {
     title->setObjectName(QStringLiteral("PasswordCardTitle"));
     title->setTextInteractionFlags(Qt::NoTextInteraction);
     text_col->addWidget(title);
-    auto* meta = new ElidedLabel(
-        entry.username.isEmpty() ? QStringLiteral("(无用户名)") : entry.username,
-        card);
+    auto* meta = new ElidedLabel(entry.username, card);
     meta->setObjectName(QStringLiteral("PasswordCardMeta"));
     text_col->addWidget(meta);
     row->addLayout(text_col, 1);
 
-    auto* right_col = new QVBoxLayout();
+    auto* right_col = new QHBoxLayout();
     right_col->setContentsMargins(0, 0, 0, 0);
-    right_col->setSpacing(4);
-    right_col->setAlignment(Qt::AlignRight);
+    right_col->setSpacing(8);
+    right_col->setAlignment(Qt::AlignVCenter);
     auto* time = new QLabel(RelativeTimeShort(entry.updated_at), card);
     time->setObjectName(QStringLiteral("PasswordCardTime"));
-    time->setAlignment(Qt::AlignRight);
+    time->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    time->setFixedWidth(80);
+    const QString full_time = QDateTime::fromMSecsSinceEpoch(entry.updated_at)
+        .toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    time->setToolTip(full_time);
+    time->setAccessibleName(full_time);
+    card->setToolTip(full_time);
+    card->setAccessibleDescription(full_time);
     right_col->addWidget(time);
-    {
+    if (!entry.is_deleted) {
         auto* star = new QLabel(card);
         star->setObjectName(QStringLiteral("PasswordCardStar"));
         QColor star_color = entry.is_favorite
@@ -1072,10 +1141,10 @@ QWidget* MainWindow::CreatePasswordCard(const model::PasswordEntry& entry) {
         star->setPixmap(
             IconLoader::Load(QStringLiteral("star"), star_color, 14)
                 .pixmap(14, 14));
-        star->setAlignment(Qt::AlignRight);
+        star->setFixedSize(20, 20);
+        star->setAlignment(Qt::AlignCenter);
         right_col->addWidget(star);
     }
-    row->addLayout(right_col);
 
     auto* remove = new QToolButton(card);
     remove->setObjectName(QStringLiteral("PasswordCardDeleteButton"));
@@ -1083,7 +1152,7 @@ QWidget* MainWindow::CreatePasswordCard(const model::PasswordEntry& entry) {
                                         : QStringLiteral("移入回收站"));
     remove->setAccessibleName(entry.is_deleted ? QStringLiteral("永久删除")
                                                : QStringLiteral("删除密码"));
-    remove->setFixedSize(30, 30);
+    remove->setFixedSize(32, 32);
     remove->setCursor(Qt::PointingHandCursor);
     remove->setIcon(IconLoader::Load(
         QStringLiteral("trash-2"),
@@ -1093,13 +1162,15 @@ QWidget* MainWindow::CreatePasswordCard(const model::PasswordEntry& entry) {
         restore->setText(QStringLiteral("还原"));
         restore->setObjectName(QStringLiteral("PasswordCardRestoreButton"));
         restore->setAccessibleName(QStringLiteral("还原"));
+        restore->setFixedSize(48, 32);
         connect(restore, &QToolButton::clicked, this,
                 [this, id = entry.id]() { RestoreEntries({id}); });
-        row->addWidget(restore);
+        right_col->addWidget(restore);
     }
     connect(remove, &QToolButton::clicked, this,
             [this, id = entry.id]() { OnDeleteRequested(id); });
-    row->addWidget(remove);
+    right_col->addWidget(remove);
+    row->addLayout(right_col);
     for (auto* label : card->findChildren<QLabel*>()) {
         label->setAttribute(Qt::WA_TransparentForMouseEvents);
     }
@@ -1195,8 +1266,9 @@ void MainWindow::RefreshPasswordList() {
 
     if (detail_panel_ && detail_panel_->HasEntry()) {
         const std::int64_t current = detail_panel_->entry_id();
-        auto still = FindEntry(current);
-        if (!still.has_value()) {
+        auto still = deps_.password_dao->FindById(current);
+        const bool trash = selected_category_ == kSectionTrash;
+        if (!still || still->is_deleted != trash) {
             detail_panel_->ClearEntry();
             showing_detail_ = false;
         } else {
@@ -1217,6 +1289,7 @@ std::optional<model::PasswordEntry> MainWindow::FindEntry(
 void MainWindow::OnPasswordSelectionChanged() {
     if (suppress_selection_ || !deps_.session_key) return;
     UpdateTrashActions();
+    if (static_cast<PasswordList*>(password_list_)->selection_only_gesture()) return;
     const auto selected = password_list_->selectedItems();
     if (selected.isEmpty()) {
         ShowListPane();
@@ -1537,8 +1610,6 @@ void MainWindow::DeleteEntries(const std::vector<std::int64_t>& ids) {
         return;
     }
     if (deps_.sync_scheduler) deps_.sync_scheduler->MarkDirty();
-    if (detail_panel_) detail_panel_->ClearEntry();
-    showing_detail_ = false;
     Reload();
     UpdateResponsiveLayout();
 }
@@ -1615,8 +1686,6 @@ void MainWindow::FinishTrashOperation(const std::optional<int>& count) {
         return;
     }
     if (*count > 0 && deps_.sync_scheduler) deps_.sync_scheduler->MarkDirty();
-    detail_panel_->ClearEntry();
-    showing_detail_ = false;
     Reload();
     UpdateResponsiveLayout();
 }
@@ -1773,6 +1842,16 @@ void MainWindow::ShowListPane() {
 }
 
 bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == search_ &&
+        (event->type() == QEvent::ShortcutOverride ||
+         event->type() == QEvent::KeyPress)) {
+        const auto* key = static_cast<QKeyEvent*>(event);
+        if (key->key() == Qt::Key_Escape) {
+            if (event->type() == QEvent::KeyPress) workspace_->setFocus();
+            event->accept();
+            return true;
+        }
+    }
     if (watched == editor_panel_ &&
         (event->type() == QEvent::Show || event->type() == QEvent::Hide)) {
         UpdateResponsiveLayout();
@@ -1792,10 +1871,13 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
         const bool list_blank = watched == password_list_->viewport() &&
             !password_list_->itemAt(mouse->position().toPoint());
         if (mouse->button() == Qt::LeftButton &&
+            !mouse->modifiers().testFlag(Qt::ControlModifier) &&
+            !mouse->modifiers().testFlag(Qt::ShiftModifier) &&
             (list_blank || watched == password_list_column_ ||
              watched->objectName() == QStringLiteral("ListTitleRow") ||
-             watched == workspace_content_)) {
+             watched == workspace_content_ || watched == empty_state_)) {
             ShowListPane();
+            workspace_->setFocus(Qt::MouseFocusReason);
             return true;
         }
     }

@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QCryptographicHash>
+#include <QFontInfo>
 #include <QFontMetrics>
 #include <QImage>
 #include <QLabel>
@@ -174,6 +175,12 @@ TEST(DetailPanelThemeTest, ThemeRefreshPreservesEntryAndPasswordVisibility) {
         QStringLiteral("DetailFieldValueMono"));
     ASSERT_NE(password, nullptr);
     EXPECT_EQ(password->text(), QStringLiteral("secret-value"));
+    auto* username = panel.findChild<QLabel*>(QStringLiteral("DetailFieldValue"));
+    ASSERT_NE(username, nullptr);
+    EXPECT_EQ(QFontInfo(password->font()).family(),
+              QFontInfo(username->font()).family());
+    EXPECT_EQ(password->font().pixelSize(), username->font().pixelSize());
+    EXPECT_EQ(password->font().letterSpacing(), username->font().letterSpacing());
     const QByteArray light_icon = IconPixels(toggle->icon());
 
     theme->ApplyTheme(passvault::ui::Theme::kDark);
@@ -181,6 +188,9 @@ TEST(DetailPanelThemeTest, ThemeRefreshPreservesEntryAndPasswordVisibility) {
     EXPECT_NE(IconPixels(toggle->icon()), light_icon);
     EXPECT_EQ(panel.entry_id(), entry.id);
     EXPECT_EQ(password->text(), QStringLiteral("secret-value"));
+    EXPECT_EQ(QFontInfo(password->font()).family(),
+              QFontInfo(username->font()).family());
+    EXPECT_EQ(password->font().letterSpacing(), username->font().letterSpacing());
 }
 
 TEST_F(DetailPanelTest, HeaderAlignsIdentityAndActionsOnOneRow) {
@@ -222,7 +232,6 @@ TEST_F(DetailPanelTest, DetailUsesUpdatedTimeWithoutSyntheticSubtitle) {
 TEST_F(DetailPanelTest, CompleteNotesAreScrollableAndDuplicateFooterIsRemoved) {
     auto entry = MakeEntry();
     entry.notes = QStringLiteral("<b>Literal note</b>\n").repeated(80);
-    entry.app_package_name = QStringLiteral("example.test.app");
     panel_.SetEntry(entry, QStringLiteral("secret"));
     panel_.resize(400, 500);
     panel_.show();
@@ -235,8 +244,6 @@ TEST_F(DetailPanelTest, CompleteNotesAreScrollableAndDuplicateFooterIsRemoved) {
     EXPECT_EQ(notes->textFormat(), Qt::PlainText);
     EXPECT_TRUE(notes->wordWrap());
     EXPECT_GT(scroll->verticalScrollBar()->maximum(), 0);
-    EXPECT_EQ(panel_.findChild<QLabel*>("DetailPackageValue")->text(),
-              entry.app_package_name);
     EXPECT_EQ(panel_.findChild<QPushButton*>("DetailSecondaryButton"), nullptr);
     EXPECT_EQ(panel_.findChild<QPushButton*>("DetailPrimaryButton"), nullptr);
     panel_.ClearEntry();
@@ -317,15 +324,18 @@ TEST_F(DetailPanelTest, PasswordToggleSwitchesMaskedAndPlain) {
     EXPECT_NE(passwordValue()->text(), QStringLiteral("secret"));
 }
 
-TEST_F(DetailPanelTest, EmptyIdentityFieldsShowPlaceholdersAndDisableActions) {
+TEST_F(DetailPanelTest, EmptyIdentityFieldsStayBlankAndDisableActions) {
     PasswordEntry entry = MakeEntry();
     entry.username.clear();
     entry.website.clear();
     panel_.SetEntry(entry, QStringLiteral("secret"));
 
-    EXPECT_EQ(usernameValue()->text(), QStringLiteral("(无用户名)"));
+    EXPECT_TRUE(usernameValue()->text().isEmpty());
     EXPECT_TRUE(websiteValue()->text().isEmpty());
     EXPECT_FALSE(usernameCopy()->isEnabled());
+    QSignalSpy copied(&panel_, &DetailPanel::CopyUsernameRequested);
+    usernameCopy()->click();
+    EXPECT_EQ(copied.count(), 0);
     auto* websiteButton = NthNamed<QToolButton>(panel_, "DetailFieldButton", 3);
     ASSERT_NE(websiteButton, nullptr);
     EXPECT_FALSE(websiteButton->isEnabled());
@@ -380,4 +390,31 @@ TEST_F(DetailPanelTest, TrashDetailsOfferRestoreAndPermanentDeleteWithoutEditOrF
     EXPECT_EQ(restored.count(), 1);
     EXPECT_EQ(edited.count(), 0);
     EXPECT_EQ(deleted.count(), 1);
+}
+
+TEST_F(DetailPanelTest, DefaultVisibilityAndSameEntryRefresh) {
+    const QString value = QStringLiteral("demo-value");
+    auto entry = MakeEntry();
+    panel_.SetEntry(entry, value);
+    EXPECT_NE(passwordValue()->text(), value);
+    panel_.SetDefaultPasswordVisible(true);
+    EXPECT_EQ(passwordValue()->text(), value);
+    passwordToggle()->click();
+    panel_.SetEntry(entry, value);
+    EXPECT_NE(passwordValue()->text(), value);
+    ThemeGuard guard;
+    passvault::ui::ThemeManager::Instance()->ApplyTheme(passvault::ui::Theme::kDark);
+    EXPECT_NE(passwordValue()->text(), value);
+    panel_.SetDefaultPasswordVisible(true);
+    EXPECT_EQ(passwordValue()->text(), value);
+    passwordToggle()->click();
+    ++entry.id;
+    panel_.SetEntry(entry, value);
+    EXPECT_EQ(passwordValue()->text(), value);
+    panel_.ClearEntry();
+    EXPECT_TRUE(passwordValue()->text().isEmpty());
+    panel_.SetEntry(entry, value);
+    EXPECT_EQ(passwordValue()->text(), value);
+    panel_.SetDefaultPasswordVisible(false);
+    EXPECT_NE(passwordValue()->text(), value);
 }

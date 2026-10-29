@@ -31,6 +31,7 @@ class DetailPanel : public QFrame {
     void SetEntry(const model::PasswordEntry& entry,
                   const std::optional<QString>& decrypted_password);
     void ClearEntry();
+    void SetDefaultPasswordVisible(bool visible);
 
     bool HasEntry() const;
     std::int64_t entry_id() const;
@@ -87,12 +88,12 @@ class DetailPanel : public QFrame {
     QLabel* notes_value_ = nullptr;
     QLabel* title_value_ = nullptr;
     QLabel* category_value_ = nullptr;
-    QLabel* package_value_ = nullptr;
 
     QList<model::Category> categories_;
     std::optional<model::PasswordEntry> entry_;
     std::optional<QString> password_plain_;
     bool password_visible_ = false;
+    bool default_password_visible_ = false;
 };
 
 }  // namespace passvault::ui

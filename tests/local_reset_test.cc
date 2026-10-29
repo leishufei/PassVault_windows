@@ -916,6 +916,7 @@ TEST_P(LocalResetRuntimeTest, ProductionRuntimeUsesOnlyInjectedTemporaryPaths) {
     if (stage == 5) {
       EXPECT_TRUE(old_window.isNull());
       EXPECT_TRUE(old_session.isNull());
+      EXPECT_FALSE(window->preferences_page()->DefaultPasswordVisible());
       auto* editor = window->findChild<passvault::ui::EditorPanel*>();
       EXPECT_TRUE(editor->Result().password.isEmpty());
       QMetaObject::invokeMethod(window, "OnNewPassword", Qt::DirectConnection);

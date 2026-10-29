@@ -9,7 +9,7 @@ QMainWindow, #WorkspaceRoot {
 #WorkspaceContainer {
     background-color: var(--bg-canvas);
     border: 1px solid var(--border);
-    border-radius: var(--radius-shell);
+    border-radius: 0px;
 }
 
 #WorkspaceContainer > QWidget {
@@ -21,8 +21,8 @@ QMainWindow, #WorkspaceRoot {
 #Sidebar {
     background-color: var(--bg-sidebar);
     border-right: 1px solid var(--border-soft);
-    border-top-left-radius: var(--radius-shell);
-    border-bottom-left-radius: var(--radius-shell);
+    border-top-left-radius: 0px;
+    border-bottom-left-radius: 0px;
 }
 #Sidebar QLabel { background: transparent; }
 
@@ -146,16 +146,24 @@ QMainWindow, #WorkspaceRoot {
 #SidebarSettingsButton {
     background: transparent;
     color: var(--muted-8);
-    border: 1px solid transparent;
+    border: none;
     border-radius: var(--radius-md);
-    padding: 0 12px;
+    padding: 0;
     min-height: 36px;
     text-align: left;
     font-weight: 400;
     font-size: 13px;
 }
+#SidebarSettingsText {
+    color: var(--muted-8);
+    font-size: 13px;
+    font-weight: 400;
+}
 #SidebarSettingsButton:hover {
     background: var(--primary-hover-surface);
+    color: var(--text-primary);
+}
+#SidebarSettingsButton:hover #SidebarSettingsText {
     color: var(--text-primary);
 }
 
@@ -168,7 +176,7 @@ QMainWindow, #WorkspaceRoot {
 
 #VaultWorkspaceHeader {
     background-color: var(--bg-canvas);
-    border-top-right-radius: var(--radius-shell);
+    border-top-right-radius: 0px;
     min-height: 68px;
     max-height: 68px;
 }
@@ -205,7 +213,6 @@ QMainWindow, #WorkspaceRoot {
     background-color: var(--bg-elevated);
     color: var(--placeholder);
     border-radius: 4px;
-    font-family: "DM Mono", "Cascadia Mono", Consolas, monospace;
     font-size: 9px;
 }
 
@@ -253,6 +260,9 @@ QMainWindow, #WorkspaceRoot {
     font-size: 12px;
     font-weight: 500;
 }
+#RestoreSelectedButton,
+#PermanentlyDeleteButton,
+#EmptyTrashButton,
 #ListSortMenu {
     background: transparent;
     color: var(--hint-5);
@@ -262,6 +272,9 @@ QMainWindow, #WorkspaceRoot {
     font-weight: 500;
     border-radius: var(--radius-md);
 }
+#RestoreSelectedButton:hover,
+#PermanentlyDeleteButton:hover,
+#EmptyTrashButton:hover,
 #ListSortMenu:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
@@ -360,8 +373,8 @@ QMainWindow, #WorkspaceRoot {
 #DetailPanel {
     background-color: var(--card);
     border-left: 1px solid var(--border-panel-2);
-    border-top-right-radius: var(--radius-shell);
-    border-bottom-right-radius: var(--radius-shell);
+    border-top-right-radius: 0px;
+    border-bottom-right-radius: 0px;
 }
 
 #DetailScroll,
@@ -474,20 +487,13 @@ QMainWindow, #WorkspaceRoot {
     margin-bottom: 8px;
 }
 #DetailFieldValue,
+#DetailFieldValueMono,
 #DetailTitleValue,
 #DetailNotesValue,
-#DetailCategoryValue,
-#DetailPackageValue {
+#DetailCategoryValue {
     color: var(--ink-2);
     font-size: 12px;
     font-weight: 500;
-    background: transparent;
-}
-#DetailFieldValueMono {
-    color: var(--ink-2);
-    font-size: 13px;
-    font-family: "DM Mono", "JetBrains Mono", "Cascadia Mono", "Consolas", "Courier New", monospace;
-    letter-spacing: 2.56px;
     background: transparent;
 }
 #DetailFieldValueLink {
@@ -555,14 +561,10 @@ QMainWindow, #WorkspaceRoot {
     text-transform: uppercase;
     letter-spacing: 0.4px;
 }
-#DetailValue {
-    color: var(--text-primary);
-    font-size: 14px;
-}
+#DetailValue,
 #DetailMonoValue {
     color: var(--text-primary);
-    font-size: 13px;
-    font-family: "DM Mono", "JetBrains Mono", "Cascadia Mono", "Consolas", "Courier New", monospace;
+    font-size: 14px;
 }
 
 /* ---------- Empty state (legacy) ---------- */
@@ -631,8 +633,8 @@ QMainWindow, #WorkspaceRoot {
 #EditorPanel {
     background-color: var(--card);
     border-left: 1px solid var(--border-panel-2);
-    border-top-right-radius: var(--radius-shell);
-    border-bottom-right-radius: var(--radius-shell);
+    border-top-right-radius: 0px;
+    border-bottom-right-radius: 0px;
 }
 
 #EditorPage,
@@ -685,7 +687,6 @@ QMainWindow, #WorkspaceRoot {
     font-weight: 600;
 }
 
-#EditorSectionDescription,
 #EditorGeneratorDescription {
     color: var(--muted-13);
     font-size: 12px;
@@ -918,8 +919,8 @@ QMainWindow, #WorkspaceRoot {
 
 #PreferencesPage {
     background-color: var(--bg-canvas);
-    border-top-right-radius: var(--radius-shell);
-    border-bottom-right-radius: var(--radius-shell);
+    border-top-right-radius: 0px;
+    border-bottom-right-radius: 0px;
 }
 
 #PreferencesHeader {
@@ -1086,39 +1087,49 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
     background: transparent;
 }
 #SyncHeadingDesc,
-#SyncAuthDesc,
-#SyncE2eHint {
-    color: var(--muted-13);
-    font-size: 11px;
+#SyncAuthDesc {
+    color: var(--text-secondary);
+    font-size: 12px;
     background: transparent;
 }
-#SyncAuthCard {
-    background-color: var(--soft-bg-sync-auth);
-    border: 1px solid var(--primary-focus-border);
-    border-radius: 12px;
-}
-#SyncAccountCard,
-#SyncLastCard {
+#SyncConnectionCard {
+    background-color: var(--card);
     border: 1px solid var(--border-panel-3);
     border-radius: 12px;
 }
-#SyncAccountCard { background-color: var(--card); }
-#SyncLastCard { background-color: var(--soft-bg-sync); }
+#SyncAuthCard,
+#SyncAccountCard,
+#SyncLastCard {
+    background: transparent;
+    border: none;
+}
+#SyncSectionDivider {
+    background-color: var(--border-section-4);
+    border: none;
+}
+#SyncGoogleMark {
+    background-color: var(--card);
+    color: var(--brand-google-fg);
+    border: 1px solid var(--border-section-3);
+    border-radius: 18px;
+    font-size: 15px;
+    font-weight: 700;
+}
 #SyncAuthTitle,
 #SyncAccountTitle {
     color: var(--info-value);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     background: transparent;
 }
 #SyncLastTitle {
-    color: var(--hint-6);
-    font-size: 11px;
+    color: var(--text-secondary);
+    font-size: 12px;
     background: transparent;
 }
 #SyncAccountEmail {
-    color: var(--muted-13);
-    font-size: 11px;
+    color: var(--text-secondary);
+    font-size: 12px;
     background: transparent;
 }
 #SyncLastValue {
@@ -1128,7 +1139,7 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
     background: transparent;
 }
 #SyncStateText {
-    color: var(--hint-6);
+    color: var(--text-secondary);
     font-size: 12px;
     background: transparent;
 }
@@ -1144,19 +1155,17 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
 #SyncStateDot[state="ok"]       { background-color: var(--success); }
 #SyncStateDot[state="conflict"] { background-color: var(--warn); }
 #SyncStateDot[state="error"]    { background-color: var(--danger); }
+#DriveConnectButton,
+#DriveDisconnectButton,
+#SyncNowButton,
 #AuthorizeCancelButton,
 #ChangeAccountButton {
-    background: transparent;
-    color: var(--hint-10);
-    border: 1px solid var(--border-panel-3);
     border-radius: 8px;
-    padding: 0 12px;
-    min-height: 32px;
-    font-size: 11px;
-}
-#AuthorizeCancelButton:hover,
-#ChangeAccountButton:hover {
-    background-color: var(--primary-hover-surface-6);
+    padding: 0 14px;
+    min-height: 34px;
+    max-height: 34px;
+    font-size: 12px;
+    font-weight: 500;
 }
 
 #HelloToggle {

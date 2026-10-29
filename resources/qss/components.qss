@@ -2,6 +2,7 @@
 
 QWidget {
     color: var(--text-primary);
+    font-family: "Noto Sans SC", "Microsoft YaHei UI", "Segoe UI";
     font-size: 13px;
 }
 
@@ -409,7 +410,6 @@ QLabel[variant="kbd"] {
     border: 1px solid var(--border);
     border-radius: var(--radius-xs);
     padding: 1px 6px;
-    font-family: "DM Mono", "JetBrains Mono", "Cascadia Mono", "Consolas", monospace;
     font-size: 10px;
 }
 
@@ -526,12 +526,6 @@ QCheckBox[variant="switch"]::indicator:disabled {
 }
 QCheckBox[variant="switch"]::indicator:checked:disabled {
     image: url(:/icons/switch-on-disabled.svg);
-}
-
-/* ---------- Mono line edit (password/secret fields) ---------- */
-QLineEdit[mono="true"] {
-    font-family: "DM Mono", "JetBrains Mono", "Cascadia Mono", "Consolas", monospace;
-    letter-spacing: 1.4px;
 }
 
 /* ---------- Avatar (rounded icon square, brand-color variants) ---------- */

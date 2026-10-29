@@ -324,9 +324,6 @@ QWidget* DetailPanel::BuildContentPage() {
     info_layout->addWidget(MakeDivider());
     notes_value_ = MakeLabel(QString(), QStringLiteral("DetailNotesValue"));
     build_row(QStringLiteral("备注"), notes_value_, {});
-    info_layout->addWidget(MakeDivider());
-    package_value_ = MakeLabel(QString(), QStringLiteral("DetailPackageValue"));
-    build_row(QStringLiteral("应用包名"), package_value_, {});
 
     outer->addWidget(info_card);
 
@@ -363,11 +360,19 @@ void DetailPanel::SetCategories(QList<model::Category> categories) {
 
 void DetailPanel::SetEntry(const model::PasswordEntry& entry,
                            const std::optional<QString>& decrypted_password) {
+    if (!entry_ || entry_->uuid != entry.uuid || entry_->id != entry.id) {
+        password_visible_ = default_password_visible_;
+    }
     entry_ = entry;
     password_plain_ = decrypted_password;
-    password_visible_ = false;
     stack_->setCurrentWidget(content_page_);
     RefreshView();
+}
+
+void DetailPanel::SetDefaultPasswordVisible(bool visible) {
+    default_password_visible_ = visible;
+    password_visible_ = visible;
+    UpdatePasswordDisplay();
 }
 
 void DetailPanel::ClearEntry() {
@@ -375,7 +380,7 @@ void DetailPanel::ClearEntry() {
     password_plain_.reset();
     header_title_->SetFullText(QString());
     for (auto* label : {title_value_, username_value_, password_value_,
-                        website_value_, notes_value_, category_value_, package_value_}) {
+                        website_value_, notes_value_, category_value_}) {
         label->clear();
         label->setAccessibleName(QString());
     }
@@ -417,9 +422,7 @@ void DetailPanel::RefreshView() {
 
     risky_banner_->setVisible(false);
 
-    username_value_->setText(e.username.isEmpty()
-                                     ? QStringLiteral("(无用户名)")
-                                     : e.username);
+    username_value_->setText(e.username);
     username_copy_->setEnabled(!e.username.isEmpty());
 
     UpdatePasswordDisplay();
@@ -437,9 +440,8 @@ void DetailPanel::RefreshView() {
     notes_value_->setText(e.notes);
     title_value_->setText(e.title);
     category_value_->setText(CategoryName(e.category_id));
-    package_value_->setText(e.app_package_name);
     for (auto* label : {title_value_, username_value_, website_value_,
-                        notes_value_, category_value_, package_value_}) {
+                        notes_value_, category_value_}) {
         label->setAccessibleName(label->text());
     }
     header_edit_->setEnabled(e.is_deleted || password_plain_.has_value());

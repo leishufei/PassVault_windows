@@ -1,5 +1,6 @@
 #include "ui/editor_panel.h"
 
+#include <QAbstractItemView>
 #include <QCheckBox>
 #include <QColor>
 #include <QComboBox>
@@ -10,6 +11,7 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPalette>
 #include <QPropertyAnimation>
 #include <QPushButton>
 #include <QResizeEvent>
@@ -206,16 +208,11 @@ QWidget* EditorPanel::BuildOverviewPage() {
     auto* section_header = new QWidget(container);
     section_header->setObjectName(QStringLiteral("EditorSectionHeader"));
     auto* section_layout = new QVBoxLayout(section_header);
-    section_layout->setContentsMargins(0, 0, 0, 16);
+    section_layout->setContentsMargins(0, 0, 0, 0);
     section_layout->setSpacing(4);
     auto* section_title = new QLabel(QStringLiteral("基本信息"), section_header);
     section_title->setObjectName(QStringLiteral("EditorSectionTitle"));
     section_layout->addWidget(section_title);
-    auto* section_description = new QLabel(
-        QStringLiteral("保存登录所需的账号与网站信息"), section_header);
-    section_description->setObjectName(
-        QStringLiteral("EditorSectionDescription"));
-    section_layout->addWidget(section_description);
     auto* section_divider = new QFrame(section_header);
     section_divider->setObjectName(QStringLiteral("EditorSectionDivider"));
     section_divider->setFixedHeight(1);
@@ -291,7 +288,6 @@ QWidget* EditorPanel::BuildOverviewPage() {
     password_input_ = new QLineEdit(password_field_);
     password_input_->setObjectName(QStringLiteral("EditorPasswordInput"));
     password_input_->setEchoMode(QLineEdit::Password);
-    password_input_->setProperty("mono", true);
     connect(password_input_, &QLineEdit::textChanged, this,
             &EditorPanel::OnPasswordTextChanged);
     preview_toggle_ = new QToolButton(password_field_);
@@ -363,6 +359,8 @@ QWidget* EditorPanel::BuildOverviewPage() {
     // Use the styled delegate so the popup follows the application's QSS.
     category_combo_->setItemDelegate(
         new QStyledItemDelegate(category_combo_));
+    category_combo_->view()->setTextElideMode(Qt::ElideRight);
+    RefreshCategoryPopup();
     add_field(QStringLiteral("分类"), category_combo_);
 
     notes_input_ = new QTextEdit(container);
@@ -452,7 +450,6 @@ QWidget* EditorPanel::BuildGeneratorPage() {
     generator_preview_ = new QLineEdit(preview_card);
     generator_preview_->setObjectName(QStringLiteral("EditorGeneratorPreview"));
     generator_preview_->setReadOnly(true);
-    generator_preview_->setProperty("mono", true);
     preview_layout->addWidget(generator_preview_, 1);
     auto* refresh = new QToolButton(preview_card);
     refresh->setObjectName(QStringLiteral("EditorGeneratorRefresh"));
@@ -476,7 +473,6 @@ QWidget* EditorPanel::BuildGeneratorPage() {
     generator_length_value_ = new QLabel(QStringLiteral("16"), length_header);
     generator_length_value_->setObjectName(
         QStringLiteral("EditorGeneratorLengthValue"));
-    generator_length_value_->setProperty("mono", true);
     length_header_layout->addWidget(generator_length_value_);
     body_layout->addWidget(length_header);
 
@@ -530,7 +526,6 @@ QWidget* EditorPanel::BuildGeneratorPage() {
         row_layout->addWidget(option, 1);
         auto* detail_label = new QLabel(detail, row);
         detail_label->setObjectName(QStringLiteral("EditorGeneratorHint"));
-        detail_label->setProperty("mono", true);
         row_layout->addWidget(detail_label);
         body_layout->addWidget(row);
         *target = option;
@@ -605,6 +600,8 @@ void EditorPanel::FillCategoryCombo() {
     for (const auto& c : categories_) {
         if (c.is_deleted) continue;
         category_combo_->addItem(c.name, QVariant::fromValue<qint64>(c.id));
+        category_combo_->setItemData(category_combo_->count() - 1, c.name,
+                                      Qt::ToolTipRole);
     }
     for (int i = 0; i < category_combo_->count(); ++i) {
         if (category_combo_->itemData(i).toLongLong() == previous) {
@@ -618,6 +615,7 @@ void EditorPanel::OpenForCreate() {
     mode_ = Mode::kCreate;
     entry_ = {};
     ResetFields();
+    ApplyPasswordVisibility(default_password_visible_);
     RefreshMode();
     UpdatePositionFromParent();
     show();
@@ -629,9 +627,14 @@ void EditorPanel::OpenForCreate() {
 }
 
 void EditorPanel::OpenForEdit(const DecryptedEntry& entry) {
+    const bool same_entry = is_open_ && mode_ == Mode::kEdit &&
+        entry_.entry.uuid == entry.entry.uuid && entry_.entry.id == entry.entry.id;
+    const bool visible = same_entry ? preview_toggle_->isChecked()
+                                    : default_password_visible_;
     mode_ = Mode::kEdit;
     entry_ = entry;
     FillFromEntry(entry);
+    ApplyPasswordVisibility(visible);
     RefreshMode();
     UpdatePositionFromParent();
     show();
@@ -724,7 +727,59 @@ void EditorPanel::RefreshMode() {
     save_button_->setText(QStringLiteral("保存更改"));
 }
 
+void EditorPanel::ApplyPasswordVisibility(bool visible) {
+    preview_toggle_->setChecked(visible);
+    password_input_->setEchoMode(visible ? QLineEdit::Normal : QLineEdit::Password);
+    preview_toggle_->setIcon(LoadEditorIcon(
+        visible ? QStringLiteral("eye-off") : QStringLiteral("eye"),
+        QStringLiteral("hint-8"), 14));
+}
+
+void EditorPanel::SetDefaultPasswordVisible(bool visible) {
+    default_password_visible_ = visible;
+    if (is_open_) ApplyPasswordVisibility(visible);
+}
+
+void EditorPanel::RefreshCategoryPopup() {
+    auto* view = category_combo_->view();
+    auto* popup = view->window();
+    view->setObjectName(QStringLiteral("EditorCategoryPopupView"));
+    view->viewport()->setObjectName(QStringLiteral("EditorCategoryPopupViewport"));
+    popup->setObjectName(QStringLiteral("EditorCategoryPopup"));
+    view->setFrameShape(QFrame::NoFrame);
+    if (auto* frame = qobject_cast<QFrame*>(popup)) {
+        frame->setFrameShape(QFrame::NoFrame);
+    }
+    auto* theme = ThemeManager::Instance();
+    const QColor background = theme->Color(QStringLiteral("bg-elevated"));
+    QPalette palette = view->palette();
+    for (auto group : {QPalette::Active, QPalette::Inactive, QPalette::Disabled}) {
+        palette.setColor(group, QPalette::Window, background);
+        palette.setColor(group, QPalette::Base, background);
+        palette.setColor(group, QPalette::Text,
+                         theme->Color(QStringLiteral("text-primary")));
+        palette.setColor(group, QPalette::WindowText,
+                         theme->Color(QStringLiteral("text-primary")));
+        palette.setColor(group, QPalette::Highlight,
+                         theme->Color(QStringLiteral("accent-soft")));
+        palette.setColor(group, QPalette::HighlightedText,
+                         theme->Color(QStringLiteral("accent")));
+    }
+    for (auto* surface : {popup, static_cast<QWidget*>(view), view->viewport()}) {
+        surface->setPalette(palette);
+        surface->setAutoFillBackground(true);
+        surface->setAttribute(Qt::WA_TranslucentBackground, false);
+    }
+    popup->setStyleSheet(QStringLiteral(
+        "#EditorCategoryPopup { background: %1; border: 1px solid %2; }"
+        "#EditorCategoryPopupView, #EditorCategoryPopupViewport {"
+        " background: %1; color: %3; border: none; }")
+        .arg(background.name(), theme->ColorHex(QStringLiteral("border")),
+             theme->ColorHex(QStringLiteral("text-primary"))));
+}
+
 void EditorPanel::RefreshThemeAssets() {
+    RefreshCategoryPopup();
     if (auto* shadow =
             qobject_cast<QGraphicsDropShadowEffect*>(graphicsEffect())) {
         shadow->setColor(

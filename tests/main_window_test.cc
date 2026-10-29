@@ -49,6 +49,7 @@
 #include "sync/sync_manager.h"
 #include "sync/sync_scheduler.h"
 #include "ui/detail_panel.h"
+#include "ui/clipboard_manager.h"
 #include "ui/editor_panel.h"
 #include "ui/main_window.h"
 #include "ui/preferences_page.h"
@@ -239,19 +240,25 @@ TEST_F(MainWindowTest, ThemeRefreshPreservesSelectionAndChangesIcons) {
     passwords()->setCurrentRow(1);
     const std::int64_t selected_id = detail()->entry_id();
     ASSERT_GT(selected_id, 0);
-    auto* settings = window_->findChild<QPushButton*>(
-        QStringLiteral("SidebarSettingsButton"));
+    auto* settings = window_->findChild<QLabel*>(
+        QStringLiteral("SidebarSettingsIcon"));
     ASSERT_NE(settings, nullptr);
-    const QByteArray light_icon = IconPixels(settings->icon());
+    const QByteArray light_icon = IconPixels(QIcon(settings->pixmap()));
 
     theme->ApplyTheme(passvault::ui::Theme::kDark);
 
-    EXPECT_NE(IconPixels(settings->icon()), light_icon);
+    EXPECT_NE(IconPixels(QIcon(settings->pixmap())), light_icon);
     EXPECT_EQ(detail()->entry_id(), selected_id);
     ASSERT_NE(passwords()->currentItem(), nullptr);
     EXPECT_EQ(passwords()->currentItem()->data(Qt::UserRole).toLongLong(),
               selected_id);
 }
+
+
+
+
+
+
 
 TEST_F(MainWindowTest, WorkspaceHeaderSpansListAndDetail) {
     window_->resize(1280, 800);
@@ -427,7 +434,7 @@ TEST_F(MainWindowTest, SearchIncludesNotesAndShowsSearchEmptyState) {
     auto* empty = window_->findChild<QLabel*>(QStringLiteral("EmptyState"));
     ASSERT_NE(empty, nullptr);
     EXPECT_FALSE(empty->isHidden());
-    EXPECT_EQ(empty->text(), QStringLiteral("没有找到匹配的密码"));
+    EXPECT_EQ(empty->text(), QStringLiteral("没有搜索结果"));
 }
 
 TEST_F(MainWindowTest, ListUsesUpdatedTimeAndRelativeLabel) {
@@ -457,6 +464,141 @@ TEST_F(MainWindowTest, SearchFiltersAndClears) {
     EXPECT_EQ(passwords()->count(), 2);
     search()->setText(QString());
     EXPECT_EQ(passwords()->count(), 3);
+}
+
+TEST_F(MainWindowTest, EmptyUsernameStaysBlankInTheListAndDetail) {
+    Seed(QStringLiteral("Password only"), QString(), false, 0, 5000);
+    window_->Reload();
+    auto* card = passwords()->itemWidget(passwords()->item(0));
+    ASSERT_NE(card, nullptr);
+    auto* username = card->findChild<QLabel*>("PasswordCardMeta");
+    ASSERT_NE(username, nullptr);
+    EXPECT_TRUE(username->text().isEmpty());
+    passwords()->setCurrentRow(0);
+    EXPECT_TRUE(detail()->findChild<QLabel*>("DetailFieldValue")->text().isEmpty());
+}
+
+TEST_F(MainWindowTest, EmptyStatesKeepHeaderAndFillTheSameContentArea) {
+    window_->show();
+    QApplication::processEvents();
+    auto* title = window_->findChild<QLabel*>("ListTitle");
+    auto* sort = window_->findChild<QPushButton*>("ListSortMenu");
+    auto* empty = window_->findChild<QLabel*>("EmptyState");
+    ASSERT_NE(title, nullptr);
+    ASSERT_NE(sort, nullptr);
+    ASSERT_NE(empty, nullptr);
+    const QPoint title_position = title->mapTo(window_.get(), QPoint());
+    const QPoint count_position = listCount()->mapTo(window_.get(), QPoint());
+    const QPoint sort_position = sort->mapTo(window_.get(), QPoint());
+    const QRect content_rect(passwords()->mapTo(window_.get(), QPoint()),
+                             passwords()->size());
+    const auto expect_fixed_header = [&]() {
+        EXPECT_EQ(title->mapTo(window_.get(), QPoint()), title_position);
+        EXPECT_EQ(listCount()->mapTo(window_.get(), QPoint()).y(),
+                  count_position.y());
+        EXPECT_EQ(sort->mapTo(window_.get(), QPoint()).y(), sort_position.y());
+        EXPECT_EQ(QRect(empty->mapTo(window_.get(), QPoint()), empty->size()),
+                  content_rect);
+        EXPECT_EQ(listCount()->text(), QStringLiteral("0 项"));
+    };
+    search()->setText(QStringLiteral("no-matching-entry"));
+    QApplication::processEvents();
+    EXPECT_TRUE(empty->isVisible());
+    EXPECT_FALSE(passwords()->isVisible());
+    EXPECT_EQ(empty->text(), QStringLiteral("没有搜索结果"));
+    expect_fixed_header();
+
+    search()->clear();
+    sections()->setCurrentRow(3);
+    QApplication::processEvents();
+    EXPECT_EQ(empty->text(), QStringLiteral("回收站为空"));
+    expect_fixed_header();
+
+    for (const auto& entry : password_dao_->ListActive()) {
+        ASSERT_TRUE(password_dao_->LogicalDelete(entry.id, 5000));
+    }
+    sections()->setCurrentRow(0);
+    window_->Reload();
+    QApplication::processEvents();
+    EXPECT_EQ(empty->text(), QStringLiteral("暂无密码"));
+    expect_fixed_header();
+    RecordProperty("header_y", title_position.y());
+    RecordProperty("content_height", content_rect.height());
+}
+
+TEST_F(MainWindowTest, MouseCreateFocusesTitleAndPreservesKeyboardNavigation) {
+    window_->show();
+    QApplication::processEvents();
+    QTest::mouseClick(newButton(), Qt::LeftButton);
+    auto* title = editor()->findChild<QLineEdit*>("EditorTitleInput");
+    ASSERT_NE(title, nullptr);
+    EXPECT_TRUE(title->hasFocus());
+    EXPECT_FALSE(newButton()->hasFocus());
+    EXPECT_TRUE(newButton()->focusPolicy() & Qt::TabFocus);
+    QTest::keyClick(title, Qt::Key_Tab);
+    EXPECT_TRUE(editor()->findChild<QLineEdit*>("EditorUsernameInput")->hasFocus());
+}
+
+TEST_F(MainWindowTest, SearchEscapeAndBlankClicksKeepTheFilter) {
+    window_->show();
+    QApplication::processEvents();
+    search()->setText(QStringLiteral("Git"));
+    passwords()->setCurrentRow(0);
+    ASSERT_TRUE(detail()->HasEntry());
+    search()->setFocus();
+    QAction global_escape(window_.get());
+    global_escape.setShortcut(QKeySequence(Qt::Key_Escape));
+    window_->addAction(&global_escape);
+    QSignalSpy shortcut(&global_escape, &QAction::triggered);
+    QTest::keyClick(search(), Qt::Key_Escape);
+    EXPECT_EQ(shortcut.count(), 0);
+    window_->removeAction(&global_escape);
+    auto* workspace = window_->findChild<QWidget*>("VaultWorkspace");
+    ASSERT_NE(workspace, nullptr);
+    EXPECT_TRUE(workspace->hasFocus());
+    EXPECT_TRUE(detail()->HasEntry());
+    EXPECT_EQ(search()->text(), QStringLiteral("Git"));
+    EXPECT_EQ(passwords()->count(), 2);
+
+    search()->setFocus();
+    QTest::mouseClick(passwords()->viewport(), Qt::LeftButton, Qt::NoModifier,
+                      QPoint(10, passwords()->viewport()->height() - 10));
+    EXPECT_TRUE(workspace->hasFocus());
+    EXPECT_FALSE(detail()->HasEntry());
+    EXPECT_EQ(search()->text(), QStringLiteral("Git"));
+    EXPECT_EQ(passwords()->count(), 2);
+
+    search()->setText(QStringLiteral("no-matching-entry"));
+    search()->setFocus();
+    auto* empty = window_->findChild<QLabel*>("EmptyState");
+    ASSERT_NE(empty, nullptr);
+    QTest::mouseClick(empty, Qt::LeftButton);
+    EXPECT_TRUE(workspace->hasFocus());
+    EXPECT_EQ(search()->text(), QStringLiteral("no-matching-entry"));
+}
+
+TEST_F(MainWindowTest, EditorAndModalEscapeDoNotCloseTheSelectedDetail) {
+    window_->show();
+    QApplication::processEvents();
+    passwords()->setCurrentRow(0);
+    ASSERT_TRUE(detail()->HasEntry());
+    QTest::mouseClick(newButton(), Qt::LeftButton);
+    auto* title = editor()->findChild<QLineEdit*>("EditorTitleInput");
+    ASSERT_NE(title, nullptr);
+    QTest::keyClick(title, Qt::Key_Escape);
+    EXPECT_FALSE(editor()->IsOpen());
+    EXPECT_TRUE(detail()->HasEntry());
+
+    QMessageBox message(QMessageBox::Question, QStringLiteral("Test"),
+                         QStringLiteral("Cancel this operation?"),
+                         QMessageBox::Yes | QMessageBox::No, window_.get());
+    message.setEscapeButton(QMessageBox::No);
+    message.setWindowModality(Qt::WindowModal);
+    message.show();
+    QApplication::processEvents();
+    QTest::keyClick(&message, Qt::Key_Escape);
+    EXPECT_EQ(message.result(), QMessageBox::No);
+    EXPECT_TRUE(detail()->HasEntry());
 }
 
 TEST_F(MainWindowTest, FavoritesSectionShowsOnlyFavorites) {
@@ -509,7 +651,7 @@ TEST_F(MainWindowTest, NewPasswordButtonMatchesFigmaTypography) {
     EXPECT_EQ(button_font_info.weight(), 600);
 }
 
-TEST_F(MainWindowTest, SearchShortcutUsesMonoTypography) {
+TEST_F(MainWindowTest, SearchShortcutUsesBodyTypography) {
     window_->show();
     auto* shortcut = window_->findChild<QLabel*>(
         QStringLiteral("SearchShortcut"));
@@ -518,7 +660,7 @@ TEST_F(MainWindowTest, SearchShortcutUsesMonoTypography) {
     QApplication::processEvents();
 
     const QFontInfo shortcut_font_info(shortcut->font());
-    EXPECT_EQ(shortcut_font_info.family(), QStringLiteral("DM Mono"));
+    EXPECT_EQ(shortcut_font_info.family(), QStringLiteral("Noto Sans SC"));
     EXPECT_EQ(shortcut_font_info.pixelSize(), 9);
 }
 
@@ -969,10 +1111,11 @@ TEST_F(MainWindowTest, ControlAndShiftSelectWithoutOpeningMultipleDetails) {
                           QPoint(75, rect.center().y()));
     };
     click_row(0, Qt::NoModifier);
+    const auto displayed = detail()->entry_id();
     click_row(1, Qt::ControlModifier);
     EXPECT_EQ(passwords()->selectedItems().size(), 2);
-    EXPECT_FALSE(detail()->isVisible());
-    EXPECT_FALSE(detail()->HasEntry());
+    EXPECT_TRUE(detail()->isVisible());
+    EXPECT_EQ(detail()->entry_id(), displayed);
     click_row(2, Qt::ShiftModifier);
     EXPECT_GE(passwords()->selectedItems().size(), 2);
     QTest::keyClick(passwords(), Qt::Key_Escape);
@@ -1230,7 +1373,7 @@ TEST_F(MainWindowTest, TrashControlShiftSelectionAndDeleteKeyRemoveActualSelecti
     click_row(0, Qt::NoModifier);
     click_row(1, Qt::ShiftModifier);
     ASSERT_EQ(passwords()->selectedItems().size(), 2);
-    EXPECT_FALSE(detail()->HasEntry());
+    EXPECT_EQ(detail()->entry_id(), passwords()->item(0)->data(Qt::UserRole).toLongLong());
     QTimer::singleShot(0, []() {
         auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
         ASSERT_NE(message, nullptr);
@@ -1349,4 +1492,326 @@ TEST_F(MainWindowTest, MigrationBlocksWritesClearsEditorAndDefersExit) {
     newButton()->click();
     EXPECT_TRUE(newButton()->isEnabled());
     EXPECT_TRUE(editor()->isVisible());
+}
+
+TEST_F(MainWindowTest, ModifierGestureNeverOpensOrReplacesDetail) {
+    window_->show();
+    QApplication::processEvents();
+    auto* list = passwords();
+    const auto first = list->visualItemRect(list->item(0)).center();
+    const auto second = list->visualItemRect(list->item(1)).center();
+    QTest::mousePress(list->viewport(), Qt::LeftButton, Qt::ControlModifier, first);
+    EXPECT_FALSE(detail()->HasEntry());
+    QTest::mouseRelease(list->viewport(), Qt::LeftButton, Qt::NoModifier, first);
+    EXPECT_FALSE(detail()->HasEntry());
+    QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::NoModifier, first);
+    ASSERT_TRUE(detail()->HasEntry());
+    const auto id = detail()->entry_id();
+    QTest::mousePress(list->viewport(), Qt::LeftButton, Qt::ControlModifier, second);
+    EXPECT_EQ(detail()->entry_id(), id);
+    QTest::mouseRelease(list->viewport(), Qt::LeftButton, Qt::NoModifier, second);
+    EXPECT_EQ(detail()->entry_id(), id);
+    QTest::mouseClick(list->viewport(), Qt::LeftButton,
+                      Qt::ControlModifier | Qt::ShiftModifier, second);
+    EXPECT_EQ(detail()->entry_id(), id);
+}
+
+TEST_F(MainWindowTest, RightMouseGestureNeverOpensOrReplacesDetail) {
+    window_->show();
+    QApplication::processEvents();
+    auto* list = passwords();
+    const auto first = list->visualItemRect(list->item(0)).center();
+    const auto second = list->visualItemRect(list->item(1)).center();
+
+    QTest::mousePress(list->viewport(), Qt::RightButton, Qt::NoModifier, first);
+    EXPECT_FALSE(detail()->HasEntry());
+    EXPECT_FALSE(detail()->isVisible());
+    QTest::mouseRelease(list->viewport(), Qt::RightButton, Qt::NoModifier, first);
+    EXPECT_FALSE(detail()->HasEntry());
+    EXPECT_TRUE(list->item(0)->isSelected());
+
+    QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::NoModifier, first);
+    ASSERT_TRUE(detail()->HasEntry());
+    const auto displayed = detail()->entry_id();
+    QTest::mousePress(list->viewport(), Qt::RightButton, Qt::NoModifier, second);
+    EXPECT_EQ(detail()->entry_id(), displayed);
+    QTest::mouseRelease(list->viewport(), Qt::RightButton, Qt::NoModifier, second);
+    EXPECT_EQ(detail()->entry_id(), displayed);
+}
+
+TEST_F(MainWindowTest, ContextMenuTargetsUnselectedEntryWithoutOpeningDetail) {
+    window_->show();
+    QApplication::processEvents();
+    auto* list = passwords();
+    ASSERT_TRUE(list->selectedItems().isEmpty());
+    auto* target = list->item(1);
+    const auto pos = list->visualItemRect(target).center();
+    bool menu_shown = false;
+    QTimer::singleShot(0, [this, target, &menu_shown]() {
+        auto* menu = window_->findChild<QMenu*>("PasswordContextMenu");
+        if (!menu) {
+            ADD_FAILURE() << "Password context menu was not created";
+            return;
+        }
+        menu_shown = true;
+        EXPECT_TRUE(target->isSelected());
+        EXPECT_EQ(passwords()->selectedItems().size(), 1);
+        EXPECT_FALSE(detail()->HasEntry());
+        EXPECT_FALSE(detail()->isVisible());
+        EXPECT_FALSE(menu->actions().isEmpty());
+        menu->close();
+    });
+    list->customContextMenuRequested(pos);
+    EXPECT_TRUE(menu_shown);
+    EXPECT_FALSE(detail()->HasEntry());
+
+    QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::NoModifier, pos);
+    ASSERT_TRUE(detail()->HasEntry());
+    EXPECT_EQ(detail()->entry_id(), target->data(Qt::UserRole).toLongLong());
+}
+
+TEST_F(MainWindowTest, DetailActionsUseDisplayedEntryWhileSelectionDiffers) {
+    window_->show();
+    QApplication::processEvents();
+    auto* list = passwords();
+    QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::NoModifier,
+                      list->visualItemRect(list->item(0)).center());
+    const auto displayed = detail()->entry_id();
+    const auto other = list->item(1)->data(Qt::UserRole).toLongLong();
+    QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::ControlModifier,
+                      list->visualItemRect(list->item(1)).center());
+    QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::ControlModifier,
+                      list->visualItemRect(list->item(0)).center());
+    ASSERT_EQ(list->selectedItems().size(), 1);
+    ASSERT_EQ(list->selectedItems().first()->data(Qt::UserRole).toLongLong(), other);
+    EXPECT_EQ(detail()->entry_id(), displayed);
+    detail()->findChild<QToolButton*>("DetailHeaderButton")->click();
+    EXPECT_TRUE(password_dao_->FindById(displayed)->is_favorite);
+    EXPECT_TRUE(password_dao_->FindById(other)->is_favorite);
+    EXPECT_EQ(detail()->entry_id(), displayed);
+    detail()->findChild<QPushButton*>("DetailHeaderButton")->click();
+    ASSERT_TRUE(editor()->IsOpen());
+    EXPECT_EQ(editor()->Result().entry.id, displayed);
+    editor()->Close();
+    QTimer::singleShot(0, [] {
+        auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        ASSERT_NE(dialog, nullptr);
+        dialog->button(QMessageBox::Yes)->click();
+    });
+    detail()->findChild<QToolButton*>("DetailHeaderDeleteButton")->click();
+    EXPECT_TRUE(password_dao_->FindById(displayed)->is_deleted);
+    EXPECT_FALSE(password_dao_->FindById(other)->is_deleted);
+    EXPECT_FALSE(detail()->HasEntry());
+}
+
+TEST_F(MainWindowTest, PasswordPreferencePersistsAndOverridesOpenPanels) {
+    auto* prefs = window_->preferences_page();
+    auto* toggle = prefs->findChild<QCheckBox*>("DefaultShowPasswords");
+    ASSERT_NE(toggle, nullptr);
+    toggle->setChecked(false);
+    passwords()->setCurrentRow(0);
+    auto* value = detail()->findChild<QLabel*>("DetailFieldValueMono");
+    const auto id = detail()->entry_id();
+    const auto plain = QStringLiteral("pw-GitHub");
+    toggle->setChecked(true);
+    EXPECT_EQ(value->text(), plain);
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnEditRequested", Q_ARG(std::int64_t, id)));
+    auto* input = editor()->findChild<QLineEdit*>("EditorPasswordInput");
+    EXPECT_EQ(input->echoMode(), QLineEdit::Normal);
+    editor()->findChild<QToolButton*>("EditorPreviewToggle")->click();
+    detail()->findChildren<QToolButton*>("DetailFieldButton").at(1)->click();
+    window_->Reload();
+    EXPECT_NE(value->text(), plain);
+    EXPECT_EQ(input->echoMode(), QLineEdit::Password);
+    toggle->setChecked(false);
+    toggle->setChecked(true);
+    EXPECT_EQ(value->text(), plain);
+    EXPECT_EQ(input->echoMode(), QLineEdit::Normal);
+    passvault::ui::PreferencesPage reopened;
+    EXPECT_TRUE(reopened.DefaultPasswordVisible());
+    auto* generated = editor()->findChild<QLineEdit*>("EditorGeneratorPreview");
+    ASSERT_NE(generated, nullptr);
+    generated->setText(QStringLiteral("temporary-demo"));
+    passvault::ui::ClipboardManager::Instance()->CopySensitive(QStringLiteral("temporary-demo"));
+    window_->SetSessionKey(nullptr);
+    EXPECT_TRUE(generated->text().isEmpty());
+    EXPECT_TRUE(QApplication::clipboard()->text().isEmpty());
+    EXPECT_FALSE(detail()->HasEntry());
+    EXPECT_TRUE(value->text().isEmpty());
+    EXPECT_TRUE(input->text().isEmpty());
+    EXPECT_EQ(input->echoMode(), QLineEdit::Password);
+    toggle->setChecked(false);
+}
+
+TEST_F(MainWindowTest, CardActionsReachableAndTimeThreshold) {
+    auto entry = password_dao_->ListActive().front();
+    entry.title = QString(180, QChar('T'));
+    entry.username = QString(180, QChar('U'));
+    ASSERT_TRUE(password_dao_->Update(entry));
+    window_->Reload();
+    window_->show();
+    QApplication::processEvents();
+    auto* card = passwords()->itemWidget(passwords()->item(0));
+    auto* time = card->findChild<QLabel*>("PasswordCardTime");
+    auto* star = card->findChild<QLabel*>("PasswordCardStar");
+    auto* remove = card->findChild<QToolButton*>("PasswordCardDeleteButton");
+    for (int width : {480, 360, 359, 300}) {
+        card->resize(width, 60);
+        QApplication::processEvents();
+        EXPECT_EQ(time->isHidden(), width < 360);
+        EXPECT_EQ(remove->size(), QSize(32, 32));
+        EXPECT_LE(remove->geometry().right(), card->width());
+        EXPECT_EQ(star->size(), QSize(20, 20));
+        EXPECT_FALSE(time->toolTip().isEmpty());
+        EXPECT_EQ(time->toolTip(), time->accessibleName());
+        EXPECT_LE(star->geometry().right(), remove->geometry().left());
+        auto* title = card->findChild<QLabel*>("PasswordCardTitle");
+        auto* username = card->findChild<QLabel*>("PasswordCardMeta");
+        EXPECT_LE(title->geometry().right(),
+                  (width >= 360 ? time : star)->geometry().left());
+        EXPECT_LE(username->geometry().right(),
+                  (width >= 360 ? time : star)->geometry().left());
+        const auto before_focus = remove->geometry();
+        remove->setFocus();
+        QTest::mouseMove(remove, remove->rect().center());
+        QApplication::processEvents();
+        EXPECT_EQ(remove->geometry(), before_focus);
+        if (width >= 360) {
+            EXPECT_EQ(time->width(), 80);
+            EXPECT_LE(time->geometry().right(), star->geometry().left());
+        }
+    }
+}
+
+TEST_F(MainWindowTest, ShiftOnlyGestureKeepsClosedDetailAndPlainClickReopens) {
+    window_->show();
+    QApplication::processEvents();
+    auto* list = passwords();
+    const auto point = list->visualItemRect(list->item(0)).center();
+    QTest::mousePress(list->viewport(), Qt::LeftButton, Qt::ShiftModifier, point);
+    EXPECT_FALSE(detail()->HasEntry());
+    QTest::mouseRelease(list->viewport(), Qt::LeftButton, Qt::NoModifier, point);
+    EXPECT_FALSE(detail()->HasEntry());
+    QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::ControlModifier, point);
+    EXPECT_FALSE(detail()->HasEntry());
+    QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::NoModifier, point);
+    EXPECT_TRUE(detail()->HasEntry());
+    detail()->CloseRequested();
+    EXPECT_FALSE(detail()->HasEntry());
+    QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::NoModifier, point);
+    EXPECT_TRUE(detail()->HasEntry());
+}
+
+TEST_F(MainWindowTest, RemovingOtherEntryPreservesDisplayedDetailAndTemporaryEye) {
+    window_->show();
+    QApplication::processEvents();
+    passwords()->setCurrentRow(0);
+    const auto displayed = detail()->entry_id();
+    auto* value = detail()->findChild<QLabel*>("DetailFieldValueMono");
+    detail()->findChildren<QToolButton*>("DetailFieldButton").at(1)->click();
+    const auto previous_text = value->text();
+    auto* other_card = passwords()->itemWidget(passwords()->item(1));
+    QTimer::singleShot(0, [] {
+        auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        ASSERT_NE(dialog, nullptr);
+        dialog->button(QMessageBox::Yes)->click();
+    });
+    other_card->findChild<QToolButton*>("PasswordCardDeleteButton")->click();
+    EXPECT_EQ(detail()->entry_id(), displayed);
+    EXPECT_EQ(value->text(), previous_text);
+    search()->setText(QStringLiteral("Work"));
+    EXPECT_EQ(detail()->entry_id(), displayed);
+    EXPECT_EQ(value->text(), previous_text);
+}
+
+TEST_F(MainWindowTest, TrashDetailRestoreTargetsDisplayedEntryAndOtherRestoreKeepsIt) {
+    for (const auto& entry : password_dao_->ListActive()) {
+        ASSERT_TRUE(password_dao_->LogicalDelete(entry.id, 5000));
+    }
+    sections()->setCurrentRow(3);
+    window_->show();
+    QApplication::processEvents();
+    auto* list = passwords();
+    QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::NoModifier,
+                      list->visualItemRect(list->item(0)).center());
+    const auto displayed = detail()->entry_id();
+    auto* other_card = list->itemWidget(list->item(1));
+    const auto other = list->item(1)->data(Qt::UserRole).toLongLong();
+    EXPECT_EQ(other_card->findChild<QLabel*>("PasswordCardStar"), nullptr);
+    auto* restore = other_card->findChild<QToolButton*>("PasswordCardRestoreButton");
+    EXPECT_GE(restore->width(), 48);
+    EXPECT_GE(restore->height(), 32);
+    restore->click();
+    EXPECT_EQ(detail()->entry_id(), displayed);
+    EXPECT_FALSE(password_dao_->FindById(other)->is_deleted);
+    QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::ControlModifier,
+                      list->visualItemRect(list->item(0)).center());
+    QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::ControlModifier,
+                      list->visualItemRect(list->item(1)).center());
+    QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::ControlModifier,
+                      list->visualItemRect(list->item(0)).center());
+    EXPECT_EQ(detail()->entry_id(), displayed);
+    ASSERT_EQ(list->selectedItems().size(), 1);
+    EXPECT_NE(list->selectedItems().first()->data(Qt::UserRole).toLongLong(), displayed);
+    detail()->findChild<QPushButton*>("DetailHeaderButton")->click();
+    EXPECT_FALSE(password_dao_->FindById(displayed)->is_deleted);
+    EXPECT_FALSE(detail()->HasEntry());
+}
+
+TEST_F(MainWindowTest, ClosedDetailStaysClosedWhenControlSelectionReturnsToOne) {
+    window_->show();
+    QApplication::processEvents();
+    auto* list = passwords();
+    for (int row : {0, 1, 0}) {
+        const auto point = list->visualItemRect(list->item(row)).center();
+        QTest::mousePress(list->viewport(), Qt::LeftButton, Qt::ControlModifier, point);
+        EXPECT_FALSE(detail()->HasEntry());
+        QTest::mouseRelease(list->viewport(), Qt::LeftButton, Qt::NoModifier, point);
+        EXPECT_FALSE(detail()->HasEntry());
+    }
+    ASSERT_EQ(list->selectedItems().size(), 1);
+    EXPECT_EQ(list->selectedItems().first(), list->item(1));
+}
+
+TEST_F(MainWindowTest, SameEntrySaveFavoriteThemeAndSyncKeepTemporaryEye) {
+    ThemeGuard guard;
+    passwords()->setCurrentRow(0);
+    const auto displayed = detail()->entry_id();
+    auto* value = detail()->findChild<QLabel*>("DetailFieldValueMono");
+    detail()->findChildren<QToolButton*>("DetailFieldButton").at(1)->click();
+    const auto previous = value->text();
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnEditRequested",
+                                         Q_ARG(std::int64_t, displayed)));
+    editor()->findChild<QPushButton*>("EditorSaveButton")->click();
+    EXPECT_EQ(detail()->entry_id(), displayed);
+    EXPECT_EQ(value->text(), previous);
+    detail()->findChild<QToolButton*>("DetailHeaderButton")->click();
+    EXPECT_EQ(value->text(), previous);
+    passvault::ui::ThemeManager::Instance()->ApplyTheme(passvault::ui::Theme::kDark);
+    EXPECT_EQ(value->text(), previous);
+    const auto kind = passvault::sync::SyncManager::StatusKind::kSuccess;
+    const QString message;
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnSyncFinished",
+        QGenericArgument("sync::SyncManager::StatusKind", &kind),
+        QGenericArgument("QString", &message)));
+    EXPECT_EQ(detail()->entry_id(), displayed);
+    EXPECT_EQ(value->text(), previous);
+}
+
+TEST_F(MainWindowTest, RecreatedWindowReadsPersistedVisibilityForNormalAndTrash) {
+    QSettings().setValue("ui/default_show_passwords", true);
+    MainWindow::Deps deps;
+    deps.password_dao = password_dao_.get();
+    deps.category_dao = category_dao_.get();
+    deps.session_key = &*session_key_;
+    window_ = std::make_unique<MainWindow>(deps);
+    passwords()->setCurrentRow(0);
+    auto* value = detail()->findChild<QLabel*>("DetailFieldValueMono");
+    EXPECT_EQ(value->text(), QStringLiteral("pw-GitHub"));
+    const auto id = detail()->entry_id();
+    ASSERT_TRUE(password_dao_->LogicalDelete(id, 5000));
+    sections()->setCurrentRow(3);
+    passwords()->setCurrentRow(0);
+    EXPECT_EQ(value->text(), QStringLiteral("pw-GitHub"));
+    QSettings().setValue("ui/default_show_passwords", false);
 }

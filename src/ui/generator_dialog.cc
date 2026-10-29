@@ -42,7 +42,6 @@ void GeneratorDialog::BuildUi() {
     preview_ = new QLineEdit(this);
     preview_->setReadOnly(true);
     preview_->setObjectName(QStringLiteral("DetailMonoValue"));
-    preview_->setProperty("mono", true);
 
     auto* refresh = new QPushButton(QStringLiteral("重新生成"), this);
     refresh->setProperty("flat", true);

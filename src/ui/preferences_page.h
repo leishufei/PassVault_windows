@@ -5,6 +5,7 @@
 
 #include <cstdint>
 
+class QCheckBox;
 class QComboBox;
 class QLabel;
 class QPushButton;
@@ -12,11 +13,14 @@ class QTabWidget;
 
 namespace passvault::ui {
 
+class ElidedLabel;
+
 class PreferencesPage : public QWidget {
     Q_OBJECT
 
  public:
     explicit PreferencesPage(QWidget* parent = nullptr);
+    bool DefaultPasswordVisible() const;
 
     enum class SyncUiState {
         kDisconnected,
@@ -32,6 +36,7 @@ class PreferencesPage : public QWidget {
     void ThemeChanged(int theme_index);
     void AutoLockChanged(int minutes);
     void ClipboardTimeoutChanged(int seconds);
+    void DefaultPasswordVisibilityChanged(bool visible);
 
     void ConnectGoogleDriveRequested();
     void AuthorizeCancelled();
@@ -64,6 +69,7 @@ class PreferencesPage : public QWidget {
     void ApplySyncState(SyncUiState state, const QString& message);
     void RefreshLastSyncLabel();
 
+    QCheckBox* default_password_visible_ = nullptr;
     QComboBox* theme_combo_ = nullptr;
     QComboBox* auto_lock_combo_ = nullptr;
     QComboBox* clipboard_combo_ = nullptr;
@@ -75,7 +81,8 @@ class PreferencesPage : public QWidget {
     QWidget* sync_authorize_card_ = nullptr;
     QWidget* sync_account_card_ = nullptr;
     QWidget* sync_last_card_ = nullptr;
-    QLabel* sync_account_email_ = nullptr;
+    QWidget* sync_state_row_ = nullptr;
+    ElidedLabel* sync_account_email_ = nullptr;
     QLabel* sync_last_value_ = nullptr;
     QLabel* sync_state_dot_ = nullptr;
     QLabel* sync_state_text_ = nullptr;
