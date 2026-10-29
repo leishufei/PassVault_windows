@@ -359,3 +359,25 @@ TEST_F(DetailPanelTest, EmptyPasswordRemainsBlankAndTimestampIncludesSeconds) {
 }
 
 }  // namespace
+
+TEST_F(DetailPanelTest, TrashDetailsOfferRestoreAndPermanentDeleteWithoutEditOrFavorite) {
+    auto entry = MakeEntry();
+    entry.is_deleted = true;
+    panel_.SetEntry(entry, QStringLiteral("synthetic"));
+    auto* restore = panel_.findChild<QPushButton*>("DetailHeaderButton");
+    ASSERT_NE(restore, nullptr);
+    EXPECT_EQ(restore->text(), QStringLiteral("还原"));
+    EXPECT_TRUE(restore->isEnabled());
+    EXPECT_TRUE(favoriteButton()->isHidden());
+    EXPECT_FALSE(favoriteButton()->isEnabled());
+    EXPECT_TRUE(deleteButton()->isEnabled());
+    EXPECT_EQ(deleteButton()->accessibleName(), QStringLiteral("永久删除"));
+    QSignalSpy restored(&panel_, &DetailPanel::RestoreRequested);
+    QSignalSpy edited(&panel_, &DetailPanel::EditRequested);
+    QSignalSpy deleted(&panel_, &DetailPanel::DeleteRequested);
+    restore->click();
+    deleteButton()->click();
+    EXPECT_EQ(restored.count(), 1);
+    EXPECT_EQ(edited.count(), 0);
+    EXPECT_EQ(deleted.count(), 1);
+}

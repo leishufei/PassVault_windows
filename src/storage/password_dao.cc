@@ -5,6 +5,7 @@
 #include <QDebug>
 
 #include <exception>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -480,15 +481,154 @@ bool PasswordDao::UpdateCategoryOf(std::int64_t id,
     }
 }
 
+std::optional<std::vector<std::int64_t>> PasswordDao::ListTrashIds() {
+    try {
+        Statement stmt(db_.handle(),
+                       "SELECT id FROM password_entries WHERE isDeleted = 1");
+        std::vector<std::int64_t> ids;
+        while (stmt.Step()) ids.push_back(stmt.ColumnInt64(0));
+        return ids;
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+std::optional<int> PasswordDao::BulkRestore(
+    const std::vector<std::int64_t>& ids, std::int64_t timestamp) {
+    try {
+        Transaction tx(db_);
+        int count = 0;
+        for (const auto id : std::set<std::int64_t>(ids.begin(), ids.end())) {
+            Statement stmt(db_.handle(),
+                "UPDATE password_entries SET isDeleted = 0, updatedAt = ?, "
+                "categoryId = CASE WHEN EXISTS (SELECT 1 FROM categories "
+                "WHERE categories.id = password_entries.categoryId "
+                "AND categories.isDeleted = 0) THEN categoryId ELSE 0 END "
+                "WHERE id = ? AND isDeleted = 1");
+            stmt.BindInt64(1, timestamp);
+            stmt.BindInt64(2, id);
+            count += stmt.StepDone();
+        }
+        if (tx.Commit()) return count;
+    } catch (const std::exception&) {
+        qWarning() << "PasswordDao::BulkRestore failed";
+    }
+    return std::nullopt;
+}
+
+std::optional<int> PasswordDao::BulkPermanentlyDelete(
+    const std::vector<std::int64_t>& ids, std::int64_t timestamp) {
+    try {
+        Transaction tx(db_);
+        int count = 0;
+        for (const auto id : std::set<std::int64_t>(ids.begin(), ids.end())) {
+            Statement marker(db_.handle(),
+                "INSERT INTO password_deletion_markers(uuid, deletedAt) "
+                "SELECT uuid, MAX(updatedAt, ?) FROM password_entries "
+                "WHERE id = ? AND isDeleted = 1 "
+                "ON CONFLICT(uuid) DO UPDATE SET "
+                "deletedAt = MAX(deletedAt, excluded.deletedAt)");
+            marker.BindInt64(1, timestamp);
+            marker.BindInt64(2, id);
+            marker.StepDone();
+            Statement remove(db_.handle(),
+                "DELETE FROM password_entries WHERE id = ? AND isDeleted = 1");
+            remove.BindInt64(1, id);
+            count += remove.StepDone();
+        }
+        if (tx.Commit()) return count;
+    } catch (const std::exception&) {
+        qWarning() << "PasswordDao::BulkPermanentlyDelete failed";
+    }
+    return std::nullopt;
+}
+
+std::optional<int> PasswordDao::EmptyTrash(std::int64_t timestamp) {
+    // A single transaction covers selection, markers and content removal.
+    try {
+        Transaction tx(db_);
+        Statement marker(db_.handle(),
+            "INSERT INTO password_deletion_markers(uuid, deletedAt) "
+            "SELECT uuid, MAX(updatedAt, ?) FROM password_entries "
+            "WHERE isDeleted = 1 "
+            "ON CONFLICT(uuid) DO UPDATE SET "
+            "deletedAt = MAX(deletedAt, excluded.deletedAt)");
+        marker.BindInt64(1, timestamp);
+        marker.StepDone();
+        Statement remove(db_.handle(),
+                         "DELETE FROM password_entries WHERE isDeleted = 1");
+        const int count = remove.StepDone();
+        if (tx.Commit()) return count;
+    } catch (const std::exception&) {
+        qWarning() << "PasswordDao::EmptyTrash failed";
+    }
+    return std::nullopt;
+}
+
+std::optional<std::vector<PasswordDeletionMarker>>
+PasswordDao::ListDeletionMarkers() {
+    try {
+        Statement stmt(db_.handle(),
+                       "SELECT uuid, deletedAt FROM password_deletion_markers");
+        std::vector<PasswordDeletionMarker> markers;
+        while (stmt.Step()) {
+            markers.push_back({stmt.ColumnText(0), stmt.ColumnInt64(1)});
+        }
+        return markers;
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+bool PasswordDao::ApplyDeletionMarker(const QString& uuid,
+                                      std::int64_t timestamp) {
+    try {
+        Transaction tx(db_);
+        Statement marker(db_.handle(),
+            "INSERT INTO password_deletion_markers(uuid, deletedAt) VALUES (?, ?) "
+            "ON CONFLICT(uuid) DO UPDATE SET "
+            "deletedAt = MAX(deletedAt, excluded.deletedAt)");
+        marker.BindText(1, uuid);
+        marker.BindInt64(2, timestamp);
+        marker.StepDone();
+        Statement remove(db_.handle(),
+                         "DELETE FROM password_entries WHERE uuid = ?");
+        remove.BindText(1, uuid);
+        remove.StepDone();
+        return tx.Commit();
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+bool PasswordDao::ApplySyncedEntry(const model::PasswordEntry& entry) {
+    try {
+        Transaction tx(db_);
+        InsertOne(db_, entry);
+        Statement remove(db_.handle(),
+                         "DELETE FROM password_deletion_markers WHERE uuid = ?");
+        remove.BindText(1, entry.uuid);
+        remove.StepDone();
+        return tx.Commit();
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
 bool PasswordDao::DeleteOldTombstones(std::int64_t cutoff) {
     try {
+        Transaction tx(db_);
+        Statement markers(db_.handle(),
+            "DELETE FROM password_deletion_markers WHERE deletedAt < ?");
+        markers.BindInt64(1, cutoff);
+        markers.StepDone();
         Statement stmt(
             db_.handle(),
             "DELETE FROM password_entries WHERE isDeleted = 1 AND "
             "updatedAt < ?");
         stmt.BindInt64(1, cutoff);
         stmt.StepDone();
-        return true;
+        return tx.Commit();
     } catch (const std::exception& ex) {
         qWarning() << "PasswordDao::DeleteOldTombstones failed:" << ex.what();
         return false;

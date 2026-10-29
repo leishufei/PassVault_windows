@@ -12,6 +12,11 @@ namespace passvault::storage {
 
 class Database;
 
+struct PasswordDeletionMarker {
+    QString uuid;
+    std::int64_t deleted_at = 0;
+};
+
 class PasswordDao {
  public:
     explicit PasswordDao(Database& db);
@@ -56,6 +61,16 @@ class PasswordDao {
                                  std::int64_t timestamp);
     bool UpdateCategoryOf(std::int64_t id, std::int64_t new_category_id,
                           std::int64_t timestamp);
+
+    std::optional<std::vector<std::int64_t>> ListTrashIds();
+    std::optional<int> BulkRestore(const std::vector<std::int64_t>& ids,
+                                   std::int64_t timestamp);
+    std::optional<int> BulkPermanentlyDelete(
+        const std::vector<std::int64_t>& ids, std::int64_t timestamp);
+    std::optional<int> EmptyTrash(std::int64_t timestamp);
+    std::optional<std::vector<PasswordDeletionMarker>> ListDeletionMarkers();
+    bool ApplyDeletionMarker(const QString& uuid, std::int64_t timestamp);
+    bool ApplySyncedEntry(const model::PasswordEntry& entry);
 
     bool DeleteOldTombstones(std::int64_t cutoff);
 

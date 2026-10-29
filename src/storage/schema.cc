@@ -49,10 +49,18 @@ CREATE TABLE IF NOT EXISTS categories (
 );
 )SQL";
 
+constexpr const char* kCreateDeletionMarkers = R"SQL(
+CREATE TABLE IF NOT EXISTS password_deletion_markers (
+    uuid TEXT PRIMARY KEY NOT NULL,
+    deletedAt INTEGER NOT NULL
+);
+)SQL";
+
 void ApplyDdl(Database& db) {
     if (!db.Execute(kCreatePasswordEntries) ||
         !db.Execute(kCreatePasswordEntriesUuidIndex) ||
-        !db.Execute(kCreateCategories)) {
+        !db.Execute(kCreateCategories) ||
+        !db.Execute(kCreateDeletionMarkers)) {
         throw std::runtime_error("failed to create v8 schema");
     }
 }

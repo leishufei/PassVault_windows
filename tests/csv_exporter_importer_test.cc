@@ -307,3 +307,23 @@ TEST(CsvExporter, WritesBomHeaderAndSortsRows) {
     EXPECT_EQ(rows[1][2], QStringLiteral("Wifi"));
     EXPECT_EQ(rows[2][2], QStringLiteral("Gmail"));
 }
+
+TEST_F(CsvRoundTripTest, PermanentDeletionMarkersNeverEnterCsvCollectionOrOutput) {
+    const QByteArray csv = "ID,分类,标题,用户名,密码,网站,备注\r\n"
+                           ",,synthetic,user,synthetic-value,,\r\n";
+    auto key = FixedKey();
+    const auto validation = CsvValidator().Validate(CsvReader::ReadAll(csv), {}, {});
+    ASSERT_TRUE(CsvImporter::Apply(validation, *pwd_dao_, *cat_dao_, key, 1000));
+    const auto entry = pwd_dao_->ListActive().front();
+    ASSERT_TRUE(pwd_dao_->LogicalDelete(entry.id, 2000));
+    ASSERT_EQ(pwd_dao_->BulkPermanentlyDelete({entry.id}, 3000), 1);
+    const auto collected = CsvExporter::CollectEntries(*pwd_dao_, *cat_dao_, key);
+    ASSERT_TRUE(collected);
+    EXPECT_TRUE(collected->isEmpty());
+    QByteArray output;
+    QBuffer buffer(&output);
+    ASSERT_TRUE(buffer.open(QIODevice::WriteOnly));
+    ASSERT_TRUE(CsvExporter::Export(&buffer, *collected));
+    EXPECT_FALSE(output.contains(entry.uuid.toUtf8()));
+    EXPECT_FALSE(output.contains("synthetic"));
+}

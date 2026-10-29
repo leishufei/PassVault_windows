@@ -1100,3 +1100,212 @@ TEST_F(MainWindowTest, MinimizeLockRespectsSettingAndSession) {
 }
 
 }  // namespace
+
+TEST_F(MainWindowTest, TrashSearchStaysDeletedAndRestorePreservesCiphertext) {
+    const auto all = password_dao_->ListActive();
+    const auto original = all.front();
+    ASSERT_TRUE(password_dao_->LogicalDelete(original.id, 5000));
+    sections()->setCurrentRow(3);
+    window_->Reload();
+    search()->setText(QStringLiteral("Git"));
+    ASSERT_EQ(passwords()->count(), 1);
+    EXPECT_EQ(passwords()->item(0)->data(Qt::UserRole).toLongLong(), original.id);
+    auto* restore = window_->findChild<QPushButton*>("RestoreSelectedButton");
+    auto* remove = window_->findChild<QPushButton*>("PermanentlyDeleteButton");
+    ASSERT_NE(restore, nullptr);
+    ASSERT_NE(remove, nullptr);
+    EXPECT_FALSE(restore->isEnabled());
+    EXPECT_FALSE(remove->isEnabled());
+    passwords()->setCurrentRow(0);
+    EXPECT_TRUE(restore->isEnabled());
+    EXPECT_TRUE(remove->isEnabled());
+    ASSERT_TRUE(detail()->HasEntry());
+    EXPECT_EQ(detail()->findChild<QToolButton*>("DetailHeaderDeleteButton")->toolTip(),
+              QStringLiteral("永久删除"));
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnEditRequested",
+                                         Q_ARG(std::int64_t, original.id)));
+    EXPECT_FALSE(editor()->IsOpen());
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnFavoriteToggleRequested",
+        Q_ARG(std::int64_t, original.id), Q_ARG(bool, true)));
+    EXPECT_EQ(password_dao_->FindById(original.id)->is_favorite, original.is_favorite);
+    restore->click();
+    const auto restored = password_dao_->FindById(original.id);
+    ASSERT_TRUE(restored);
+    EXPECT_FALSE(restored->is_deleted);
+    EXPECT_EQ(restored->encrypted_password, original.encrypted_password);
+    EXPECT_EQ(restored->password_iv, original.password_iv);
+    EXPECT_EQ(passwords()->count(), 0);
+    EXPECT_EQ(listCount()->text(), QStringLiteral("0 项"));
+    EXPECT_EQ(sections()->item(3)->data(kSidebarCountRole).toInt(), 0);
+    EXPECT_EQ(search()->text(), QStringLiteral("Git"));
+}
+
+TEST_F(MainWindowTest, FilteredEmptyTrashConfirmsAllAndCancelPreservesContent) {
+    for (const auto& entry : password_dao_->ListActive()) {
+        ASSERT_TRUE(password_dao_->LogicalDelete(entry.id, 5000));
+    }
+    sections()->setCurrentRow(3);
+    window_->Reload();
+    search()->setText(QStringLiteral("GitHub"));
+    ASSERT_EQ(passwords()->count(), 1);
+    auto* clear = window_->findChild<QPushButton*>("EmptyTrashButton");
+    ASSERT_NE(clear, nullptr);
+    ASSERT_TRUE(clear->isEnabled());
+    for (const auto answer : {QMessageBox::No, QMessageBox::Yes}) {
+        QTimer::singleShot(0, [answer]() {
+            auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+            ASSERT_NE(message, nullptr);
+            EXPECT_TRUE(message->text().contains(QStringLiteral("3 条")));
+            EXPECT_EQ(message->defaultButton(), message->button(QMessageBox::No));
+            message->button(answer)->click();
+        });
+        clear->click();
+        EXPECT_EQ(password_dao_->ListIncludingDeleted().size(),
+                  answer == QMessageBox::No ? 3u : 0u);
+    }
+    EXPECT_EQ(password_dao_->ListDeletionMarkers()->size(), 3u);
+    EXPECT_FALSE(clear->isEnabled());
+    EXPECT_EQ(search()->text(), QStringLiteral("GitHub"));
+}
+
+TEST_F(MainWindowTest, EmptyTrashKeepsEntriesAddedWhileConfirmationIsOpen) {
+    const auto confirmed_entries = password_dao_->ListActive();
+    for (const auto& entry : confirmed_entries) {
+        ASSERT_TRUE(password_dao_->LogicalDelete(entry.id, 5000));
+    }
+    sections()->setCurrentRow(3);
+    window_->Reload();
+    search()->setText(QStringLiteral("GitHub"));
+    ASSERT_EQ(passwords()->count(), 1);
+    auto* clear = window_->findChild<QPushButton*>("EmptyTrashButton");
+    ASSERT_NE(clear, nullptr);
+    QTimer::singleShot(0, [this]() {
+        auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        ASSERT_NE(message, nullptr);
+        EXPECT_TRUE(message->text().contains(QStringLiteral("3 条")));
+        Seed(QStringLiteral("late-entry"), QStringLiteral("synthetic"), false, 0, 6000);
+        const auto added = password_dao_->ListActive();
+        ASSERT_EQ(added.size(), 1u);
+        ASSERT_TRUE(password_dao_->LogicalDelete(added.front().id, 7000));
+        message->button(QMessageBox::Yes)->click();
+    });
+    clear->click();
+    const auto remaining = password_dao_->ListIncludingDeleted();
+    ASSERT_EQ(remaining.size(), 1u);
+    EXPECT_EQ(remaining.front().title, QStringLiteral("late-entry"));
+    EXPECT_TRUE(remaining.front().is_deleted);
+    const auto markers = password_dao_->ListDeletionMarkers();
+    ASSERT_TRUE(markers);
+    EXPECT_EQ(markers->size(), confirmed_entries.size());
+    for (const auto& entry : confirmed_entries) {
+        EXPECT_FALSE(password_dao_->FindByUuid(entry.uuid));
+        EXPECT_TRUE(std::any_of(markers->begin(), markers->end(),
+            [&entry](const auto& marker) { return marker.uuid == entry.uuid; }));
+    }
+    EXPECT_EQ(passwords()->count(), 0);
+    EXPECT_EQ(sections()->item(3)->data(kSidebarCountRole).toInt(), 1);
+    EXPECT_TRUE(clear->isEnabled());
+}
+
+TEST_F(MainWindowTest, TrashControlShiftSelectionAndDeleteKeyRemoveActualSelection) {
+    for (const auto& entry : password_dao_->ListActive()) {
+        ASSERT_TRUE(password_dao_->LogicalDelete(entry.id, 5000));
+    }
+    sections()->setCurrentRow(3);
+    window_->Reload();
+    window_->show();
+    QApplication::processEvents();
+    const auto click_row = [this](int row, Qt::KeyboardModifiers modifiers) {
+        const auto rect = passwords()->visualItemRect(passwords()->item(row));
+        QTest::mouseClick(passwords()->viewport(), Qt::LeftButton, modifiers,
+                          QPoint(75, rect.center().y()));
+    };
+    click_row(0, Qt::NoModifier);
+    QTest::keyClick(passwords(), Qt::Key_Escape);
+    EXPECT_FALSE(window_->findChild<QPushButton*>("RestoreSelectedButton")->isEnabled());
+    EXPECT_FALSE(window_->findChild<QPushButton*>("PermanentlyDeleteButton")->isEnabled());
+    click_row(0, Qt::NoModifier);
+    click_row(2, Qt::ControlModifier);
+    EXPECT_EQ(passwords()->selectedItems().size(), 2);
+    click_row(0, Qt::NoModifier);
+    click_row(1, Qt::ShiftModifier);
+    ASSERT_EQ(passwords()->selectedItems().size(), 2);
+    EXPECT_FALSE(detail()->HasEntry());
+    QTimer::singleShot(0, []() {
+        auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        ASSERT_NE(message, nullptr);
+        EXPECT_TRUE(message->text().contains(QStringLiteral("2 条")));
+        message->button(QMessageBox::Yes)->click();
+    });
+    QTest::keyClick(passwords(), Qt::Key_Delete);
+    EXPECT_EQ(passwords()->count(), 1);
+    EXPECT_EQ(password_dao_->ListDeletionMarkers()->size(), 2u);
+    EXPECT_EQ(sections()->item(3)->data(kSidebarCountRole).toInt(), 1);
+}
+
+TEST_F(MainWindowTest, TrashContextMenuRestoresMultipleSelectionAndHasPermanentDelete) {
+    for (const auto& entry : password_dao_->ListActive()) {
+        ASSERT_TRUE(password_dao_->LogicalDelete(entry.id, 5000));
+    }
+    sections()->setCurrentRow(3);
+    window_->Reload();
+    window_->show();
+    QApplication::processEvents();
+    passwords()->setCurrentRow(0);
+    passwords()->item(1)->setSelected(true);
+    QTimer::singleShot(0, [this]() {
+        auto* menu = window_->findChild<QMenu*>("PasswordContextMenu");
+        ASSERT_NE(menu, nullptr);
+        ASSERT_EQ(menu->actions().size(), 2);
+        EXPECT_EQ(menu->actions()[0]->text(), QStringLiteral("还原"));
+        EXPECT_EQ(menu->actions()[1]->text(), QStringLiteral("永久删除"));
+        menu->actions().front()->trigger();
+        menu->close();
+    });
+    const auto rect = passwords()->visualItemRect(passwords()->item(1));
+    passwords()->customContextMenuRequested(QPoint(75, rect.center().y()));
+    EXPECT_EQ(password_dao_->ListActive().size(), 2u);
+    EXPECT_EQ(passwords()->count(), 1);
+}
+
+TEST_F(MainWindowTest, TrashRowActionsScheduleDebouncedSyncAndPreserveUnselectedRows) {
+    for (const auto& entry : password_dao_->ListActive()) {
+        ASSERT_TRUE(password_dao_->LogicalDelete(entry.id, 5000));
+    }
+    passvault::sync::GoogleDriveProvider provider([] { return QString(); });
+    passvault::sync::SyncManager manager(password_dao_.get(), category_dao_.get(),
+        passvault::session::SessionManager::Instance());
+    manager.set_provider(&provider);
+    passvault::sync::SyncScheduler scheduler(&manager);
+    EXPECT_EQ(scheduler.debounce_ms(), 5000);
+    MainWindow::Deps deps;
+    deps.password_dao = password_dao_.get();
+    deps.category_dao = category_dao_.get();
+    deps.session_key = &*session_key_;
+    deps.sync_scheduler = &scheduler;
+    window_ = std::make_unique<MainWindow>(deps);
+    QSignalSpy scheduled(&scheduler, &passvault::sync::SyncScheduler::SyncScheduled);
+    sections()->setCurrentRow(3);
+    auto* card = passwords()->itemWidget(passwords()->item(0));
+    auto* restore = card->findChild<QToolButton*>("PasswordCardRestoreButton");
+    ASSERT_NE(restore, nullptr);
+    restore->click();
+    EXPECT_EQ(scheduled.count(), 1);
+    EXPECT_EQ(passwords()->count(), 2);
+    EXPECT_EQ(password_dao_->ListActive().size(), 1u);
+    card = passwords()->itemWidget(passwords()->item(0));
+    auto* remove = card->findChild<QToolButton*>("PasswordCardDeleteButton");
+    ASSERT_NE(remove, nullptr);
+    QTimer::singleShot(0, []() {
+        auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        ASSERT_NE(message, nullptr);
+        EXPECT_TRUE(message->text().contains(QStringLiteral("1 条")));
+        message->button(QMessageBox::Yes)->click();
+    });
+    remove->click();
+    EXPECT_EQ(scheduled.count(), 2);
+    EXPECT_EQ(passwords()->count(), 1);
+    EXPECT_EQ(password_dao_->ListDeletionMarkers()->size(), 1u);
+    EXPECT_TRUE(scheduler.IsPending());
+    window_.reset();
+}

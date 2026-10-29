@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <QDateTime>
 
 #include <QByteArray>
 #include <QSignalSpy>
@@ -427,4 +428,108 @@ TEST_F(SyncManagerTest, SyncFinishedCarriesKind) {
     const auto emitted =
         finished.at(0).at(0).value<SyncManager::StatusKind>();
     EXPECT_EQ(emitted, result.kind);
+}
+
+TEST_F(SyncManagerTest, PermanentMarkerWinsOlderAndEqualCloudButNewerCloudRestores) {
+    manager_->set_provider(&provider_);
+    const auto now = QDateTime::currentMSecsSinceEpoch();
+    for (const auto offset : {-1, 0, 1}) {
+        ASSERT_TRUE(pwd_dao_->ApplyDeletionMarker(QStringLiteral("uuid-1"), now));
+        PasswordSyncItemV2 cloud;
+        cloud.uuid = QStringLiteral("uuid-1");
+        cloud.title = QStringLiteral("cloud");
+        cloud.updated_at = now + offset;
+        cloud.created_at = now - 100;
+        SyncPayloadV2 payload;
+        payload.passwords.push_back(cloud);
+        auto backup = CloudCryptoService::EncryptForCloud(payload.ToJsonBytes(), kMasterPassword);
+        ASSERT_TRUE(backup);
+        provider_.SetCloudDirectly(backup->ToJsonBytes(), QStringLiteral("cloud-version"));
+        const auto result = manager_->PerformSync();
+        ASSERT_TRUE(result.success) << result.message.toStdString();
+        const auto entry = pwd_dao_->FindByUuid(cloud.uuid);
+        if (offset <= 0) {
+            EXPECT_FALSE(entry);
+            ASSERT_EQ(pwd_dao_->ListDeletionMarkers()->size(), 1u);
+            const auto uploaded = DecodeCloud(provider_);
+            ASSERT_TRUE(uploaded);
+            ASSERT_EQ(uploaded->passwords.size(), 1u);
+            EXPECT_TRUE(uploaded->passwords.front().is_deleted);
+            EXPECT_TRUE(uploaded->passwords.front().title.isEmpty());
+            EXPECT_EQ(uploaded->passwords.front().created_at, 0);
+        } else {
+            ASSERT_TRUE(entry);
+            EXPECT_FALSE(entry->is_deleted);
+            EXPECT_TRUE(pwd_dao_->ListDeletionMarkers()->empty());
+            EXPECT_EQ(entry->encrypted_password.size(), CryptoService::kTagSize);
+            EXPECT_EQ(entry->password_iv.size(), CryptoService::kIvSize);
+        }
+    }
+}
+
+TEST_F(SyncManagerTest, ReceivedContentlessTombstoneRemovesContentWithoutBlankTrashRow) {
+    manager_->set_provider(&provider_);
+    const auto now = QDateTime::currentMSecsSinceEpoch();
+    ASSERT_TRUE(pwd_dao_->Insert(MakeEntry(1, QString(), now - 1)));
+    SyncPayloadV2 payload;
+    PasswordSyncItemV2 marker;
+    marker.uuid = QStringLiteral("uuid-1");
+    marker.updated_at = now;
+    marker.is_deleted = true;
+    payload.passwords.push_back(marker);
+    auto backup = CloudCryptoService::EncryptForCloud(payload.ToJsonBytes(), kMasterPassword);
+    ASSERT_TRUE(backup);
+    provider_.SetCloudDirectly(backup->ToJsonBytes(), QStringLiteral("remote"));
+    ASSERT_TRUE(manager_->PerformSync().success);
+    EXPECT_TRUE(pwd_dao_->ListIncludingDeleted().empty());
+    EXPECT_FALSE(pwd_dao_->FindByUuid(marker.uuid));
+    EXPECT_TRUE(pwd_dao_->Search(QStringLiteral("title")).empty());
+    ASSERT_EQ(pwd_dao_->ListDeletionMarkers()->size(), 1u);
+    EXPECT_EQ(pwd_dao_->ListDeletionMarkers()->front().deleted_at, now);
+}
+
+TEST_F(SyncManagerTest, DeletedEmptyPasswordWithContentRemainsARealEncryptedTrashEntry) {
+    manager_->set_provider(&provider_);
+    SyncPayloadV2 payload;
+    PasswordSyncItemV2 entry;
+    entry.uuid = QStringLiteral("empty-password");
+    entry.title = QStringLiteral("legitimate");
+    entry.is_deleted = true;
+    entry.created_at = QDateTime::currentMSecsSinceEpoch();
+    entry.updated_at = entry.created_at;
+    payload.passwords.push_back(entry);
+    auto backup = CloudCryptoService::EncryptForCloud(payload.ToJsonBytes(), kMasterPassword);
+    ASSERT_TRUE(backup);
+    provider_.SetCloudDirectly(backup->ToJsonBytes(), QStringLiteral("remote"));
+    ASSERT_TRUE(manager_->PerformSync().success);
+    const auto stored = pwd_dao_->FindByUuid(entry.uuid);
+    ASSERT_TRUE(stored);
+    EXPECT_TRUE(stored->is_deleted);
+    EXPECT_EQ(stored->encrypted_password.size(), CryptoService::kTagSize);
+    EXPECT_EQ(stored->password_iv.size(), CryptoService::kIvSize);
+    EXPECT_TRUE(pwd_dao_->ListDeletionMarkers()->empty());
+}
+
+TEST_F(SyncManagerTest, ReceivedMarkerWriteFailureKeepsOriginalContentAndReportsFailure) {
+    manager_->set_provider(&provider_);
+    const auto now = QDateTime::currentMSecsSinceEpoch();
+    const auto original = MakeEntry(1, QStringLiteral("synthetic"), now - 1);
+    ASSERT_TRUE(pwd_dao_->Insert(original));
+    ASSERT_TRUE(db_->Execute("CREATE TRIGGER fail_remove BEFORE DELETE ON password_entries "
+                            "BEGIN SELECT RAISE(ABORT,'injected'); END"));
+    SyncPayloadV2 payload;
+    PasswordSyncItemV2 marker;
+    marker.uuid = original.uuid;
+    marker.is_deleted = true;
+    marker.updated_at = now;
+    payload.passwords.push_back(marker);
+    const auto backup = CloudCryptoService::EncryptForCloud(payload.ToJsonBytes(), kMasterPassword);
+    ASSERT_TRUE(backup);
+    provider_.SetCloudDirectly(backup->ToJsonBytes(), QStringLiteral("remote"));
+    EXPECT_FALSE(manager_->PerformSync().success);
+    const auto preserved = pwd_dao_->FindByUuid(original.uuid);
+    ASSERT_TRUE(preserved);
+    EXPECT_EQ(preserved->encrypted_password, original.encrypted_password);
+    EXPECT_TRUE(pwd_dao_->ListDeletionMarkers()->empty());
+    EXPECT_EQ(provider_.upload_count(), 0);
 }

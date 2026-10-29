@@ -179,7 +179,9 @@ QWidget* DetailPanel::BuildContentPage() {
         kIconSize));
     header_edit_->setIconSize(QSize(kIconSize, kIconSize));
     connect(header_edit_, &QPushButton::clicked, this, [this]() {
-        if (entry_) emit EditRequested(entry_->id);
+        if (!entry_) return;
+        if (entry_->is_deleted) emit RestoreRequested(entry_->id);
+        else emit EditRequested(entry_->id);
     });
     action_layout->addWidget(header_edit_);
 
@@ -194,7 +196,7 @@ QWidget* DetailPanel::BuildContentPage() {
         kHeaderIconSize));
     header_favorite_->setIconSize(QSize(kHeaderIconSize, kHeaderIconSize));
     connect(header_favorite_, &QToolButton::toggled, this, [this](bool checked) {
-        if (!entry_) return;
+        if (!entry_ || entry_->is_deleted) return;
         emit FavoriteToggleRequested(entry_->id, checked);
     });
     action_layout->addWidget(header_favorite_);
@@ -440,8 +442,19 @@ void DetailPanel::RefreshView() {
                         notes_value_, category_value_, package_value_}) {
         label->setAccessibleName(label->text());
     }
-    header_edit_->setEnabled(!e.is_deleted && password_plain_.has_value());
-    header_delete_->setEnabled(!e.is_deleted);
+    header_edit_->setEnabled(e.is_deleted || password_plain_.has_value());
+    header_edit_->setText(e.is_deleted ? QStringLiteral("还原") : QString());
+    header_edit_->setIcon(e.is_deleted ? QIcon() : IconLoader::Load(
+        QStringLiteral("pencil"),
+        ThemeManager::Instance()->Color(QStringLiteral("text-secondary")),
+        kIconSize));
+    header_edit_->setAccessibleName(e.is_deleted ? QStringLiteral("还原")
+                                                : QStringLiteral("编辑"));
+    header_delete_->setEnabled(true);
+    header_delete_->setToolTip(e.is_deleted ? QStringLiteral("永久删除")
+                                           : QStringLiteral("删除密码"));
+    header_delete_->setAccessibleName(header_delete_->toolTip());
+    header_favorite_->setVisible(!e.is_deleted);
     header_favorite_->setEnabled(!e.is_deleted);
 }
 
@@ -502,7 +515,7 @@ void DetailPanel::RefreshThemeAssets() {
                                     QStringLiteral("text-tertiary"),
                                     kIconSize));
     }
-    if (entry_) UpdatePasswordDisplay();
+    if (entry_) RefreshView();
 }
 
 void DetailPanel::UpdatePasswordDisplay() {

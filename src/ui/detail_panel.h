@@ -38,6 +38,7 @@ class DetailPanel : public QFrame {
  signals:
     void CloseRequested();
     void EditRequested(std::int64_t entry_id);
+    void RestoreRequested(std::int64_t entry_id);
     void DeleteRequested(std::int64_t entry_id);
     void CopyPasswordRequested(std::int64_t entry_id);
     void CopyUsernameRequested(std::int64_t entry_id);

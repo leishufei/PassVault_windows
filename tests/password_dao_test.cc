@@ -1,16 +1,22 @@
 #include <gtest/gtest.h>
 
+#include <sqlite3.h>
+
 #include <QByteArray>
 #include <QString>
+#include <QDir>
+#include <QUuid>
 
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <string_view>
 
 #include "model/password_entry.h"
 #include "storage/database.h"
 #include "storage/password_dao.h"
 #include "storage/schema.h"
+
 
 namespace {
 
@@ -419,4 +425,207 @@ TEST_F(PasswordDaoTest, DeleteOldTombstonesRemovesExpiredOnly) {
                                  return e.uuid ==
                                         QStringLiteral("uuid-3");
                              }));
+}
+
+TEST_F(PasswordDaoTest, RestorePreservesContentAndUsesOnlyActiveCategories) {
+    ASSERT_TRUE(db_->Execute("INSERT INTO categories(id,uuid,name,color,createdAt,updatedAt,isDeleted) "
+                            "VALUES(1,'active','active',0,0,0,0),(2,'deleted','deleted',0,0,0,1)"));
+    std::vector<std::int64_t> ids;
+    for (int i = 1; i <= 3; ++i) {
+        auto entry = MakeEntry(i);
+        entry.category_id = i;
+        entry.is_deleted = true;
+        ids.push_back(*dao_->Insert(entry));
+    }
+    auto targets = ids;
+    targets.push_back(ids.front());
+    targets.push_back(9999);
+    EXPECT_EQ(dao_->BulkRestore(targets, 1800000000000LL), 3);
+    for (int i = 1; i <= 3; ++i) {
+        const auto restored = dao_->FindById(ids[i - 1]);
+        ASSERT_TRUE(restored);
+        const auto original = MakeEntry(i);
+        EXPECT_EQ(restored->uuid, original.uuid);
+        EXPECT_EQ(restored->encrypted_password, original.encrypted_password);
+        EXPECT_EQ(restored->password_iv, original.password_iv);
+        EXPECT_EQ(restored->created_at, original.created_at);
+        EXPECT_EQ(restored->title, original.title);
+        EXPECT_EQ(restored->username, original.username);
+        EXPECT_EQ(restored->notes, original.notes);
+        EXPECT_EQ(restored->website, original.website);
+        EXPECT_EQ(restored->app_package_name, original.app_package_name);
+        EXPECT_EQ(restored->is_favorite, original.is_favorite);
+        EXPECT_EQ(restored->icon_color, original.icon_color);
+        EXPECT_EQ(restored->strength, original.strength);
+        EXPECT_EQ(restored->category_id, i == 1 ? 1 : 0);
+        EXPECT_EQ(restored->updated_at, 1800000000000LL);
+        EXPECT_FALSE(restored->is_deleted);
+    }
+    EXPECT_EQ(dao_->BulkRestore(ids, 1800000000001LL), 0);
+}
+
+TEST_F(PasswordDaoTest, TrashMutationsRollBackAfterSecondRowFailure) {
+    auto first = MakeEntry(1);
+    auto second = MakeEntry(2);
+    first.is_deleted = second.is_deleted = true;
+    const auto a = *dao_->Insert(first);
+    const auto b = *dao_->Insert(second);
+    ASSERT_TRUE(db_->Execute("CREATE TRIGGER fail_restore BEFORE UPDATE ON password_entries "
+                            "WHEN OLD.uuid = 'uuid-2' BEGIN SELECT RAISE(ABORT,'injected'); END"));
+    EXPECT_FALSE(dao_->BulkRestore({a, b}, 1800000000000LL));
+    EXPECT_TRUE(dao_->FindById(a)->is_deleted);
+    EXPECT_EQ(dao_->FindById(a)->updated_at, first.updated_at);
+    ASSERT_TRUE(db_->Execute("CREATE TRIGGER fail_delete BEFORE DELETE ON password_entries "
+                            "WHEN OLD.uuid = 'uuid-2' BEGIN SELECT RAISE(ABORT,'injected'); END"));
+    EXPECT_FALSE(dao_->BulkPermanentlyDelete({a, b}, 1800000000000LL));
+    EXPECT_FALSE(dao_->EmptyTrash(1800000000000LL));
+    EXPECT_TRUE(dao_->FindById(a));
+    EXPECT_TRUE(dao_->FindById(b));
+    ASSERT_TRUE(dao_->ListDeletionMarkers());
+    EXPECT_TRUE(dao_->ListDeletionMarkers()->empty());
+}
+
+TEST_F(PasswordDaoTest, PermanentDeleteAndEmptyTrashRetainOnlyInvisibleMarkers) {
+    const auto active = *dao_->Insert(MakeEntry(1));
+    auto deleted = MakeEntry(2);
+    deleted.is_deleted = true;
+    const auto a = *dao_->Insert(deleted);
+    deleted.uuid = QStringLiteral("other");
+    const auto b = *dao_->Insert(deleted);
+    EXPECT_EQ(dao_->BulkPermanentlyDelete({a, a, active, 9999}, 1800000000000LL), 1);
+    EXPECT_FALSE(dao_->FindById(a));
+    EXPECT_FALSE(dao_->FindByUuid(QStringLiteral("uuid-2")));
+    EXPECT_TRUE(dao_->Search(QStringLiteral("title-2")).empty());
+    EXPECT_EQ(dao_->ListIncludingDeleted().size(), 2u);
+    EXPECT_EQ(dao_->EmptyTrash(1800000000001LL), 1);
+    EXPECT_FALSE(dao_->FindById(b));
+    EXPECT_TRUE(dao_->FindById(active));
+    EXPECT_EQ(dao_->ListDeletionMarkers()->size(), 2u);
+    EXPECT_TRUE(dao_->DeleteOldTombstones(1800000000000LL));
+    EXPECT_EQ(dao_->ListDeletionMarkers()->size(), 2u);
+    EXPECT_TRUE(dao_->DeleteOldTombstones(1800000000001LL));
+    ASSERT_EQ(dao_->ListDeletionMarkers()->size(), 1u);
+    EXPECT_EQ(dao_->ListDeletionMarkers()->front().uuid, QStringLiteral("other"));
+}
+
+TEST(PasswordDeletionPersistence, MarkerSurvivesReopenAndSchemaRemainsV8) {
+    const QString root = qEnvironmentVariable("PASSVAULT_TEST_ARTIFACT_DIR",
+        QDir::currentPath() + QStringLiteral("/build/diagnostics/trash-persistence"));
+    ASSERT_TRUE(QDir().mkpath(root));
+    const QString path = root + QStringLiteral("/trash-") +
+        QUuid::createUuid().toString(QUuid::WithoutBraces) + QStringLiteral(".db");
+    {
+        auto db = Database::Open(path);
+        EnsureCurrentSchema(*db);
+        PasswordDao dao(*db);
+        auto entry = MakeEntry(1);
+        entry.is_deleted = true;
+        const auto id = dao.Insert(entry);
+        ASSERT_TRUE(id);
+        ASSERT_EQ(dao.BulkPermanentlyDelete({*id}, 1800000000000LL), 1);
+    }
+    {
+        auto db = Database::Open(path);
+        EnsureCurrentSchema(*db);
+        EXPECT_EQ(db->UserVersion(), 8);
+        PasswordDao dao(*db);
+        EXPECT_TRUE(dao.ListIncludingDeleted().empty());
+        ASSERT_TRUE(dao.ListDeletionMarkers());
+        ASSERT_EQ(dao.ListDeletionMarkers()->size(), 1u);
+        EXPECT_EQ(dao.ListDeletionMarkers()->front().uuid, QStringLiteral("uuid-1"));
+        EXPECT_EQ(dao.ListDeletionMarkers()->front().deleted_at, 1800000000000LL);
+    }
+}
+
+TEST_F(PasswordDaoTest, DeletionMarkerRetentionKeepsExactThirtyDayBoundary) {
+    constexpr std::int64_t now = 1800000000000LL;
+    constexpr std::int64_t cutoff = now - 30LL * 24 * 60 * 60 * 1000;
+    ASSERT_TRUE(dao_->ApplyDeletionMarker(QStringLiteral("expired"), cutoff - 1));
+    ASSERT_TRUE(dao_->ApplyDeletionMarker(QStringLiteral("boundary"), cutoff));
+    ASSERT_TRUE(dao_->ApplyDeletionMarker(QStringLiteral("recent"), cutoff + 1));
+    ASSERT_TRUE(dao_->DeleteOldTombstones(cutoff));
+    const auto markers = dao_->ListDeletionMarkers();
+    ASSERT_TRUE(markers);
+    ASSERT_EQ(markers->size(), 2u);
+    for (const auto& marker : *markers) EXPECT_GE(marker.deleted_at, cutoff);
+}
+
+TEST_F(PasswordDaoTest, SyncedEntryCannotReplaceOlderOrEqualDeletionMarker) {
+    auto entry = MakeEntry(1);
+    const auto deleted_at = entry.updated_at;
+    ASSERT_TRUE(dao_->ApplyDeletionMarker(entry.uuid, deleted_at));
+    for (const auto offset : {-1, 0}) {
+        entry.updated_at = deleted_at + offset;
+        ASSERT_TRUE(dao_->ApplySyncedEntry(entry));
+        EXPECT_FALSE(dao_->FindByUuid(entry.uuid));
+        const auto markers = dao_->ListDeletionMarkers();
+        ASSERT_TRUE(markers);
+        ASSERT_EQ(markers->size(), 1u);
+        EXPECT_EQ(markers->front().deleted_at, deleted_at);
+    }
+}
+
+TEST_F(PasswordDaoTest, SyncedEntryStrictlyNewerThanMarkerRestoresContent) {
+    auto entry = MakeEntry(1);
+    ASSERT_TRUE(dao_->ApplyDeletionMarker(entry.uuid, entry.updated_at - 1));
+    ASSERT_TRUE(dao_->ApplySyncedEntry(entry));
+    const auto restored = dao_->FindByUuid(entry.uuid);
+    ASSERT_TRUE(restored);
+    EXPECT_EQ(restored->encrypted_password, entry.encrypted_password);
+    EXPECT_EQ(restored->password_iv, entry.password_iv);
+    EXPECT_EQ(restored->updated_at, entry.updated_at);
+    ASSERT_TRUE(dao_->ListDeletionMarkers());
+    EXPECT_TRUE(dao_->ListDeletionMarkers()->empty());
+}
+
+TEST_F(PasswordDaoTest, SyncedEntryPreservesNewerAndEqualCurrentContent) {
+    const auto original = MakeEntry(1);
+    ASSERT_TRUE(dao_->Insert(original));
+    auto candidate = original;
+    candidate.title = QStringLiteral("stale candidate");
+    for (const auto offset : {-1, 0}) {
+        candidate.updated_at = original.updated_at + offset;
+        ASSERT_TRUE(dao_->ApplySyncedEntry(candidate));
+        const auto preserved = dao_->FindByUuid(original.uuid);
+        ASSERT_TRUE(preserved);
+        EXPECT_EQ(preserved->title, original.title);
+        EXPECT_EQ(preserved->encrypted_password, original.encrypted_password);
+    }
+}
+
+TEST_F(PasswordDaoTest, SyncedEntryReadFailureDoesNotTreatMarkerAsMissing) {
+    const auto entry = MakeEntry(1);
+    ASSERT_TRUE(dao_->ApplyDeletionMarker(entry.uuid, entry.updated_at - 1));
+    ASSERT_EQ(sqlite3_set_authorizer(db_->handle(),
+        [](void*, int action, const char* table, const char* column, const char*,
+           const char*) {
+            return action == SQLITE_READ && table && column &&
+                    std::string_view(table) == "password_deletion_markers" &&
+                    std::string_view(column) == "deletedAt"
+                ? SQLITE_DENY : SQLITE_OK;
+        }, nullptr), SQLITE_OK);
+    const bool applied = dao_->ApplySyncedEntry(entry);
+    ASSERT_EQ(sqlite3_set_authorizer(db_->handle(), nullptr, nullptr), SQLITE_OK);
+    EXPECT_FALSE(applied);
+    EXPECT_FALSE(dao_->FindByUuid(entry.uuid));
+    const auto markers = dao_->ListDeletionMarkers();
+    ASSERT_TRUE(markers);
+    ASSERT_EQ(markers->size(), 1u);
+    EXPECT_EQ(markers->front().deleted_at, entry.updated_at - 1);
+    EXPECT_EQ(sqlite3_get_autocommit(db_->handle()), 1);
+}
+
+TEST_F(PasswordDaoTest, SyncedEntryMarkerRemovalFailureRollsBackInsertedContent) {
+    const auto entry = MakeEntry(1);
+    ASSERT_TRUE(dao_->ApplyDeletionMarker(entry.uuid, entry.updated_at - 1));
+    ASSERT_TRUE(db_->Execute(
+        "CREATE TRIGGER fail_marker_remove BEFORE DELETE ON password_deletion_markers "
+        "BEGIN SELECT RAISE(ABORT,'injected'); END"));
+    EXPECT_FALSE(dao_->ApplySyncedEntry(entry));
+    EXPECT_FALSE(dao_->FindByUuid(entry.uuid));
+    const auto markers = dao_->ListDeletionMarkers();
+    ASSERT_TRUE(markers);
+    ASSERT_EQ(markers->size(), 1u);
+    EXPECT_EQ(markers->front().deleted_at, entry.updated_at - 1);
+    EXPECT_EQ(sqlite3_get_autocommit(db_->handle()), 1);
 }

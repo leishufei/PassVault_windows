@@ -665,10 +665,33 @@ QWidget* MainWindow::BuildPasswordListColumn() {
     }
     sort_button_->setMenu(sort_menu);
     title_layout->addWidget(sort_button_);
+    restore_selected_button_ = new QPushButton(QStringLiteral("还原所选"), title_row);
+    restore_selected_button_->setObjectName(
+        QStringLiteral("RestoreSelectedButton"));
+    permanently_delete_button_ = new QPushButton(
+        QStringLiteral("永久删除所选"), title_row);
+    permanently_delete_button_->setObjectName(
+        QStringLiteral("PermanentlyDeleteButton"));
+    empty_trash_button_ = new QPushButton(QStringLiteral("清空回收站"), title_row);
+    empty_trash_button_->setObjectName(QStringLiteral("EmptyTrashButton"));
+    for (auto* button : {restore_selected_button_, permanently_delete_button_,
+                         empty_trash_button_}) {
+        button->setProperty("flat", true);
+        title_layout->addWidget(button);
+    }
+    connect(restore_selected_button_, &QPushButton::clicked, this,
+            &MainWindow::OnRestoreSelected);
+    connect(permanently_delete_button_, &QPushButton::clicked, this,
+            &MainWindow::OnDeleteSelected);
+    connect(empty_trash_button_, &QPushButton::clicked, this,
+            &MainWindow::OnEmptyTrash);
 
     layout->addWidget(title_row);
 
-    password_list_ = new QListWidget(column);
+    list_content_stack_ = new QStackedWidget(column);
+    list_content_stack_->setObjectName(QStringLiteral("ListContentStack"));
+    layout->addWidget(list_content_stack_, 1);
+    password_list_ = new QListWidget(list_content_stack_);
     password_list_->setObjectName(QStringLiteral("PasswordList"));
     password_list_->setFrameShape(QFrame::NoFrame);
     password_list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -676,11 +699,17 @@ QWidget* MainWindow::BuildPasswordListColumn() {
     connect(password_list_, &QListWidget::customContextMenuRequested, this,
             [this](const QPoint& pos) {
                 auto* item = password_list_->itemAt(pos);
-                if (!item || selected_category_ == kSectionTrash) return;
+                if (!item) return;
                 if (!item->isSelected()) password_list_->setCurrentItem(item);
                 QMenu menu(this);
                 menu.setObjectName(QStringLiteral("PasswordContextMenu"));
-                auto* remove = menu.addAction(QStringLiteral("移入回收站"));
+                if (selected_category_ == kSectionTrash) {
+                    auto* restore = menu.addAction(QStringLiteral("还原"));
+                    connect(restore, &QAction::triggered, this,
+                            &MainWindow::OnRestoreSelected);
+                }
+                auto* remove = menu.addAction(selected_category_ == kSectionTrash
+                    ? QStringLiteral("永久删除") : QStringLiteral("移入回收站"));
                 connect(remove, &QAction::triggered, this,
                         &MainWindow::OnDeleteSelected);
                 menu.exec(password_list_->viewport()->mapToGlobal(pos));
@@ -693,14 +722,13 @@ QWidget* MainWindow::BuildPasswordListColumn() {
             &MainWindow::OnPasswordSelectionChanged);
     connect(password_list_, &QListWidget::itemClicked, this,
             &MainWindow::OnPasswordSelectionChanged);
-    layout->addWidget(password_list_, 1);
+    list_content_stack_->addWidget(password_list_);
 
-    empty_state_ = new QLabel(QStringLiteral("暂无密码，点击「新建密码」开始"),
-                              column);
+    empty_state_ = new QLabel(QStringLiteral("暂无密码"), list_content_stack_);
     empty_state_->setObjectName(QStringLiteral("EmptyState"));
     empty_state_->setAlignment(Qt::AlignCenter);
-    empty_state_->setVisible(false);
-    layout->addWidget(empty_state_);
+    empty_state_->installEventFilter(this);
+    list_content_stack_->addWidget(empty_state_);
 
     return column;
 }
@@ -717,6 +745,8 @@ QWidget* MainWindow::BuildDetailColumn() {
     connect(close_detail, &QAction::triggered, this, &MainWindow::ShowListPane);
     connect(detail_panel_, &DetailPanel::EditRequested, this,
             &MainWindow::OnEditRequested);
+    connect(detail_panel_, &DetailPanel::RestoreRequested, this,
+            [this](std::int64_t id) { RestoreEntries({id}); });
     connect(detail_panel_, &DetailPanel::DeleteRequested, this,
             &MainWindow::OnDeleteRequested);
     connect(detail_panel_, &DetailPanel::CopyPasswordRequested, this,
@@ -1024,14 +1054,24 @@ QWidget* MainWindow::CreatePasswordCard(const model::PasswordEntry& entry) {
 
     auto* remove = new QToolButton(card);
     remove->setObjectName(QStringLiteral("PasswordCardDeleteButton"));
-    remove->setToolTip(QStringLiteral("移入回收站"));
-    remove->setAccessibleName(QStringLiteral("删除密码"));
+    remove->setToolTip(entry.is_deleted ? QStringLiteral("永久删除")
+                                        : QStringLiteral("移入回收站"));
+    remove->setAccessibleName(entry.is_deleted ? QStringLiteral("永久删除")
+                                               : QStringLiteral("删除密码"));
     remove->setFixedSize(30, 30);
     remove->setCursor(Qt::PointingHandCursor);
     remove->setIcon(IconLoader::Load(
         QStringLiteral("trash-2"),
         ThemeManager::Instance()->Color(QStringLiteral("danger")), 16));
-    remove->setEnabled(!entry.is_deleted);
+    if (entry.is_deleted) {
+        auto* restore = new QToolButton(card);
+        restore->setText(QStringLiteral("还原"));
+        restore->setObjectName(QStringLiteral("PasswordCardRestoreButton"));
+        restore->setAccessibleName(QStringLiteral("还原"));
+        connect(restore, &QToolButton::clicked, this,
+                [this, id = entry.id]() { RestoreEntries({id}); });
+        row->addWidget(restore);
+    }
     connect(remove, &QToolButton::clicked, this,
             [this, id = entry.id]() { OnDeleteRequested(id); });
     row->addWidget(remove);
@@ -1049,17 +1089,23 @@ void MainWindow::RefreshPasswordList() {
     password_list_->clear();
 
     std::vector<model::PasswordEntry> rows;
-    if (!search_text_.isEmpty()) {
+    if (selected_category_ == kSectionTrash) {
+        for (auto& entry : deps_.password_dao->ListIncludingDeleted()) {
+            if (entry.is_deleted && (search_text_.isEmpty() ||
+                entry.title.contains(search_text_, Qt::CaseInsensitive) ||
+                entry.username.contains(search_text_, Qt::CaseInsensitive) ||
+                entry.website.contains(search_text_, Qt::CaseInsensitive) ||
+                entry.notes.contains(search_text_, Qt::CaseInsensitive))) {
+                rows.push_back(std::move(entry));
+            }
+        }
+    } else if (!search_text_.isEmpty()) {
         rows = deps_.password_dao->Search(search_text_);
     } else if (selected_category_ == kSectionAll) {
         rows = deps_.password_dao->ListActive();
     } else if (selected_category_ == kSectionFavorites) {
         for (auto& e : deps_.password_dao->ListActive()) {
             if (e.is_favorite) rows.push_back(std::move(e));
-        }
-    } else if (selected_category_ == kSectionTrash) {
-        for (auto& e : deps_.password_dao->ListIncludingDeleted()) {
-            if (e.is_deleted) rows.push_back(std::move(e));
         }
     } else if (selected_category_ == kSectionUncategorized) {
         rows = deps_.password_dao->ListByCategory(0);
@@ -1096,14 +1142,14 @@ void MainWindow::RefreshPasswordList() {
     list_count_->setText(
         QStringLiteral("%1 项").arg(current_entries_.size()));
     QString title = QStringLiteral("所有密码");
-    if (!search_text_.isEmpty()) {
+    if (selected_category_ == kSectionTrash) {
+        title = QStringLiteral("回收站");
+    } else if (!search_text_.isEmpty()) {
         title = QStringLiteral("搜索结果");
     } else if (selected_category_ == kSectionFavorites) {
         title = QStringLiteral("收藏夹");
     } else if (selected_category_ == kSectionUncategorized) {
         title = QStringLiteral("未分类");
-    } else if (selected_category_ == kSectionTrash) {
-        title = QStringLiteral("回收站");
     } else if (selected_category_ > 0) {
         const auto category = std::find_if(
             categories_.begin(), categories_.end(), [this](const auto& value) {
@@ -1114,12 +1160,13 @@ void MainWindow::RefreshPasswordList() {
     list_title_->setText(title);
     const bool empty = current_entries_.empty();
     empty_state_->setText(
-        search_text_.isEmpty()
-            ? QStringLiteral("暂无密码，点击「新建密码」开始")
-            : QStringLiteral("没有找到匹配的密码"));
-    empty_state_->setVisible(empty);
-    password_list_->setVisible(!empty);
+        !search_text_.isEmpty() ? QStringLiteral("没有搜索结果")
+            : selected_category_ == kSectionTrash ? QStringLiteral("回收站为空")
+                                                  : QStringLiteral("暂无密码"));
+    list_content_stack_->setCurrentWidget(empty ? static_cast<QWidget*>(empty_state_)
+                                               : password_list_);
     suppress_selection_ = false;
+    UpdateTrashActions();
 
     if (detail_panel_ && detail_panel_->HasEntry()) {
         const std::int64_t current = detail_panel_->entry_id();
@@ -1144,6 +1191,7 @@ std::optional<model::PasswordEntry> MainWindow::FindEntry(
 
 void MainWindow::OnPasswordSelectionChanged() {
     if (suppress_selection_ || !deps_.session_key) return;
+    UpdateTrashActions();
     const auto selected = password_list_->selectedItems();
     if (selected.isEmpty()) {
         ShowListPane();
@@ -1363,7 +1411,7 @@ void MainWindow::PersistCategoryOrder() {
 void MainWindow::OpenEditDialog(std::int64_t entry_id) {
     if (!editor_panel_ || !deps_.session_key) return;
     auto found = deps_.password_dao->FindById(entry_id);
-    if (!found.has_value()) return;
+    if (!found.has_value() || found->is_deleted) return;
     QList<model::Category> cats;
     for (const auto& c : categories_) cats.append(c);
     editor_panel_->SetCategories(std::move(cats));
@@ -1430,16 +1478,15 @@ void MainWindow::OnDeleteRequested(std::int64_t entry_id) {
 }
 
 void MainWindow::OnDeleteSelected() {
-    std::vector<std::int64_t> ids;
-    for (const auto* item : password_list_->selectedItems()) {
-        ids.push_back(item->data(Qt::UserRole).toLongLong());
-    }
-    DeleteEntries(ids);
+    DeleteEntries(SelectedPasswordIds());
 }
 
 void MainWindow::DeleteEntries(const std::vector<std::int64_t>& ids) {
-    if (!deps_.session_key || !deps_.password_dao || ids.empty() ||
-        selected_category_ == kSectionTrash) return;
+    if (!deps_.session_key || !deps_.password_dao || ids.empty()) return;
+    if (selected_category_ == kSectionTrash) {
+        PermanentlyDeleteEntries(ids, false);
+        return;
+    }
     auto reply = QMessageBox::question(
         this, QStringLiteral("删除确认"),
         ids.size() == 1 ? QStringLiteral("确定将该密码移至回收站吗？")
@@ -1455,6 +1502,81 @@ void MainWindow::DeleteEntries(const std::vector<std::int64_t>& ids) {
     }
     if (deps_.sync_scheduler) deps_.sync_scheduler->MarkDirty();
     if (detail_panel_) detail_panel_->ClearEntry();
+    showing_detail_ = false;
+    Reload();
+    UpdateResponsiveLayout();
+}
+
+std::vector<std::int64_t> MainWindow::SelectedPasswordIds() const {
+    std::vector<std::int64_t> ids;
+    for (const auto* item : password_list_->selectedItems()) {
+        ids.push_back(item->data(Qt::UserRole).toLongLong());
+    }
+    return ids;
+}
+
+void MainWindow::UpdateTrashActions() {
+    const bool trash = selected_category_ == kSectionTrash;
+    const bool selected = !password_list_->selectedItems().isEmpty();
+    restore_selected_button_->setVisible(trash);
+    permanently_delete_button_->setVisible(trash);
+    empty_trash_button_->setVisible(trash);
+    restore_selected_button_->setEnabled(trash && selected);
+    permanently_delete_button_->setEnabled(trash && selected);
+    const auto ids = deps_.password_dao->ListTrashIds();
+    empty_trash_button_->setEnabled(trash && ids && !ids->empty());
+}
+
+void MainWindow::OnRestoreSelected() {
+    RestoreEntries(SelectedPasswordIds());
+}
+
+void MainWindow::RestoreEntries(const std::vector<std::int64_t>& ids) {
+    if (!deps_.session_key || selected_category_ != kSectionTrash ||
+        ids.empty()) return;
+    FinishTrashOperation(deps_.password_dao->BulkRestore(
+        ids, QDateTime::currentMSecsSinceEpoch()));
+}
+
+void MainWindow::OnEmptyTrash() {
+    PermanentlyDeleteEntries({}, true);
+}
+
+void MainWindow::PermanentlyDeleteEntries(
+    const std::vector<std::int64_t>& ids, bool empty_trash) {
+    if (!deps_.session_key || selected_category_ != kSectionTrash) return;
+    const auto trash_ids = deps_.password_dao->ListTrashIds();
+    if (!trash_ids) {
+        Toast::Show(this, QStringLiteral("读取回收站失败"), Toast::Level::kError);
+        return;
+    }
+    std::vector<std::int64_t> targets;
+    for (const auto id : *trash_ids) {
+        if (empty_trash || std::find(ids.begin(), ids.end(), id) != ids.end()) {
+            targets.push_back(id);
+        }
+    }
+    if (targets.empty()) return;
+    const auto reply = QMessageBox::question(
+        this, QStringLiteral("永久删除确认"),
+        empty_trash ? QStringLiteral("确定清空整个回收站中的 %1 条密码吗？此操作无法撤销。")
+                          .arg(targets.size())
+                    : QStringLiteral("确定永久删除所选的 %1 条密码吗？此操作无法撤销。")
+                          .arg(targets.size()),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (reply != QMessageBox::Yes || !deps_.session_key) return;
+    // Keep the confirmed target set stable across the modal event loop.
+    FinishTrashOperation(deps_.password_dao->BulkPermanentlyDelete(
+        targets, QDateTime::currentMSecsSinceEpoch()));
+}
+
+void MainWindow::FinishTrashOperation(const std::optional<int>& count) {
+    if (!count) {
+        Toast::Show(this, QStringLiteral("回收站操作失败"), Toast::Level::kError);
+        return;
+    }
+    if (*count > 0 && deps_.sync_scheduler) deps_.sync_scheduler->MarkDirty();
+    detail_panel_->ClearEntry();
     showing_detail_ = false;
     Reload();
     UpdateResponsiveLayout();
@@ -1504,6 +1626,8 @@ void MainWindow::OnOpenWebsiteRequested(std::int64_t entry_id) {
 
 void MainWindow::OnFavoriteToggleRequested(std::int64_t entry_id, bool desired) {
     if (!deps_.session_key) return;
+    const auto entry = deps_.password_dao->FindById(entry_id);
+    if (!entry || entry->is_deleted) return;
     if (!deps_.password_dao->SetFavorite(entry_id, desired)) {
         Toast::Show(this, QStringLiteral("收藏更新失败"), Toast::Level::kError);
         Reload();
@@ -1600,6 +1724,7 @@ void MainWindow::ShowListPane() {
         password_list_->setFocus();
         password_list_->clearSelection();
         password_list_->setCurrentItem(nullptr);
+        UpdateTrashActions();
     }
 }
 

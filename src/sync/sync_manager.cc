@@ -110,6 +110,22 @@ std::optional<PasswordSyncItemV2> PasswordEntryToSyncItem(
     return out;
 }
 
+bool IsContentlessTombstone(const PasswordSyncItemV2& item) {
+    return item.is_deleted && item.title.isEmpty() && item.username.isEmpty() &&
+           item.password.isEmpty() && item.website.isEmpty() &&
+           item.notes.isEmpty() && item.category_uuid.isEmpty() &&
+           !item.is_favorite && item.icon_color == 0 && item.created_at == 0;
+}
+
+PasswordSyncItemV2 DeletionMarkerToSyncItem(
+    const storage::PasswordDeletionMarker& marker) {
+    PasswordSyncItemV2 item;
+    item.uuid = marker.uuid;
+    item.updated_at = marker.deleted_at;
+    item.is_deleted = true;
+    return item;
+}
+
 }  // namespace
 
 SyncManager::SyncManager(storage::PasswordDao* pwd_dao,
@@ -162,6 +178,10 @@ SyncManager::DoSyncOutcome SyncManager::DoSyncOnce(const QString& remote_name) {
     // 1. Local snapshot
     auto local_passwords = pwd_dao_->ListIncludingDeleted();
     auto local_categories = cat_dao_->ListIncludingDeleted();
+    const auto local_markers = pwd_dao_->ListDeletionMarkers();
+    if (!local_markers) {
+        return {DoSyncStatus::kFatal, QStringLiteral("读取永久删除标记失败")};
+    }
 
     QHash<std::int64_t, QString> cat_id_to_uuid;
     cat_id_to_uuid.reserve(local_categories.size() + 1);
@@ -260,6 +280,13 @@ SyncManager::DoSyncOutcome SyncManager::DoSyncOnce(const QString& remote_name) {
         }
         local_pw_map.insert(item->uuid, std::move(*item));
     }
+    for (const auto& marker : *local_markers) {
+        const auto existing = local_pw_map.constFind(marker.uuid);
+        if (existing == local_pw_map.cend() ||
+            marker.deleted_at >= existing->updated_at) {
+            local_pw_map.insert(marker.uuid, DeletionMarkerToSyncItem(marker));
+        }
+    }
     QHash<QString, PasswordSyncItemV2> cloud_pw_map;
     if (cloud_payload) {
         cloud_pw_map.reserve(cloud_payload->passwords.size());
@@ -273,10 +300,25 @@ SyncManager::DoSyncOutcome SyncManager::DoSyncOnce(const QString& remote_name) {
     if (!cloud_payload) {
         pw_merge.has_local_changes = false;
     }
+    for (const auto& marker : *local_markers) {
+        const auto cloud = cloud_pw_map.constFind(marker.uuid);
+        if (cloud != cloud_pw_map.cend() &&
+            marker.deleted_at == cloud->updated_at &&
+            !IsContentlessTombstone(*cloud)) {
+            pw_merge.has_local_changes = true;
+        }
+    }
 
     // 6. Apply merged passwords
     for (const auto& sync_pw : pw_merge.merged) {
         auto existing = pwd_dao_->FindByUuid(sync_pw.uuid);
+        if (existing && existing->updated_at >= sync_pw.updated_at) continue;
+        if (IsContentlessTombstone(sync_pw)) {
+            if (!pwd_dao_->ApplyDeletionMarker(sync_pw.uuid, sync_pw.updated_at)) {
+                return {DoSyncStatus::kFatal, QStringLiteral("保存永久删除标记失败")};
+            }
+            continue;
+        }
 
         if (!existing && !sync_pw.is_deleted &&
             (!sync_pw.title.isEmpty() || !sync_pw.username.isEmpty()) &&
@@ -304,7 +346,9 @@ SyncManager::DoSyncOutcome SyncManager::DoSyncOnce(const QString& remote_name) {
         entry.created_at = sync_pw.created_at;
         entry.updated_at = sync_pw.updated_at;
         entry.is_deleted = sync_pw.is_deleted;
-        pwd_dao_->Insert(entry);
+        if (!pwd_dao_->ApplySyncedEntry(entry)) {
+            return {DoSyncStatus::kFatal, QStringLiteral("保存同步密码失败")};
+        }
     }
 
     // 7. Dedup categories by name
@@ -336,6 +380,14 @@ SyncManager::DoSyncOutcome SyncManager::DoSyncOnce(const QString& remote_name) {
                     QStringLiteral("最终阶段本地密码解密失败")};
         }
         final_pw_items.push_back(std::move(*item));
+    }
+
+    const auto final_markers = pwd_dao_->ListDeletionMarkers();
+    if (!final_markers) {
+        return {DoSyncStatus::kFatal, QStringLiteral("读取永久删除标记失败")};
+    }
+    for (const auto& marker : *final_markers) {
+        final_pw_items.push_back(DeletionMarkerToSyncItem(marker));
     }
 
     // 9. Upload if needed

@@ -88,6 +88,8 @@ class MainWindow : public QMainWindow {
     void OnEditRequested(std::int64_t entry_id);
     void OnDeleteRequested(std::int64_t entry_id);
     void OnDeleteSelected();
+    void OnRestoreSelected();
+    void OnEmptyTrash();
     void OnCopyPasswordRequested(std::int64_t entry_id);
     void OnCopyUsernameRequested(std::int64_t entry_id);
     void OnOpenWebsiteRequested(std::int64_t entry_id);
@@ -107,6 +109,12 @@ class MainWindow : public QMainWindow {
     void UpdateResponsiveLayout();
     void ShowListPane();
     void DeleteEntries(const std::vector<std::int64_t>& ids);
+    void RestoreEntries(const std::vector<std::int64_t>& ids);
+    void PermanentlyDeleteEntries(const std::vector<std::int64_t>& ids,
+                                  bool empty_trash);
+    void FinishTrashOperation(const std::optional<int>& count);
+    void UpdateTrashActions();
+    std::vector<std::int64_t> SelectedPasswordIds() const;
     void ToggleCompactSidebar();
     void UpdateSyncStatus(sync::SyncManager::StatusKind kind,
                           const QString& message);
@@ -141,8 +149,12 @@ class MainWindow : public QMainWindow {
     QAction* search_action_ = nullptr;
     QLabel* list_title_ = nullptr;
     QLabel* list_count_ = nullptr;
+    QPushButton* restore_selected_button_ = nullptr;
+    QPushButton* permanently_delete_button_ = nullptr;
+    QPushButton* empty_trash_button_ = nullptr;
     QPushButton* sort_button_ = nullptr;
     QWidget* password_list_column_ = nullptr;
+    QStackedWidget* list_content_stack_ = nullptr;
     QListWidget* password_list_ = nullptr;
     QLabel* empty_state_ = nullptr;
     DetailPanel* detail_panel_ = nullptr;
