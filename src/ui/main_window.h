@@ -87,6 +87,7 @@ class MainWindow : public QMainWindow {
     void OnCategorySelectionChanged();
     void OnPasswordSelectionChanged();
     void OnSearchChanged(const QString& text);
+    void OnSyncClicked();
     void OnSyncStarted();
     void OnSyncFinished(sync::SyncManager::StatusKind kind,
                         const QString& message);
@@ -111,6 +112,7 @@ class MainWindow : public QMainWindow {
     void RefreshCategoryList();
     void RefreshPasswordList();
     void RefreshThemeAssets();
+    void RefreshSyncButton();
     void UpdateResponsiveLayout();
     void ShowListPane();
     void DeleteEntries(const std::vector<std::int64_t>& ids);
@@ -168,8 +170,7 @@ class MainWindow : public QMainWindow {
     EditorPanel* editor_panel_ = nullptr;
     std::int64_t editor_entry_id_ = -1;
 
-    QLabel* sync_status_label_ = nullptr;
-    QLabel* sync_status_dot_ = nullptr;
+    QPushButton* sync_button_ = nullptr;
 
     std::int64_t selected_category_ = -1;
     QString search_text_;

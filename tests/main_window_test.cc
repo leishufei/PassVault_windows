@@ -240,25 +240,89 @@ TEST_F(MainWindowTest, ThemeRefreshPreservesSelectionAndChangesIcons) {
     passwords()->setCurrentRow(1);
     const std::int64_t selected_id = detail()->entry_id();
     ASSERT_GT(selected_id, 0);
-    auto* settings = window_->findChild<QLabel*>(
-        QStringLiteral("SidebarSettingsIcon"));
+    auto* settings = settingsButton();
     ASSERT_NE(settings, nullptr);
-    const QByteArray light_icon = IconPixels(QIcon(settings->pixmap()));
+    const QByteArray light_icon = IconPixels(settings->icon());
 
     theme->ApplyTheme(passvault::ui::Theme::kDark);
 
-    EXPECT_NE(IconPixels(QIcon(settings->pixmap())), light_icon);
+    EXPECT_NE(IconPixels(settings->icon()), light_icon);
     EXPECT_EQ(detail()->entry_id(), selected_id);
     ASSERT_NE(passwords()->currentItem(), nullptr);
     EXPECT_EQ(passwords()->currentItem()->data(Qt::UserRole).toLongLong(),
               selected_id);
 }
 
+TEST_F(MainWindowTest, SidebarActionsAreIconButtonsWithTooltips) {
+    window_->show();
+    QApplication::processEvents();
+    auto* sync = window_->findChild<QPushButton*>("SidebarSyncButton");
+    ASSERT_NE(sync, nullptr);
+    EXPECT_TRUE(sync->text().isEmpty());
+    EXPECT_TRUE(settingsButton()->text().isEmpty());
+    EXPECT_FALSE(sync->icon().isNull());
+    EXPECT_FALSE(settingsButton()->icon().isNull());
+    EXPECT_EQ(settingsButton()->toolTip(), QStringLiteral("设置"));
+    EXPECT_EQ(sync->toolTip(), QStringLiteral("立即同步"));
+    EXPECT_EQ(sync->geometry().top(), settingsButton()->geometry().top());
+    EXPECT_GT(sync->geometry().left(), settingsButton()->geometry().right());
+    settingsButton()->click();
+    EXPECT_TRUE(window_->preferences_page()->isVisible());
+}
 
+TEST_F(MainWindowTest, SidebarSyncDispatchesOnceAndRestoresButtonAfterFailure) {
+    namespace sync = passvault::sync;
+    // A null session fails before any provider or network access.
+    sync::GoogleDriveProvider provider([] { return QString(); });
+    sync::SyncManager manager(password_dao_.get(), category_dao_.get(), nullptr);
+    manager.set_provider(&provider);
+    sync::SyncScheduler scheduler(&manager);
+    MainWindow::Deps deps;
+    deps.password_dao = password_dao_.get();
+    deps.category_dao = category_dao_.get();
+    deps.session_key = &*session_key_;
+    deps.sync_manager = &manager;
+    deps.sync_scheduler = &scheduler;
+    MainWindow window(deps);
+    auto* button = window.findChild<QPushButton*>("SidebarSyncButton");
+    ASSERT_NE(button, nullptr);
+    QSignalSpy triggered(&scheduler, &sync::SyncScheduler::SyncTriggered);
+    QSignalSpy finished(&manager, &sync::SyncManager::SyncFinished);
+    QObject::connect(&scheduler, &sync::SyncScheduler::SyncTriggered,
+                     &window, [button]() {
+                         EXPECT_FALSE(button->isEnabled());
+                         EXPECT_EQ(button->property("state").toString(), "busy");
+                         EXPECT_EQ(button->toolTip(), QStringLiteral("同步中…"));
+                         button->click();
+                     });
+    button->click();
+    EXPECT_EQ(triggered.count(), 1);
+    EXPECT_EQ(finished.count(), 1);
+    EXPECT_TRUE(button->isEnabled());
+    EXPECT_EQ(button->property("state").toString(), "error");
+    EXPECT_TRUE(button->toolTip().contains(QStringLiteral("同步失败")));
 
+    manager.SyncStarted();
+    EXPECT_FALSE(button->isEnabled());
+    manager.SyncFinished(sync::SyncManager::StatusKind::kSuccess, QString());
+    EXPECT_TRUE(button->isEnabled());
+    EXPECT_EQ(button->property("state").toString(), "ok");
+    EXPECT_TRUE(button->toolTip().contains(QStringLiteral("已同步到云端")));
 
+    scheduler.SetPaused(true);
+    button->click();
+    EXPECT_EQ(triggered.count(), 1);
+    EXPECT_TRUE(button->isEnabled());
+}
 
-
+TEST_F(MainWindowTest, SidebarSyncWithoutConnectionDoesNotStayBusy) {
+    auto* button = window_->findChild<QPushButton*>("SidebarSyncButton");
+    ASSERT_NE(button, nullptr);
+    button->click();
+    EXPECT_TRUE(button->isEnabled());
+    EXPECT_EQ(button->property("state").toString(), "error");
+    EXPECT_TRUE(button->toolTip().contains(QStringLiteral("连接 Google 账号")));
+}
 
 TEST_F(MainWindowTest, WorkspaceHeaderSpansListAndDetail) {
     window_->resize(1280, 800);

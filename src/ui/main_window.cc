@@ -473,63 +473,41 @@ QWidget* MainWindow::BuildSidebar() {
 
     auto* footer = new QWidget(sidebar);
     footer->setObjectName(QStringLiteral("SidebarFooter"));
-    auto* footer_layout = new QVBoxLayout(footer);
-    footer_layout->setContentsMargins(0, 12, 0, 0);
-    footer_layout->setSpacing(0);
-
-    auto* sync_row = new QWidget(footer);
-    sync_row->setObjectName(QStringLiteral("SyncStatusRow"));
-    sync_row->setFixedHeight(36);
-    auto* sync_layout = new QHBoxLayout(sync_row);
-    sync_layout->setContentsMargins(12, 0, 12, 0);
-    sync_layout->setSpacing(8);
-    auto* cloud_icon = new QLabel(sync_row);
-    cloud_icon->setObjectName(QStringLiteral("SyncStatusIcon"));
-    cloud_icon->setFixedSize(kIconSize, kIconSize);
-    cloud_icon->setPixmap(
-        IconLoader::Load(
-            QStringLiteral("cloud"),
-            ThemeManager::Instance()->Color(QStringLiteral("primary")),
-            16)
-            .pixmap(16, 16));
-    sync_layout->addWidget(cloud_icon);
-    sync_status_label_ = new QLabel(QStringLiteral("等待同步"), sync_row);
-    sync_status_label_->setObjectName(QStringLiteral("SyncStatusText"));
-    sync_layout->addWidget(sync_status_label_, 1);
-    sync_status_dot_ = new QLabel(sync_row);
-    sync_status_dot_->setObjectName(QStringLiteral("SyncStatusDot"));
-    sync_status_dot_->setFixedSize(8, 8);
-    sync_status_dot_->setProperty("state", QStringLiteral("idle"));
-    sync_layout->addWidget(sync_status_dot_);
-    footer_layout->addWidget(sync_row);
+    auto* footer_layout = new QHBoxLayout(footer);
+    footer_layout->setContentsMargins(4, 12, 4, 0);
+    footer_layout->setSpacing(8);
 
     auto* settings_button = new QPushButton(footer);
-    settings_button->setAccessibleName(QStringLiteral("设置"));
-    settings_button->setFixedHeight(36);
     settings_button->setObjectName(QStringLiteral("SidebarSettingsButton"));
-    settings_button->setProperty("flat", true);
+    settings_button->setAccessibleName(QStringLiteral("设置"));
+    settings_button->setToolTip(QStringLiteral("设置"));
+    settings_button->setFocusPolicy(Qt::TabFocus);
+    settings_button->setFixedSize(36, 36);
     settings_button->setCursor(Qt::PointingHandCursor);
-    auto* settings_layout = new QHBoxLayout(settings_button);
-    settings_layout->setContentsMargins(12, 0, 12, 0);
-    settings_layout->setSpacing(8);
-    auto* settings_icon = new QLabel(settings_button);
-    settings_icon->setObjectName(QStringLiteral("SidebarSettingsIcon"));
-    settings_icon->setFixedSize(kIconSize, kIconSize);
-    settings_icon->setPixmap(
-        IconLoader::Load(
-            QStringLiteral("settings-2"),
-            ThemeManager::Instance()->Color(QStringLiteral("text-secondary")),
-            kIconSize).pixmap(kIconSize, kIconSize));
-    settings_icon->setAttribute(Qt::WA_TransparentForMouseEvents);
-    settings_layout->addWidget(settings_icon);
-    auto* settings_text = new QLabel(QStringLiteral("设置"), settings_button);
-    settings_text->setObjectName(QStringLiteral("SidebarSettingsText"));
-    settings_text->setAttribute(Qt::WA_TransparentForMouseEvents);
-    settings_layout->addWidget(settings_text, 1);
+    settings_button->setIcon(IconLoader::Load(
+        QStringLiteral("settings-2"),
+        ThemeManager::Instance()->Color(QStringLiteral("text-secondary")),
+        kIconSize));
+    settings_button->setIconSize(QSize(kIconSize, kIconSize));
     connect(settings_button, &QPushButton::clicked, this, [this]() {
         central_stack_->setCurrentWidget(preferences_page_);
     });
     footer_layout->addWidget(settings_button);
+
+    sync_button_ = new QPushButton(footer);
+    sync_button_->setObjectName(QStringLiteral("SidebarSyncButton"));
+    sync_button_->setAccessibleName(QStringLiteral("立即同步"));
+    sync_button_->setToolTip(QStringLiteral("立即同步"));
+    sync_button_->setFocusPolicy(Qt::TabFocus);
+    sync_button_->setFixedSize(36, 36);
+    sync_button_->setCursor(Qt::PointingHandCursor);
+    sync_button_->setIconSize(QSize(kIconSize, kIconSize));
+    sync_button_->setProperty("state", QStringLiteral("idle"));
+    RefreshSyncButton();
+    connect(sync_button_, &QPushButton::clicked, this,
+            &MainWindow::OnSyncClicked);
+    footer_layout->addWidget(sync_button_);
+    footer_layout->addStretch();
 
     layout->addWidget(footer);
     return sidebar;
@@ -881,18 +859,12 @@ void MainWindow::RefreshThemeAssets() {
         button->setIcon(icon(QStringLiteral("plus"),
                              QStringLiteral("text-tertiary"), 14));
     }
-    if (auto* sync_icon = findChild<QLabel*>(
-            QStringLiteral("SyncStatusIcon"))) {
-        sync_icon->setPixmap(
-            icon(QStringLiteral("cloud"), QStringLiteral("primary"), 16)
-                .pixmap(16, 16));
-    }
-    if (auto* settings_icon = findChild<QLabel*>(
-            QStringLiteral("SidebarSettingsIcon"))) {
-        settings_icon->setPixmap(
+    RefreshSyncButton();
+    if (auto* settings_button = findChild<QPushButton*>(
+            QStringLiteral("SidebarSettingsButton"))) {
+        settings_button->setIcon(
             icon(QStringLiteral("settings-2"),
-                 QStringLiteral("text-secondary"), kIconSize)
-                .pixmap(kIconSize, kIconSize));
+                 QStringLiteral("text-secondary"), kIconSize));
     }
     if (search_action_) {
         search_action_->setIcon(icon(QStringLiteral("search"),
@@ -1746,17 +1718,45 @@ void MainWindow::OnFavoriteToggleRequested(std::int64_t entry_id, bool desired) 
     Reload();
 }
 
+void MainWindow::OnSyncClicked() {
+    if (reset_confirmation_active_ || migration_active_ || !deps_.session_key) return;
+    if (!deps_.sync_scheduler || !deps_.sync_manager ||
+        !deps_.sync_manager->provider()) {
+        const QString message = QStringLiteral("请先在设置中连接 Google 账号");
+        UpdateSyncStatus(sync::SyncManager::StatusKind::kError, message);
+        Toast::Show(this, message, Toast::Level::kWarning);
+        return;
+    }
+    if (deps_.sync_scheduler->is_paused()) return;
+    if (deps_.sync_manager->is_busy()) {
+        OnSyncStarted();
+        return;
+    }
+    OnSyncStarted();
+    sync_button_->repaint();
+    deps_.sync_scheduler->SyncImmediately();
+}
 
-
-
+void MainWindow::RefreshSyncButton() {
+    if (!sync_button_) return;
+    const QString state = sync_button_->property("state").toString();
+    QString color = QStringLiteral("primary");
+    if (state == QStringLiteral("error")) color = QStringLiteral("danger");
+    if (state == QStringLiteral("conflict")) color = QStringLiteral("warn");
+    sync_button_->setIcon(IconLoader::Load(
+        state == QStringLiteral("busy") ? QStringLiteral("refresh-cw")
+                                         : QStringLiteral("cloud"),
+        ThemeManager::Instance()->Color(color), kIconSize));
+    sync_button_->style()->unpolish(sync_button_);
+    sync_button_->style()->polish(sync_button_);
+}
 
 void MainWindow::OnSyncStarted() {
-    if (sync_status_label_) sync_status_label_->setText(QStringLiteral("同步中..."));
-    if (sync_status_dot_) {
-        sync_status_dot_->setProperty("state", QStringLiteral("busy"));
-        sync_status_dot_->style()->unpolish(sync_status_dot_);
-        sync_status_dot_->style()->polish(sync_status_dot_);
-    }
+    sync_button_->setEnabled(false);
+    sync_button_->setToolTip(QStringLiteral("同步中…"));
+    sync_button_->setAccessibleName(QStringLiteral("同步中"));
+    sync_button_->setProperty("state", QStringLiteral("busy"));
+    RefreshSyncButton();
 }
 
 void MainWindow::OnSyncFinished(sync::SyncManager::StatusKind kind,
@@ -1784,18 +1784,17 @@ void MainWindow::OnSyncFinished(sync::SyncManager::StatusKind kind,
 
 void MainWindow::UpdateSyncStatus(sync::SyncManager::StatusKind kind,
                                   const QString& message) {
-    if (sync_status_label_) sync_status_label_->setText(message);
-    if (sync_status_dot_) {
-        const char* state = "ok";
-        if (kind == sync::SyncManager::StatusKind::kConflict) {
-            state = "conflict";
-        } else if (kind == sync::SyncManager::StatusKind::kError) {
-            state = "error";
-        }
-        sync_status_dot_->setProperty("state", QString::fromLatin1(state));
-        sync_status_dot_->style()->unpolish(sync_status_dot_);
-        sync_status_dot_->style()->polish(sync_status_dot_);
+    sync_button_->setEnabled(true);
+    sync_button_->setToolTip(message + QStringLiteral("\n点击立即同步"));
+    sync_button_->setAccessibleName(QStringLiteral("立即同步"));
+    const char* state = "ok";
+    if (kind == sync::SyncManager::StatusKind::kConflict) {
+        state = "conflict";
+    } else if (kind == sync::SyncManager::StatusKind::kError) {
+        state = "error";
     }
+    sync_button_->setProperty("state", QString::fromLatin1(state));
+    RefreshSyncButton();
 }
 
 void MainWindow::UpdateResponsiveLayout() {
