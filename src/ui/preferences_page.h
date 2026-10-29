@@ -41,6 +41,7 @@ class PreferencesPage : public QWidget {
     void ExportCsvRequested();
 
     void ChangeMasterPasswordRequested();
+    void ClearLocalDataRequested();
 
     void BackRequested();
 

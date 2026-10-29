@@ -642,8 +642,8 @@ QWidget* PreferencesPage::BuildSecurityTab() {
     wipe->setIcon(IconLoader::Load(
         QStringLiteral("trash-2"),
         ThemeManager::Instance()->Color(QStringLiteral("danger-text")), 16));
-    wipe->setEnabled(false);
-    wipe->setToolTip(QStringLiteral("清除本地数据暂不可用"));
+    wipe->setToolTip(QStringLiteral("清除当前安装的本地保险库与此用户的登录和设置"));
+    connect(wipe, &QToolButton::clicked, this, &PreferencesPage::ClearLocalDataRequested);
     danger_layout->addWidget(wipe);
     v->addWidget(danger_zone);
 

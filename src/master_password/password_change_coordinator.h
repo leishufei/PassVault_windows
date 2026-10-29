@@ -48,6 +48,8 @@ class PasswordChangeCoordinator {
 
     CloudBinding ReadBinding() const;
     bool SaveBinding(CloudBinding binding) const;
+    enum class RecoveryStatus { kIdle, kPending, kError };
+    static RecoveryStatus InspectRecovery(const QString& journal_path);
     bool NeedsRecovery() const;
     Result Change(const QString& old_password, const QString& new_password,
                   const QString& confirmation,
@@ -64,6 +66,7 @@ class PasswordChangeCoordinator {
     struct Journal;
     bool Save(const Journal& journal) const;
     std::optional<Journal> Load() const;
+    static std::optional<Journal> LoadJournal(const QString& path);
     bool FinishJournal() const;
     bool Check(Boundary boundary) const;
     Result Commit(Journal& journal);

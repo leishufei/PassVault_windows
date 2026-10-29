@@ -56,6 +56,7 @@ void GoogleOAuthClient::EnsureNetwork() {
 }
 
 void GoogleOAuthClient::Authorize() {
+    if (paused_ || is_busy()) return;
     if (client_id_.isEmpty() || client_secret_.isEmpty()) {
         emit AuthorizationFailed(
             QStringLiteral("OAuth client id/secret not configured"));
@@ -74,13 +75,17 @@ void GoogleOAuthClient::Authorize() {
         server_ = nullptr;
         return;
     }
+    authorizing_ = true;
+    const auto generation = generation_;
     const auto pkce = Pkce::Generate();
     expected_state_ = Pkce::RandomState();
     pending_verifier_ = pkce.verifier;
     const QString redirect = server_->redirect_uri();
 
     connect(server_, &LoopbackHttpServer::CallbackReceived, this,
-            [this, redirect](const QHash<QString, QString>& params) {
+            [this, redirect, generation](const QHash<QString, QString>& params) {
+                if (paused_ || generation != generation_) return;
+                authorizing_ = false;
                 const QString state = params.value(QStringLiteral("state"));
                 const QString code = params.value(QStringLiteral("code"));
                 const QString err = params.value(QStringLiteral("error"));
@@ -104,12 +109,20 @@ void GoogleOAuthClient::Authorize() {
                 server_->Stop();
             });
     connect(server_, &LoopbackHttpServer::Error, this,
-            [this](const QString& m) { emit AuthorizationFailed(m); });
+            [this, generation](const QString& m) {
+                if (paused_ || generation != generation_) return;
+                authorizing_ = false;
+                emit AuthorizationFailed(m);
+            });
 
     OpenAuthorizationUrl(redirect, pkce.challenge, expected_state_);
 }
 
 void GoogleOAuthClient::CancelAuthorization() {
+    ++generation_;
+    authorizing_ = false;
+    expected_state_.clear();
+    pending_verifier_.clear();
     if (server_ == nullptr) return;
     server_->Stop();
     server_->deleteLater();
@@ -138,6 +151,7 @@ void GoogleOAuthClient::OpenAuthorizationUrl(const QString& redirect_uri,
 void GoogleOAuthClient::ExchangeCode(const QString& code,
                                      const QString& redirect_uri,
                                      const QString& verifier) {
+    if (paused_) return;
     EnsureNetwork();
     QNetworkRequest req{QUrl(QString::fromLatin1(kTokenEndpoint))};
     req.setTransferTimeout(25000);
@@ -153,12 +167,20 @@ void GoogleOAuthClient::ExchangeCode(const QString& code,
     body.addQueryItem(QStringLiteral("code_verifier"), verifier);
     QNetworkReply* reply =
         network_->post(req, body.toString(QUrl::FullyEncoded).toUtf8());
-    connect(reply, &QNetworkReply::finished, this,
-            [this, reply]() { ApplyTokenResponse(reply, false); });
+    replies_.insert(reply);
+    const auto generation = generation_;
+    connect(reply, &QNetworkReply::finished, this, [this, reply, generation]() {
+        replies_.remove(reply);
+        if (paused_ || generation != generation_) {
+            reply->deleteLater();
+            return;
+        }
+        ApplyTokenResponse(reply, false);
+    });
 }
 
 QString GoogleOAuthClient::EnsureAccessToken() {
-    if (refreshing_) return {};
+    if (paused_ || refreshing_) return {};
     if (!access_token_.isEmpty() &&
         access_token_expires_at_ > QDateTime::currentDateTimeUtc().addSecs(60)) {
         return access_token_;
@@ -177,12 +199,17 @@ QString GoogleOAuthClient::EnsureAccessToken() {
     timeout.start(30000);
     RefreshAccessToken();
     if (!done) loop.exec();
+    if (!done) ++generation_;
     disconnect(ok);
     disconnect(failed);
     return success ? access_token_ : QString{};
 }
 
 void GoogleOAuthClient::RefreshAccessToken() {
+    if (paused_ || !replies_.isEmpty()) {
+        emit AccessTokenRefreshFailed(QStringLiteral("OAuth paused or busy"));
+        return;
+    }
     if (token_store_ == nullptr) {
         emit AccessTokenRefreshFailed(QStringLiteral("no token store"));
         return;
@@ -193,6 +220,7 @@ void GoogleOAuthClient::RefreshAccessToken() {
             QStringLiteral("no refresh token stored"));
         return;
     }
+    if (paused_) return;
     EnsureNetwork();
     QNetworkRequest req{QUrl(QString::fromLatin1(kTokenEndpoint))};
     req.setTransferTimeout(25000);
@@ -206,8 +234,16 @@ void GoogleOAuthClient::RefreshAccessToken() {
     body.addQueryItem(QStringLiteral("client_secret"), client_secret_);
     QNetworkReply* reply =
         network_->post(req, body.toString(QUrl::FullyEncoded).toUtf8());
-    connect(reply, &QNetworkReply::finished, this,
-            [this, reply]() { ApplyTokenResponse(reply, true); });
+    replies_.insert(reply);
+    const auto generation = generation_;
+    connect(reply, &QNetworkReply::finished, this, [this, reply, generation]() {
+        replies_.remove(reply);
+        if (paused_ || generation != generation_) {
+            reply->deleteLater();
+            return;
+        }
+        ApplyTokenResponse(reply, true);
+    });
 }
 
 void GoogleOAuthClient::ApplyTokenResponse(QNetworkReply* reply,
@@ -262,7 +298,16 @@ void GoogleOAuthClient::ApplyTokenResponse(QNetworkReply* reply,
     }
 }
 
+bool GoogleOAuthClient::ForgetCredentials() {
+    CancelAuthorization();
+    access_token_.fill(QChar(0));
+    access_token_.clear();
+    access_token_expires_at_ = {};
+    return token_store_ && token_store_->Clear();
+}
+
 void GoogleOAuthClient::RevokeTokens() {
+    if (paused_ || is_busy()) return;
     if (token_store_ == nullptr) {
         emit RevokeFailed(QStringLiteral("no token store"));
         return;
@@ -286,8 +331,12 @@ void GoogleOAuthClient::RevokeTokens() {
     req.setHeader(QNetworkRequest::ContentTypeHeader,
                   QStringLiteral("application/x-www-form-urlencoded"));
     QNetworkReply* reply = network_->post(req, QByteArray());
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+    replies_.insert(reply);
+    const auto generation = generation_;
+    connect(reply, &QNetworkReply::finished, this, [this, reply, generation]() {
+        replies_.remove(reply);
         reply->deleteLater();
+        if (paused_ || generation != generation_) return;
         token_store_->Clear();
         access_token_.clear();
         access_token_expires_at_ = {};

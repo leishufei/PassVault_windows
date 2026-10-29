@@ -18,8 +18,9 @@ class TokenStore {
     std::optional<QString> LoadRefreshToken() const;
     bool Clear() const;
 
- private:
     static QString DefaultFilePath();
+
+ private:
 
     QString file_path_;
 };

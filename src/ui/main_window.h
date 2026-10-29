@@ -58,6 +58,7 @@ class MainWindow : public QMainWindow {
 
     void Reload();
     void SetMigrationActive(bool active);
+    void SetResetConfirmationActive(bool active);
     void SetSessionKey(const crypto::SessionKey* session_key);
     PreferencesPage* preferences_page() const { return preferences_page_; }
 
@@ -134,6 +135,7 @@ class MainWindow : public QMainWindow {
     void ShowPasswordCreate();
 
     Deps deps_;
+    bool reset_confirmation_active_ = false;
     bool migration_active_ = false;
     QStackedWidget* central_stack_ = nullptr;
     QWidget* workspace_page_ = nullptr;

@@ -8,6 +8,7 @@
 #include <QStandardPaths>
 
 #include "crypto/sha256.h"
+#include "storage/file_status.h"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -169,8 +170,9 @@ std::optional<QString> TokenStore::LoadRefreshToken() const {
 }
 
 bool TokenStore::Clear() const {
-    if (!QFile::exists(file_path_)) return true;
-    return QFile::remove(file_path_);
+    const auto status = storage::LocalFileStatus(file_path_);
+    if (status == storage::FileStatus::kMissing) return true;
+    return status == storage::FileStatus::kFile && QFile::remove(file_path_);
 }
 
 }  // namespace passvault::oauth

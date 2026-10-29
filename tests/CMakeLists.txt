@@ -3,6 +3,9 @@ find_package(Qt6 6.5 COMPONENTS Core Gui Network Test Widgets Svg REQUIRED)
 
 add_executable(passvault_tests
     test_main.cc
+    local_reset_test.cc
+    "${CMAKE_SOURCE_DIR}/src/app/local_reset.cc"
+    "${CMAKE_SOURCE_DIR}/src/app/application.cc"
     smoke_test.cc
     key_derivation_test.cc
     crypto_service_test.cc

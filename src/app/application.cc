@@ -9,6 +9,8 @@
 #include <QFileDialog>
 #include <QFont>
 #include <QFontDatabase>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSaveFile>
@@ -61,18 +63,39 @@ namespace {
 // Durable recovery and failure-boundary tests cover the enabled flow.
 constexpr bool kMasterPasswordChangeReady = true;
 
-QString DefaultDbPath() {
-    return QCoreApplication::applicationDirPath() +
-           QStringLiteral("/data/passvault.db");
-}
-
 }  // namespace
 
 class Application::Impl {
  public:
-    Impl() = default;
+    explicit Impl(LocalResetPaths paths, sync::CloudStorageProvider* provider_override,
+                  std::function<bool(const QString&)> reset_io_check)
+        : reset_(std::move(paths)), instance_lock_(reset_.paths().control_directory),
+          application_context_(std::make_unique<QObject>()),
+          hello_(reset_.paths().DataFile("hello_unlock.dat")),
+          provider_override_(provider_override) {
+        reset_.set_io_check(std::move(reset_io_check));
+    }
+
+    ~Impl() {
+        application_context_.reset();
+        runtime_context_.reset();
+        if (auto_lock_) auto_lock_->Stop();
+        session::SessionManager::Instance()->Lock();
+    }
 
     int Run() {
+        if (!instance_lock_.TryLock()) {
+            QMessageBox::warning(nullptr, QStringLiteral("PassVault 已在运行"),
+                QStringLiteral("同一 Windows 用户只能运行一个 PassVault 实例。请关闭其他安装副本后重试。"));
+            return 1;
+        }
+        if (reset_.Inspect() != LocalReset::Intent::kAbsent) {
+            resetting_ = true;
+            if (!ContinueReset()) return 1;
+            session::SessionManager::RecreateAfterLocalReset();
+            ui::ThemeManager::Instance()->ApplyTheme(ui::Theme::kSystem);
+            resetting_ = false;
+        }
         auto* theme = ui::ThemeManager::Instance();
         static constexpr const char* kFontResources[] = {
             ":/fonts/NotoSansSC-VariableFont_wght.ttf",
@@ -95,26 +118,38 @@ class Application::Impl {
             q->setStyleSheet(theme->LoadStyleSheet());
         }
 
-        QDir().mkpath(QCoreApplication::applicationDirPath() +
-                      QStringLiteral("/data"));
+        if (!InitializeRuntime()) return initialization_failed_ ? 1 : 0;
+        return QApplication::exec();
+    }
 
-        database_ = storage::Database::Open(DefaultDbPath());
+ private:
+    bool InitializeRuntime() {
+        runtime_context_ = std::make_unique<QObject>();
+        initialization_failed_ = true;
+        if (!QDir().mkpath(QDir(reset_.paths().installation).filePath("data"))) return false;
+        try {
+            database_ = storage::Database::Open(reset_.paths().DataFile("passvault.db"));
+        } catch (const std::exception&) {
+            QMessageBox::critical(nullptr, QStringLiteral("启动失败"),
+                                  QStringLiteral("无法打开数据库。"));
+            return false;
+        }
         if (!database_) {
             QMessageBox::critical(nullptr, QStringLiteral("启动失败"),
                                    QStringLiteral("无法打开数据库。"));
-            return 1;
+            return false;
         }
         try {
             storage::EnsureCurrentSchema(*database_);
         } catch (const std::exception& e) {
             QMessageBox::critical(nullptr, QStringLiteral("启动失败"),
                                    QString::fromUtf8(e.what()));
-            return 1;
+            return false;
         }
 
         password_dao_ = std::make_unique<storage::PasswordDao>(*database_);
         category_dao_ = std::make_unique<storage::CategoryDao>(*database_);
-        master_store_ = std::make_unique<master_password::MasterPasswordStore>();
+        master_store_ = std::make_unique<master_password::MasterPasswordStore>(reset_.paths().DataFile("master.dat"));
         master_manager_ =
             std::make_unique<master_password::MasterPasswordManager>(
                 *master_store_);
@@ -122,7 +157,7 @@ class Application::Impl {
             std::make_unique<master_password::PasswordChangeCoordinator>(
                 *master_store_, *master_manager_, *password_dao_, *category_dao_,
                 [this]() { return hello_.Invalidate(); });
-        token_store_ = std::make_unique<oauth::TokenStore>();
+        token_store_ = std::make_unique<oauth::TokenStore>(reset_.paths().token_file);
         oauth_client_ =
             std::make_unique<oauth::GoogleOAuthClient>(token_store_.get());
         oauth_client_->set_client_id(
@@ -150,13 +185,13 @@ class Application::Impl {
 
         QObject::connect(session::SessionManager::Instance(),
                           &session::SessionManager::LockChanged,
-                          [this](bool locked) {
+                          runtime_context_.get(), [this](bool locked) {
                               if (locked) {
                                   OnLocked();
                               }
                           });
         QObject::connect(auto_lock_.get(), &session::AutoLockTimer::TimedOut,
-                          []() {
+                          runtime_context_.get(), []() {
                               session::SessionManager::Instance()->Lock();
                           });
 
@@ -164,36 +199,41 @@ class Application::Impl {
             !password_change_->SaveBinding(master_password::CloudBinding::kBound)) {
             QMessageBox::critical(nullptr, QStringLiteral("启动失败"),
                                   QStringLiteral("无法保存云端绑定历史。"));
-            return 1;
+            return false;
         }
-        if (!UnlockVault()) return 0;
+        initialization_failed_ = false;
+        if (!UnlockVault()) return false;
         MaybeConfigureSyncProvider();
         ShowMainWindow();
-        return QApplication::exec();
+        return true;
     }
 
- private:
     bool UnlockFlow() {
         if (!master_manager_->IsInitialized()) {
-            ui::MasterPasswordDialog dlg(
-                ui::MasterPasswordDialog::Mode::kSetup);
-            if (dlg.exec() != QDialog::Accepted) return false;
-            const QString pwd = dlg.NewPassword();
-            auto payload = master_manager_->SetInitial(pwd.toStdString());
-            if (!payload.has_value()) {
-                QMessageBox::critical(nullptr, QStringLiteral("初始化失败"),
-                                       QStringLiteral("无法保存主密码。"));
-                return false;
+            for (;;) {
+                ui::MasterPasswordDialog dlg(
+                    ui::MasterPasswordDialog::Mode::kSetup);
+                if (dlg.exec() != QDialog::Accepted) return false;
+                const QString pwd = dlg.NewPassword();
+                auto payload = master_manager_->SetInitial(pwd.toStdString());
+                if (!payload.has_value()) {
+                    if (QMessageBox::warning(nullptr, QStringLiteral("初始化失败"),
+                            QStringLiteral("无法保存主密码。请重试或退出。"),
+                            QMessageBox::Retry | QMessageBox::Close,
+                            QMessageBox::Close) == QMessageBox::Retry) continue;
+                    return false;
+                }
+                while (!password_change_->SaveBinding(master_password::CloudBinding::kLocal)) {
+                    if (QMessageBox::warning(nullptr, QStringLiteral("初始化失败"),
+                            QStringLiteral("无法记录保险库状态。请重试或退出。"),
+                            QMessageBox::Retry | QMessageBox::Close,
+                            QMessageBox::Close) != QMessageBox::Retry) return false;
+                }
+                session::SessionManager::Instance()->Unlock(
+                    std::move(payload->session_key),
+                    std::move(payload->master_password));
+                return true;
             }
-            if (!password_change_->SaveBinding(master_password::CloudBinding::kLocal)) {
-                QMessageBox::critical(nullptr, QStringLiteral("初始化失败"),
-                                      QStringLiteral("无法记录保险库状态。"));
-                return false;
-            }
-            session::SessionManager::Instance()->Unlock(
-                std::move(payload->session_key),
-                std::move(payload->master_password));
-            return true;
         }
 
         for (;;) {
@@ -220,6 +260,10 @@ class Application::Impl {
     }
 
     void MaybeConfigureSyncProvider() {
+        if (provider_override_) {
+            sync_manager_->set_provider(provider_override_);
+            return;
+        }
         if (token_store_->Exists()) {
             sync_manager_->set_provider(drive_provider_.get());
         }
@@ -235,16 +279,16 @@ class Application::Impl {
         window_ = std::make_unique<ui::MainWindow>(deps);
 
         QObject::connect(window_.get(), &ui::MainWindow::LockRequested,
-                          []() { session::SessionManager::Instance()->Lock(); });
+                          runtime_context_.get(), []() { session::SessionManager::Instance()->Lock(); });
         QObject::connect(window_.get(), &ui::MainWindow::DeferredExitRequested,
-                          [this]() {
+                          runtime_context_.get(), [this]() {
                               exit_requested_ = true;
                               session::SessionManager::Instance()->Lock();
                           });
         WirePreferencesPage();
 
         QObject::connect(qApp, &QApplication::applicationStateChanged,
-                          [this](Qt::ApplicationState state) {
+                          runtime_context_.get(), [this](Qt::ApplicationState state) {
                               if (state == Qt::ApplicationActive) {
                                   auto_lock_->NotifyActivity();
                               }
@@ -252,6 +296,8 @@ class Application::Impl {
         auto_lock_->Start();
         window_->show();
     }
+
+
 
     void WirePreferencesPage() {
         auto* page = window_->preferences_page();
@@ -263,19 +309,17 @@ class Application::Impl {
         page->SetChangeMasterPasswordEnabled(
             kMasterPasswordChangeReady,
             QStringLiteral("修改主密码暂不可用"));
-        page->SetSyncState(
-            token_store_->Exists()
-                ? ui::PreferencesPage::SyncUiState::kConnected
-                : ui::PreferencesPage::SyncUiState::kDisconnected,
-            QString());
-
+        page->SetGoogleDriveConnected(token_store_->Exists(), QString());
+        QObject::connect(page, &ui::PreferencesPage::ClearLocalDataRequested,
+                         runtime_context_.get(), [this]() { RequestLocalReset(); });
         QObject::connect(page,
                           &ui::PreferencesPage::ChangeMasterPasswordRequested,
-                          [this, page]() { ChangeMasterPassword(page); });
+                          runtime_context_.get(), [this, page]() { ChangeMasterPassword(page); });
         QObject::connect(page,
                           &ui::PreferencesPage::ConnectGoogleDriveRequested,
-                          [this, page]() {
-                              if (migration_active_) return;
+                          runtime_context_.get(), [this, page]() {
+                              if (reset_confirming_ || resetting_ || migration_active_) return;
+                              drive_provider_->SignOut();
                               page->SetSyncState(
                                   ui::PreferencesPage::SyncUiState::kAuthorizing,
                                   QString());
@@ -295,21 +339,22 @@ class Application::Impl {
                                   return;
                               }
                               sync_manager_->set_provider(drive_provider_.get());
-                              page->SetSyncState(
-                                  ui::PreferencesPage::SyncUiState::kConnected,
-                                  drive_provider_->AccountHint());
+                              page->SetSyncState(ui::PreferencesPage::SyncUiState::kConnected,
+                                                 drive_provider_->AccountHint());
                           });
         QObject::connect(page,
                           &ui::PreferencesPage::AuthorizeCancelled,
-                          [page]() {
+                          runtime_context_.get(), [this, page]() {
+                              oauth_client_->CancelAuthorization();
                               page->SetSyncState(
                                   ui::PreferencesPage::SyncUiState::kDisconnected,
                                   QString());
                           });
         QObject::connect(page,
                           &ui::PreferencesPage::DisconnectGoogleDriveRequested,
-                          [this, page]() {
-                              if (migration_active_) return;
+                          runtime_context_.get(), [this, page]() {
+                              if (reset_confirming_ || resetting_ || migration_active_) return;
+                              drive_provider_->SignOut();
                               oauth_client_->RevokeTokens();
                               sync_manager_->set_provider(nullptr);
                               page->SetSyncState(
@@ -317,17 +362,17 @@ class Application::Impl {
                                   QString());
                           });
         QObject::connect(page, &ui::PreferencesPage::SyncNowRequested,
-                          [this]() { sync_scheduler_->SyncImmediately(); });
+                          runtime_context_.get(), [this]() { if (!reset_confirming_ && !resetting_) sync_scheduler_->SyncImmediately(); });
         if (sync_manager_) {
             QObject::connect(
                 sync_manager_.get(), &sync::SyncManager::SyncStarted,
-                [page]() {
+                runtime_context_.get(), [this, page]() {
                     page->SetSyncState(
                         ui::PreferencesPage::SyncUiState::kSyncing, QString());
                 });
             QObject::connect(
                 sync_manager_.get(), &sync::SyncManager::SyncFinished,
-                [this, page](sync::SyncManager::StatusKind kind,
+                runtime_context_.get(), [this, page](sync::SyncManager::StatusKind kind,
                              const QString& message) {
                     using SyncUiState = ui::PreferencesPage::SyncUiState;
                     using StatusKind = sync::SyncManager::StatusKind;
@@ -341,15 +386,15 @@ class Application::Impl {
                 });
         }
         QObject::connect(page, &ui::PreferencesPage::ImportCsvRequested,
-                          [this, page]() { ImportCsv(page); });
+                          runtime_context_.get(), [this, page]() { ImportCsv(page); });
         QObject::connect(page, &ui::PreferencesPage::ExportCsvRequested,
-                          [this, page]() { ExportCsv(page); });
+                          runtime_context_.get(), [this, page]() { ExportCsv(page); });
         QObject::connect(page, &ui::PreferencesPage::AutoLockChanged,
-                          [this](int minutes) {
+                          runtime_context_.get(), [this](int minutes) {
                               auto_lock_->SetTimeoutMs(minutes * 60 * 1000);
                           });
         QObject::connect(page, &ui::PreferencesPage::ClipboardTimeoutChanged,
-                          [](int seconds) {
+                          runtime_context_.get(), [](int seconds) {
                               ui::ClipboardManager::Instance()
                                   ->set_default_timeout_ms(seconds * 1000);
                           });
@@ -407,7 +452,7 @@ class Application::Impl {
     }
 
     void ChangeMasterPassword(QWidget* parent) {
-        if (!kMasterPasswordChangeReady || migration_active_ || sync_manager_->is_busy()) return;
+        if (!kMasterPasswordChangeReady || reset_confirming_ || resetting_ || migration_active_ || sync_manager_->is_busy()) return;
         auto* session = session::SessionManager::Instance();
         if (!session->BeginPasswordChange()) return;
         migration_active_ = true;
@@ -454,7 +499,7 @@ class Application::Impl {
     }
 
     void ImportCsv(QWidget* parent) {
-        if (migration_active_) return;
+        if (reset_confirming_ || resetting_ || migration_active_) return;
         const QString path = QFileDialog::getOpenFileName(
             parent, QStringLiteral("选择 CSV 文件"), QString(),
             QStringLiteral("CSV (*.csv)"));
@@ -487,7 +532,7 @@ class Application::Impl {
         auto result = validator.Validate(records, existing, cat_names);
 
         ui::ImportPreviewDialog preview(std::move(result), parent);
-        if (preview.exec() != QDialog::Accepted || migration_active_) return;
+        if (preview.exec() != QDialog::Accepted || reset_confirming_ || resetting_ || migration_active_) return;
 
         const auto* sk = session::SessionManager::Instance()->session_key();
         if (!sk) return;
@@ -509,7 +554,7 @@ class Application::Impl {
     }
 
     void ExportCsv(QWidget* parent) {
-        if (migration_active_) return;
+        if (reset_confirming_ || resetting_ || migration_active_) return;
         const QString path = QFileDialog::getSaveFileName(
             parent, QStringLiteral("保存 CSV 到"), QString(),
             QStringLiteral("CSV (*.csv)"));
@@ -554,13 +599,13 @@ class Application::Impl {
     }
 
     void OnLocked() {
-        auto_lock_->Stop();
+        if (auto_lock_) auto_lock_->Stop();
         ui::ClipboardManager::Instance()->ClearSensitive();
         if (window_) {
             window_->SetSessionKey(nullptr);
             window_->hide();
         }
-        if (migration_active_) return;
+        if (reset_confirming_ || resetting_ || migration_active_) return;
         if (!UnlockVault()) {
             QApplication::quit();
             return;
@@ -580,9 +625,141 @@ class Application::Impl {
         auto_lock_->Start();
     }
 
+    LocalReset::Eligibility ResetEligibility() const {
+        auto* session = session::SessionManager::Instance();
+        return {session->IsUnlocked(), migration_active_ || session->password_change_active(),
+                sync_manager_ && sync_manager_->is_busy(),
+                (oauth_client_ && oauth_client_->is_busy()) ||
+                    (drive_provider_ && drive_provider_->is_busy())};
+    }
+
+    void RequestLocalReset() {
+        if (reset_confirming_ || resetting_ || QApplication::activeModalWidget()) return;
+        if (!reset_.Eligible(ResetEligibility())) {
+            QMessageBox::warning(window_.get(), QStringLiteral("暂时无法清理"),
+                QStringLiteral("请先完成同步、登录或主密码迁移，保持保险库解锁后重试。"));
+            return;
+        }
+        reset_confirming_ = true;
+        exit_requested_ = false;
+        sync_scheduler_->SetPaused(true);
+        oauth_client_->SetPaused(true);
+        window_->SetResetConfirmationActive(true);
+        bool started = false;
+        {
+            bool accepted = false;
+            QString password = QInputDialog::getText(window_.get(),
+                QStringLiteral("验证当前主密码"), QStringLiteral("请输入当前主密码以清除本地数据"),
+                QLineEdit::Password, QString(), &accepted);
+            if (accepted && !exit_requested_ && session::SessionManager::Instance()->IsUnlocked()) {
+                const auto answer = QMessageBox::warning(window_.get(),
+                    QStringLiteral("最终确认清除本地数据"),
+                    QStringLiteral("将清除当前安装的本地保险库、此 Windows 用户共享的登录凭据和本应用设置。"
+                        "未同步的新增、修改、删除及草稿会永久丢失；没有云备份将无法恢复。"
+                        "云端备份保持不变，本次不会自动同步。恢复需要原账号及对应云备份密码。"
+                        "当前首次设置要求至少 12 位，旧短密码备份存在恢复限制；本次不提供云恢复入口。"
+                        "完成后将在当前进程返回首次设置。确定继续？"),
+                    QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
+                if (answer == QMessageBox::Yes && !exit_requested_) {
+                    started = reset_.Begin(ResetEligibility(), true, [this, &password]() {
+                        auto bytes = password.toUtf8();
+                        auto verified = master_manager_->VerifyLocal(
+                            std::string_view(bytes.constData(), bytes.size()));
+                        bytes.fill('\0');
+                        return verified.has_value() && reset_.Eligible(ResetEligibility());
+                    });
+                    if (!started) QMessageBox::warning(window_.get(), QStringLiteral("未清除数据"),
+                        QStringLiteral("当前主密码验证或本地记录检查失败，数据保持原状。"));
+                }
+            }
+            password.fill(QChar(0));
+            password.clear();
+        }
+        reset_confirming_ = false;
+        if (!started) {
+            oauth_client_->SetPaused(false);
+            window_->SetResetConfirmationActive(false);
+            if (exit_requested_) { QApplication::quit(); return; }
+            if (!session::SessionManager::Instance()->IsUnlocked()) { OnLocked(); return; }
+            sync_scheduler_->SetPaused(false);
+            return;
+        }
+        resetting_ = true;
+        QTimer::singleShot(0, application_context_.get(), [this]() {
+            const bool quit_on_close = QApplication::quitOnLastWindowClosed();
+            QApplication::setQuitOnLastWindowClosed(false);
+            const bool completed = ContinueReset();
+            if (completed) {
+                session::SessionManager::RecreateAfterLocalReset();
+                ui::ThemeManager::Instance()->ApplyTheme(ui::Theme::kSystem);
+                resetting_ = false;
+            }
+            const bool initialized = completed && InitializeRuntime();
+            QApplication::setQuitOnLastWindowClosed(quit_on_close);
+            if (!initialized) QApplication::exit(completed && !initialization_failed_ ? 0 : 1);
+        });
+    }
+
+    bool ReleaseRuntime() {
+        if ((sync_manager_ && sync_manager_->is_busy()) ||
+            (oauth_client_ && oauth_client_->is_busy()) ||
+            (drive_provider_ && drive_provider_->is_busy())) return false;
+        runtime_context_.reset();
+        if (auto_lock_) auto_lock_->Stop();
+        if (sync_scheduler_) sync_scheduler_->SetPaused(true);
+        if (oauth_client_) oauth_client_->SetPaused(true);
+        if (window_) window_->SetSessionKey(nullptr);
+        ui::ClipboardManager::Instance()->ClearSensitive();
+        session::SessionManager::Instance()->Lock();
+        window_.reset();
+        auto_lock_.reset();
+        sync_scheduler_.reset();
+        sync_manager_.reset();
+        drive_provider_.reset();
+        if (oauth_client_ && !oauth_client_->ForgetCredentials()) return false;
+        oauth_client_.reset();
+        token_store_.reset();
+        password_change_.reset();
+        master_manager_.reset();
+        master_store_.reset();
+        category_dao_.reset();
+        password_dao_.reset();
+        if (database_ && !database_->Close()) return false;
+        database_.reset();
+        return true;
+    }
+
+    bool ContinueReset() {
+        for (;;) {
+            const auto intent = reset_.Inspect();
+            if (intent == LocalReset::Intent::kOtherInstallation ||
+                intent == LocalReset::Intent::kInvalid) {
+                QMessageBox::critical(nullptr, QStringLiteral("清理尚未完成"),
+                    intent == LocalReset::Intent::kOtherInstallation
+                        ? QStringLiteral("另一个安装副本的清理尚未完成。请回到原安装副本完成清理。")
+                        : QStringLiteral("本地清理标记损坏或无法读取。为保护数据，已阻止启动。"));
+                return false;
+            }
+            QSettings settings;
+            if (reset_.Resume(settings, [this]() { return ReleaseRuntime(); })) return true;
+            const auto answer = QMessageBox::warning(nullptr, QStringLiteral("清理尚未完成"),
+                QStringLiteral("部分本地数据可能已清除。请重试以继续完成，或退出后从本安装副本继续；无法返回原保险库。"),
+                QMessageBox::Retry | QMessageBox::Close, QMessageBox::Close);
+            if (answer != QMessageBox::Retry) return false;
+        }
+    }
+
+    LocalReset reset_;
+    UserInstanceLock instance_lock_;
+    std::unique_ptr<QObject> application_context_;
+    std::unique_ptr<QObject> runtime_context_;
+    bool initialization_failed_ = false;
+    bool reset_confirming_ = false;
+    bool resetting_ = false;
     bool migration_active_ = false;
     bool exit_requested_ = false;
     hello::WindowsHelloUnlock hello_;
+    sync::CloudStorageProvider* provider_override_ = nullptr;
     std::unique_ptr<master_password::PasswordChangeCoordinator> password_change_;
     std::unique_ptr<storage::Database> database_;
     std::unique_ptr<storage::PasswordDao> password_dao_;
@@ -598,7 +775,12 @@ class Application::Impl {
     std::unique_ptr<ui::MainWindow> window_;
 };
 
-Application::Application() : impl_(std::make_unique<Impl>()) {}
+Application::Application() : Application(LocalResetPaths::Default()) {}
+Application::Application(LocalResetPaths paths,
+                         sync::CloudStorageProvider* provider_override,
+                         std::function<bool(const QString&)> reset_io_check)
+    : impl_(std::make_unique<Impl>(std::move(paths), provider_override,
+                                   std::move(reset_io_check))) {}
 Application::~Application() = default;
 
 int Application::Run() { return impl_->Run(); }

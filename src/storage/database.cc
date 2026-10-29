@@ -62,6 +62,13 @@ Database::~Database() {
     }
 }
 
+bool Database::Close() {
+    if (!db_) return true;
+    if (sqlite3_close(db_) != SQLITE_OK) return false;
+    db_ = nullptr;
+    return true;
+}
+
 bool Database::Execute(std::string_view sql) {
     const std::string sql_z(sql);
     char* err = nullptr;

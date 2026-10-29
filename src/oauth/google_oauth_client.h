@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QObject>
 #include <QString>
+#include <QSet>
 
 class QNetworkAccessManager;
 class QNetworkReply;
@@ -43,6 +44,9 @@ class GoogleOAuthClient : public QObject {
     QString EnsureAccessToken();
 
     void RevokeTokens();
+    bool is_busy() const { return authorizing_ || refreshing_ || !replies_.isEmpty(); }
+    void SetPaused(bool paused) { paused_ = paused; }
+    bool ForgetCredentials();
 
     bool HasAccessToken() const { return !access_token_.isEmpty(); }
     QString access_token() const { return access_token_; }
@@ -77,8 +81,13 @@ class GoogleOAuthClient : public QObject {
     QString pending_verifier_;
 
     bool refreshing_ = false;
+    bool authorizing_ = false;
+    bool paused_ = false;
+    quint64 generation_ = 0;
+    QSet<QNetworkReply*> replies_;
     QString access_token_;
     QDateTime access_token_expires_at_;
+
 };
 
 }  // namespace passvault::oauth

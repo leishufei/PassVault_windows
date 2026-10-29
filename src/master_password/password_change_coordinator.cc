@@ -26,6 +26,7 @@
 #include "model/sync_payload_v2.h"
 #include "storage/category_dao.h"
 #include "storage/database.h"
+#include "storage/file_status.h"
 #include "storage/password_dao.h"
 #include "storage/statement.h"
 #include "sync/cloud_crypto_service.h"
@@ -592,8 +593,15 @@ bool PasswordChangeCoordinator::Save(const Journal& journal) const {
 
 std::optional<PasswordChangeCoordinator::Journal>
 PasswordChangeCoordinator::Load() const {
-    if (!QFile::exists(journal_path())) return Journal{};
-    auto blob = ReadFile(journal_path());
+    return LoadJournal(journal_path());
+}
+
+std::optional<PasswordChangeCoordinator::Journal>
+PasswordChangeCoordinator::LoadJournal(const QString& path) {
+    const auto status = storage::LocalFileStatus(path);
+    if (status == storage::FileStatus::kMissing) return Journal{};
+    if (status != storage::FileStatus::kFile) return std::nullopt;
+    auto blob = ReadFile(path);
     if (!blob) return std::nullopt;
     auto bytes = MasterPasswordStore::Unprotect(*blob);
     if (!bytes) return std::nullopt;
@@ -617,9 +625,16 @@ PasswordChangeCoordinator::Load() const {
     return journal;
 }
 
+PasswordChangeCoordinator::RecoveryStatus
+PasswordChangeCoordinator::InspectRecovery(const QString& path) {
+    auto journal = LoadJournal(path);
+    if (!journal) return RecoveryStatus::kError;
+    return journal->phase == Phase::kEmpty ? RecoveryStatus::kIdle
+                                          : RecoveryStatus::kPending;
+}
+
 bool PasswordChangeCoordinator::NeedsRecovery() const {
-    auto journal = Load();
-    return !journal || journal->phase != Phase::kEmpty;
+    return InspectRecovery(journal_path()) != RecoveryStatus::kIdle;
 }
 
 bool PasswordChangeCoordinator::FinishJournal() const { return Save(Journal{}); }

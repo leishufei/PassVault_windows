@@ -14,6 +14,7 @@ class SessionManager : public QObject {
 
  public:
     static SessionManager* Instance();
+    static void RecreateAfterLocalReset();
 
     bool IsUnlocked() const { return unlocked_; }
 
@@ -39,8 +40,10 @@ class SessionManager : public QObject {
     void LockChanged(bool locked);
 
  private:
+    friend struct std::default_delete<SessionManager>;
     SessionManager();
     ~SessionManager() override;
+    static std::unique_ptr<SessionManager>& Storage();
     SessionManager(const SessionManager&) = delete;
     SessionManager& operator=(const SessionManager&) = delete;
 

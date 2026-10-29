@@ -259,7 +259,10 @@ TEST_F(PreferencesPageTest, LeaveLockPersistsAndDangerousActionsStayGated) {
     EXPECT_TRUE(reopened.findChild<QCheckBox*>("LeaveLockToggle")->isChecked());
     toggle->setChecked(false);
     EXPECT_FALSE(QSettings().value("session/lock_on_minimize").toBool());
-    EXPECT_FALSE(wipe->isEnabled());
+    EXPECT_TRUE(wipe->isEnabled());
+    QSignalSpy clear_requested(&page_, &PreferencesPage::ClearLocalDataRequested);
+    wipe->click();
+    EXPECT_EQ(clear_requested.count(), 1);
     EXPECT_FALSE(changeMaster()->isEnabled());
     EXPECT_EQ(page_.findChild<QCheckBox*>("HelloToggle"), nullptr);
 }

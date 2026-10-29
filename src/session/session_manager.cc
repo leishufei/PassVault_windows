@@ -9,8 +9,16 @@ SessionManager::SessionManager() = default;
 SessionManager::~SessionManager() = default;
 
 SessionManager* SessionManager::Instance() {
-    static SessionManager instance;
-    return &instance;
+    return Storage().get();
+}
+
+std::unique_ptr<SessionManager>& SessionManager::Storage() {
+    static std::unique_ptr<SessionManager> instance(new SessionManager());
+    return instance;
+}
+
+void SessionManager::RecreateAfterLocalReset() {
+    Storage().reset(new SessionManager());
 }
 
 void SessionManager::Unlock(crypto::SessionKey session_key,

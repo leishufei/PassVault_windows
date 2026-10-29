@@ -24,6 +24,8 @@ class GoogleDriveProvider : public QObject, public CloudStorageProvider {
                                  QObject* parent = nullptr);
     ~GoogleDriveProvider() override;
 
+    bool is_busy() const { return active_requests_ != 0; }
+
     void set_network_manager(QNetworkAccessManager* mgr);
 
     void set_backup_folder_name(QString name) {
@@ -87,6 +89,7 @@ class GoogleDriveProvider : public QObject, public CloudStorageProvider {
     AccessTokenFetcher token_fetcher_;
     QNetworkAccessManager* network_ = nullptr;
     bool owns_network_ = false;
+    int active_requests_ = 0;
 
     QString backup_folder_name_ = QStringLiteral("PassVault");
     QString account_hint_;

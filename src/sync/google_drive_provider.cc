@@ -1,5 +1,7 @@
 #include "sync/google_drive_provider.h"
 
+#include <QScopedValueRollback>
+
 #include <QEventLoop>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -92,6 +94,7 @@ QString GoogleDriveProvider::AccountHint() {
 GoogleDriveProvider::HttpResult GoogleDriveProvider::SendRequestSync(
     const QByteArray& verb, const QString& url, const QByteArray& body,
     const QByteArray& content_type) {
+    QScopedValueRollback<int> busy(active_requests_, active_requests_ + 1);
     HttpResult result;
     if (!token_fetcher_) {
         result.error = QStringLiteral("No access token fetcher configured");

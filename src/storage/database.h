@@ -25,6 +25,8 @@ class Database {
 
     sqlite3* handle() const { return db_; }
 
+    bool Close();
+
     bool Execute(std::string_view sql);
 
     int UserVersion();
