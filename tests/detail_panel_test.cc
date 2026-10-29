@@ -146,8 +146,14 @@ TEST_F(DetailPanelTest, LongIdentityFieldsWrapAndKeepFullValues) {
     panel_.show();
     QApplication::processEvents();
 
+    EXPECT_EQ(panel_.findChild<QLabel*>(QStringLiteral("DetailTitleValue")),
+              nullptr);
+    EXPECT_EQ(panel_.findChild<QLabel*>(QStringLiteral("DetailCategoryValue")),
+              nullptr);
+    EXPECT_EQ(title()->toolTip(), entry.title);
+    EXPECT_EQ(title()->accessibleName(), entry.title);
+
     const QList<QPair<QLabel*, QString>> fields = {
-        {panel_.findChild<QLabel*>("DetailTitleValue"), entry.title},
         {usernameValue(), entry.username},
         {websiteValue(), entry.website},
     };
@@ -177,10 +183,11 @@ TEST(DetailPanelThemeTest, ThemeRefreshPreservesEntryAndPasswordVisibility) {
     EXPECT_EQ(password->text(), QStringLiteral("secret-value"));
     auto* username = panel.findChild<QLabel*>(QStringLiteral("DetailFieldValue"));
     ASSERT_NE(username, nullptr);
-    EXPECT_EQ(QFontInfo(password->font()).family(),
-              QFontInfo(username->font()).family());
-    EXPECT_EQ(password->font().pixelSize(), username->font().pixelSize());
-    EXPECT_EQ(password->font().letterSpacing(), username->font().letterSpacing());
+    EXPECT_EQ(QFontInfo(password->font()).family(), QStringLiteral("DM Mono"));
+    EXPECT_EQ(QFontInfo(username->font()).family(),
+              QStringLiteral("Noto Sans SC"));
+    EXPECT_EQ(QFontInfo(password->font()).pixelSize(), 14);
+    EXPECT_EQ(QFontInfo(username->font()).pixelSize(), 14);
     const QByteArray light_icon = IconPixels(toggle->icon());
 
     theme->ApplyTheme(passvault::ui::Theme::kDark);
@@ -188,9 +195,11 @@ TEST(DetailPanelThemeTest, ThemeRefreshPreservesEntryAndPasswordVisibility) {
     EXPECT_NE(IconPixels(toggle->icon()), light_icon);
     EXPECT_EQ(panel.entry_id(), entry.id);
     EXPECT_EQ(password->text(), QStringLiteral("secret-value"));
-    EXPECT_EQ(QFontInfo(password->font()).family(),
-              QFontInfo(username->font()).family());
-    EXPECT_EQ(password->font().letterSpacing(), username->font().letterSpacing());
+    EXPECT_EQ(QFontInfo(password->font()).family(), QStringLiteral("DM Mono"));
+    EXPECT_EQ(QFontInfo(username->font()).family(),
+              QStringLiteral("Noto Sans SC"));
+    EXPECT_EQ(QFontInfo(password->font()).pixelSize(), 14);
+    EXPECT_EQ(QFontInfo(username->font()).pixelSize(), 14);
 }
 
 TEST_F(DetailPanelTest, HeaderAlignsIdentityAndActionsOnOneRow) {
@@ -206,7 +215,7 @@ TEST_F(DetailPanelTest, HeaderAlignsIdentityAndActionsOnOneRow) {
     ASSERT_NE(header, nullptr);
     ASSERT_NE(icon, nullptr);
     ASSERT_NE(actions, nullptr);
-    EXPECT_EQ(header->y(), 28);
+    EXPECT_EQ(header->y(), 24);
     EXPECT_EQ(icon->y(), actions->y());
     ASSERT_NE(favoriteButton(), nullptr);
     EXPECT_TRUE(favoriteButton()->isVisible());
@@ -332,6 +341,8 @@ TEST_F(DetailPanelTest, EmptyIdentityFieldsStayBlankAndDisableActions) {
 
     EXPECT_TRUE(usernameValue()->text().isEmpty());
     EXPECT_TRUE(websiteValue()->text().isEmpty());
+    EXPECT_TRUE(usernameValue()->parentWidget()->isHidden());
+    EXPECT_TRUE(websiteValue()->parentWidget()->isHidden());
     EXPECT_FALSE(usernameCopy()->isEnabled());
     QSignalSpy copied(&panel_, &DetailPanel::CopyUsernameRequested);
     usernameCopy()->click();

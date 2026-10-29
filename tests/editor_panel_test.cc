@@ -162,9 +162,10 @@ TEST_F(EditorPanelTest, PasswordInputUsesBodyTypography) {
         panel.findChild<QLineEdit*>(QStringLiteral("EditorUsernameInput"));
     ASSERT_NE(username, nullptr);
     const QFontInfo username_font_info(username->font());
-    EXPECT_EQ(password_font_info.family(), username_font_info.family());
-    EXPECT_EQ(password->font().letterSpacing(), username->font().letterSpacing());
-    EXPECT_EQ(password_font_info.pixelSize(), 12);
+    EXPECT_EQ(password_font_info.family(), QStringLiteral("DM Mono"));
+    EXPECT_EQ(username_font_info.family(), QStringLiteral("Noto Sans SC"));
+    EXPECT_EQ(password_font_info.pixelSize(), 14);
+    EXPECT_EQ(username_font_info.pixelSize(), 14);
 }
 
 TEST_F(EditorPanelTest, PasswordTypographyBaselineFitsWithoutClipping) {
@@ -327,18 +328,20 @@ TEST_F(EditorPanelTest, MatchesFigmaDrawerSkeleton) {
     ASSERT_NE(footer_layout, nullptr);
     ASSERT_NE(header_layout, nullptr);
     EXPECT_EQ(panel.width(), 400);
-    EXPECT_EQ(header->height(), 68);
+    EXPECT_EQ(header->height(), 64);
     EXPECT_EQ(panel.findChild<QWidget*>(QStringLiteral("EditorNavigation")),
               nullptr);
-    EXPECT_EQ(back->iconSize(), QSize(18, 18));
-    EXPECT_EQ(header_layout->contentsMargins(), QMargins(28, 0, 28, 0));
-    EXPECT_EQ(content->layout()->contentsMargins(), QMargins(28, 24, 28, 24));
-    EXPECT_EQ(body->width(), 340);
+    EXPECT_EQ(back->size(), QSize(32, 32));
+    EXPECT_EQ(back->iconSize(), QSize(16, 16));
+    EXPECT_EQ(header_layout->contentsMargins(), QMargins(24, 0, 24, 0));
+    EXPECT_EQ(content->layout()->contentsMargins(), QMargins(24, 20, 24, 24));
+    EXPECT_EQ(body->width(), content->width() - 48);
+    EXPECT_GE(body->width(), 340);
     EXPECT_EQ(notes->height(), 96);
     EXPECT_EQ(footer_layout->stretch(0), 1);
     EXPECT_EQ(footer_layout->stretch(1), 0);
     EXPECT_EQ(footer_layout->stretch(2), 0);
-    EXPECT_EQ(footer_layout->contentsMargins(), QMargins(28, 16, 28, 16));
+    EXPECT_EQ(footer_layout->contentsMargins(), QMargins(24, 16, 24, 16));
 }
 
 TEST_F(EditorPanelTest, EmbeddedGeneratorMatchesFigmaFlow) {
@@ -377,10 +380,14 @@ TEST_F(EditorPanelTest, EmbeddedGeneratorMatchesFigmaFlow) {
     ASSERT_NE(preview, nullptr);
     ASSERT_NE(apply, nullptr);
     ASSERT_NE(back, nullptr);
+    auto* generator_content =
+        panel.findChild<QWidget*>(QStringLiteral("EditorGeneratorContent"));
+    ASSERT_NE(generator_content, nullptr);
     EXPECT_EQ(pages->currentWidget(), generator);
     EXPECT_EQ(slider->minimum(), 8);
     EXPECT_EQ(slider->maximum(), 32);
-    EXPECT_EQ(body->width(), 340);
+    EXPECT_EQ(body->width(), generator_content->width() - 48);
+    EXPECT_GE(body->width(), 340);
     EXPECT_FALSE(preview->text().isEmpty());
 
     const QString generated = preview->text();

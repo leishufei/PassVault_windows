@@ -48,8 +48,8 @@ ImportPreviewDialog::ImportPreviewDialog(csv::CsvValidationResult result,
     resize(760, 520);
 
     auto* root = new QVBoxLayout(this);
-    root->setContentsMargins(20, 20, 20, 20);
-    root->setSpacing(12);
+    root->setContentsMargins(24, 24, 24, 24);
+    root->setSpacing(14);
 
     auto* title = new QLabel(QStringLiteral("导入预览"), this);
     title->setObjectName(QStringLiteral("DialogTitle"));

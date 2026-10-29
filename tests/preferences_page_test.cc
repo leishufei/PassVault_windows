@@ -250,9 +250,13 @@ TEST_F(PreferencesPageTest, ChangeMasterGateControlsRequestWithoutChangingCopy) 
 
 TEST_F(PreferencesPageTest, LeaveLockPersistsAndDangerousActionsStayGated) {
     auto* toggle = page_.findChild<QCheckBox*>("LeaveLockToggle");
-    auto* wipe = page_.findChild<QToolButton*>("ClearLocalDataButton");
+    auto* wipe = page_.findChild<QPushButton*>("ClearLocalDataButton");
+    auto* desc = page_.findChild<QLabel*>("SettingRowDesc");
     ASSERT_NE(toggle, nullptr);
     ASSERT_NE(wipe, nullptr);
+    ASSERT_NE(desc, nullptr);
+    EXPECT_FALSE(desc->isHidden());
+    EXPECT_EQ(wipe->text(), QStringLiteral("清除本地数据"));
     EXPECT_TRUE(toggle->isEnabled());
     toggle->setChecked(true);
     PreferencesPage reopened;
@@ -571,7 +575,7 @@ TEST_F(PreferencesPageTest, HeaderIncludesDividerWithinFigmaHeight) {
     ASSERT_NE(header, nullptr);
     ASSERT_NE(divider, nullptr);
 
-    EXPECT_EQ(header->height(), 68);
+    EXPECT_EQ(header->height(), 64);
     EXPECT_EQ(divider->height(), 1);
     EXPECT_EQ(divider->width(), header->width());
     EXPECT_EQ(divider->geometry().bottom(), header->rect().bottom());

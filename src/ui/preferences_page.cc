@@ -28,7 +28,7 @@ constexpr const char* kDefaultPasswordKey = "ui/default_show_passwords";
 constexpr const char* kClipboardKey = "ui/clipboard_seconds";
 constexpr const char* kLastSyncKey = "sync/last_sync_ms";
 
-constexpr int kHeaderHeight = 68;
+constexpr int kHeaderHeight = 64;
 constexpr int kOuterCardMaxWidth = 840;
 constexpr int kIconBoxSize = 36;
 constexpr int kIconGlyphSize = 18;
@@ -96,7 +96,7 @@ QWidget* MakeSettingRowWithLabel(const QString& icon_name, const QString& title,
     row->setObjectName(QStringLiteral("SettingRow"));
 
     auto* h = new QHBoxLayout(row);
-    h->setContentsMargins(0, 12, 0, 12);
+    h->setContentsMargins(0, 10, 0, 10);
     h->setSpacing(14);
 
     auto* icon = new QLabel(row);
@@ -114,7 +114,7 @@ QWidget* MakeSettingRowWithLabel(const QString& icon_name, const QString& title,
     title_label->setObjectName(QStringLiteral("SettingRowTitle"));
     v->addWidget(title_label);
     v->addWidget(desc_label);
-    desc_label->hide();
+    desc_label->setVisible(!desc_label->text().isEmpty());
     h->addWidget(texts, 1);
 
     if (control) {
@@ -141,11 +141,12 @@ QFrame* MakeRowSeparator(QWidget* parent) {
     return line;
 }
 
-QWidget* MakeSectionHeader(const QString& title, QWidget* parent) {
+QWidget* MakeSectionHeader(const QString& title, QWidget* parent,
+                           bool first = false) {
     auto* header = new QWidget(parent);
     header->setObjectName(QStringLiteral("SettingSectionHeader"));
     auto* v = new QVBoxLayout(header);
-    v->setContentsMargins(0, 12, 0, 4);
+    v->setContentsMargins(0, first ? 0 : 18, 0, 6);
     v->setSpacing(0);
     auto* label = new QLabel(title, header);
     label->setObjectName(QStringLiteral("SettingSectionTitle"));
@@ -256,7 +257,7 @@ QWidget* PreferencesPage::BuildGeneralTab() {
     auto* page = new QWidget;
     page->setObjectName(QStringLiteral("PreferencesTabPage"));
     auto* v = new QVBoxLayout(page);
-    v->setContentsMargins(28, 20, 28, 24);
+    v->setContentsMargins(28, 18, 28, 22);
     v->setSpacing(0);
 
     theme_combo_ = new QComboBox;
@@ -282,7 +283,7 @@ QWidget* PreferencesPage::BuildGeneralTab() {
                 ThemeManager::Instance()->ApplyTheme(static_cast<Theme>(v));
                 emit ThemeChanged(v);
             });
-    v->addWidget(MakeSectionHeader(QStringLiteral("外观"), page));
+    v->addWidget(MakeSectionHeader(QStringLiteral("外观"), page, true));
     v->addWidget(MakeSettingRow(QStringLiteral("settings-2"),
                                  QStringLiteral("主题"),
                                  QStringLiteral("界面外观：跟随系统 / 浅色 / 深色"),
@@ -408,7 +409,6 @@ QWidget* PreferencesPage::BuildAuthorizeCard() {
     desc->setObjectName(QStringLiteral("SyncAuthDesc"));
     desc->setWordWrap(true);
     tv->addWidget(desc);
-    desc->hide();
     top->addWidget(texts, 1);
     v->addLayout(top);
 
@@ -522,7 +522,7 @@ QWidget* PreferencesPage::BuildSyncTab() {
     auto* page = new QWidget;
     page->setObjectName(QStringLiteral("PreferencesTabPage"));
     auto* v = new QVBoxLayout(page);
-    v->setContentsMargins(28, 20, 28, 24);
+    v->setContentsMargins(28, 18, 28, 22);
     v->setSpacing(0);
 
     auto* heading = new QWidget(page);
@@ -538,7 +538,6 @@ QWidget* PreferencesPage::BuildSyncTab() {
     heading_desc->setObjectName(QStringLiteral("SyncHeadingDesc"));
     heading_desc->setWordWrap(true);
     hv->addWidget(heading_desc);
-    heading_desc->hide();
     v->addWidget(heading);
 
     auto* connection_card = new QFrame(page);
@@ -586,7 +585,7 @@ QWidget* PreferencesPage::BuildSecurityTab() {
     auto* page = new QWidget;
     page->setObjectName(QStringLiteral("PreferencesTabPage"));
     auto* v = new QVBoxLayout(page);
-    v->setContentsMargins(28, 20, 28, 24);
+    v->setContentsMargins(28, 18, 28, 22);
     v->setSpacing(0);
 
     auto* title = new QLabel(QStringLiteral("安全设置"), page);
@@ -598,7 +597,6 @@ QWidget* PreferencesPage::BuildSecurityTab() {
     description->setObjectName(QStringLiteral("SecurityPageDescription"));
     description->setWordWrap(true);
     v->addWidget(description);
-    description->hide();
     v->addSpacing(12);
 
     change_master_button_ = new QPushButton(QStringLiteral("修改主密码"));
@@ -650,17 +648,18 @@ QWidget* PreferencesPage::BuildSecurityTab() {
     danger_text->addWidget(danger_description);
     danger_layout->addLayout(danger_text, 1);
 
-    auto* wipe = new QToolButton(danger_zone);
+    auto* wipe = new QPushButton(QStringLiteral("清除本地数据"), danger_zone);
     wipe->setObjectName(QStringLiteral("ClearLocalDataButton"));
     wipe->setProperty("danger", true);
-    wipe->setFixedSize(36, 36);
-    wipe->setIconSize(QSize(16, 16));
+    wipe->setFixedHeight(36);
+    wipe->setCursor(Qt::PointingHandCursor);
+    wipe->setIconSize(QSize(15, 15));
     wipe->setAccessibleName(QStringLiteral("清除本地数据"));
     wipe->setIcon(IconLoader::Load(
         QStringLiteral("trash-2"),
-        ThemeManager::Instance()->Color(QStringLiteral("danger-text")), 16));
+        ThemeManager::Instance()->Color(QStringLiteral("danger-text")), 15));
     wipe->setToolTip(QStringLiteral("清除当前安装的本地保险库与此用户的登录和设置"));
-    connect(wipe, &QToolButton::clicked, this, &PreferencesPage::ClearLocalDataRequested);
+    connect(wipe, &QPushButton::clicked, this, &PreferencesPage::ClearLocalDataRequested);
     danger_layout->addWidget(wipe);
     v->addWidget(danger_zone);
 
@@ -669,11 +668,11 @@ QWidget* PreferencesPage::BuildSecurityTab() {
 }
 
 void PreferencesPage::RefreshThemeAssets() {
-    if (auto* wipe = findChild<QToolButton*>(
+    if (auto* wipe = findChild<QPushButton*>(
             QStringLiteral("ClearLocalDataButton"))) {
         wipe->setIcon(IconLoader::Load(
             QStringLiteral("trash-2"),
-            ThemeManager::Instance()->Color(QStringLiteral("danger-text")), 16));
+            ThemeManager::Instance()->Color(QStringLiteral("danger-text")), 15));
     }
     if (auto* back = findChild<QToolButton*>(
             QStringLiteral("PreferencesBack"))) {

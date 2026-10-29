@@ -142,9 +142,9 @@ void MasterPasswordDialog::BuildUi() {
 
     auto* header = new QWidget(card);
     header->setObjectName(QStringLiteral("MasterPasswordHeader"));
-    header->setFixedHeight(62);
+    header->setFixedHeight(60);
     auto* header_layout = new QHBoxLayout(header);
-    header_layout->setContentsMargins(20, 0, 20, 0);
+    header_layout->setContentsMargins(24, 0, 24, 0);
     header_layout->setSpacing(10);
 
     icon_ = new QLabel(header);
@@ -171,7 +171,7 @@ void MasterPasswordDialog::BuildUi() {
     auto* body = new QWidget(card);
     body->setObjectName(QStringLiteral("MasterPasswordBody"));
     auto* body_layout = new QVBoxLayout(body);
-    body_layout->setContentsMargins(20, 20, 20, 20);
+    body_layout->setContentsMargins(24, 20, 24, 20);
     body_layout->setSpacing(16);
 
     subtitle_ = new QLabel(SubtitleFor(mode_), body);
@@ -247,7 +247,7 @@ void MasterPasswordDialog::BuildUi() {
     auto* footer = new QWidget(card);
     footer->setObjectName(QStringLiteral("MasterPasswordFooter"));
     auto* buttons_row = new QHBoxLayout(footer);
-    buttons_row->setContentsMargins(20, 16, 20, 16);
+    buttons_row->setContentsMargins(24, 16, 24, 16);
     buttons_row->setSpacing(8);
     buttons_row->addStretch();
 

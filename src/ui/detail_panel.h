@@ -74,20 +74,24 @@ class DetailPanel : public QFrame {
     QWidget* risky_banner_ = nullptr;
     QLabel* risky_icon_ = nullptr;
 
+    QWidget* username_row_ = nullptr;
+    QFrame* username_divider_ = nullptr;
     QLabel* username_value_ = nullptr;
     QToolButton* username_copy_ = nullptr;
     QLabel* password_value_ = nullptr;
     QToolButton* password_toggle_ = nullptr;
     QToolButton* password_copy_ = nullptr;
+    QFrame* website_divider_ = nullptr;
+    QWidget* website_row_ = nullptr;
     QLabel* website_value_ = nullptr;
     QToolButton* website_open_ = nullptr;
 
     QLabel* created_value_ = nullptr;
     QLabel* updated_value_ = nullptr;
 
+    QFrame* notes_divider_ = nullptr;
+    QWidget* notes_row_ = nullptr;
     QLabel* notes_value_ = nullptr;
-    QLabel* title_value_ = nullptr;
-    QLabel* category_value_ = nullptr;
 
     QList<model::Category> categories_;
     std::optional<model::PasswordEntry> entry_;

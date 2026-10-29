@@ -258,14 +258,15 @@ TEST_F(MainWindowTest, SidebarActionsAreIconButtonsWithTooltips) {
     QApplication::processEvents();
     auto* sync = window_->findChild<QPushButton*>("SidebarSyncButton");
     ASSERT_NE(sync, nullptr);
-    EXPECT_TRUE(sync->text().isEmpty());
-    EXPECT_TRUE(settingsButton()->text().isEmpty());
+    EXPECT_EQ(sync->text(), QStringLiteral("云端同步"));
+    EXPECT_EQ(settingsButton()->text(), QStringLiteral("设置"));
     EXPECT_FALSE(sync->icon().isNull());
     EXPECT_FALSE(settingsButton()->icon().isNull());
     EXPECT_EQ(settingsButton()->toolTip(), QStringLiteral("设置"));
     EXPECT_EQ(sync->toolTip(), QStringLiteral("立即同步"));
-    EXPECT_EQ(sync->geometry().top(), settingsButton()->geometry().top());
-    EXPECT_GT(sync->geometry().left(), settingsButton()->geometry().right());
+    EXPECT_EQ(sync->geometry().left(), settingsButton()->geometry().left());
+    EXPECT_EQ(sync->width(), settingsButton()->width());
+    EXPECT_GT(settingsButton()->geometry().top(), sync->geometry().bottom());
     settingsButton()->click();
     EXPECT_TRUE(window_->preferences_page()->isVisible());
 }
@@ -365,13 +366,15 @@ TEST_F(MainWindowTest, WorkspaceHeaderSpansListAndDetail) {
     EXPECT_EQ(container->geometry(), root->rect());
     EXPECT_EQ(header->parentWidget(), workspace);
     EXPECT_EQ(content->parentWidget(), workspace);
-    EXPECT_EQ(header->height(), 68);
+    EXPECT_EQ(header->height(), 64);
     EXPECT_EQ(header->width(), content->width());
     EXPECT_EQ(content->y(), header->geometry().bottom() + 1);
     EXPECT_EQ(divider->height(), 1);
     EXPECT_EQ(divider->width(), header->width());
-    EXPECT_EQ(search_container->size(), QSize(390, 36));
-    EXPECT_EQ(search_container->x(), 28);
+    EXPECT_EQ(search_container->height(), 36);
+    EXPECT_GE(search_container->width(), 260);
+    EXPECT_LE(search_container->width(), 420);
+    EXPECT_EQ(search_container->x(), 24);
     EXPECT_GT(lockButton()->x(), search_container->geometry().right());
     EXPECT_EQ(lockButton()->geometry().center().y(),
               search_container->geometry().center().y());
@@ -379,8 +382,10 @@ TEST_F(MainWindowTest, WorkspaceHeaderSpansListAndDetail) {
               search_container->geometry().center().y());
     EXPECT_EQ(more_button->geometry().center().y(),
               search_container->geometry().center().y());
+    EXPECT_EQ(detail()->parentWidget(), content);
     EXPECT_EQ(list_column->y(), detail()->y());
-    EXPECT_EQ(detail()->height(), window_->centralWidget()->height());
+    EXPECT_GE(detail()->x(), list_column->geometry().right());
+    EXPECT_EQ(detail()->height(), content->height());
 }
 
 TEST_F(MainWindowTest, SidebarCountsAreSeparateFromLabels) {
@@ -422,18 +427,24 @@ TEST_F(MainWindowTest, PasswordCardsUseTargetDensityAndListStateLayer) {
     QApplication::processEvents();
 
     ASSERT_GT(passwords()->count(), 1);
-    EXPECT_EQ(passwords()->visualItemRect(passwords()->item(0)).height(), 60);
+    EXPECT_EQ(passwords()->visualItemRect(passwords()->item(0)).height(), 64);
     EXPECT_EQ(passwords()->spacing(), 6);
     auto* card = passwords()->itemWidget(passwords()->item(0));
+    auto* fav_card = passwords()->itemWidget(passwords()->item(1));
     ASSERT_NE(card, nullptr);
+    ASSERT_NE(fav_card, nullptr);
     EXPECT_FALSE(card->testAttribute(Qt::WA_TransparentForMouseEvents));
-    EXPECT_NE(card->findChild<QToolButton*>("PasswordCardDeleteButton"), nullptr);
+    EXPECT_EQ(card->findChild<QToolButton*>("PasswordCardDeleteButton"), nullptr);
+    EXPECT_EQ(card->findChild<QLabel*>("PasswordCardStar"), nullptr);
+    EXPECT_NE(fav_card->findChild<QLabel*>("PasswordCardStar"), nullptr);
+    EXPECT_EQ(fav_card->findChild<QToolButton*>("PasswordCardDeleteButton"),
+              nullptr);
     const QString stylesheet =
         passvault::ui::ThemeManager::Instance()->LoadStyleSheet();
     EXPECT_TRUE(
         stylesheet.contains(QStringLiteral("#PasswordList::item:focus")));
     EXPECT_TRUE(stylesheet.contains(
-        QStringLiteral("padding: 6px 22px 20px 22px")));
+        QStringLiteral("padding: 6px 18px 20px 18px")));
 }
 
 TEST_F(MainWindowTest, LongCardIdentityElidesAndKeepsFullValues) {
@@ -724,8 +735,8 @@ TEST_F(MainWindowTest, SearchShortcutUsesBodyTypography) {
     QApplication::processEvents();
 
     const QFontInfo shortcut_font_info(shortcut->font());
-    EXPECT_EQ(shortcut_font_info.family(), QStringLiteral("Noto Sans SC"));
-    EXPECT_EQ(shortcut_font_info.pixelSize(), 9);
+    EXPECT_EQ(shortcut_font_info.family(), QStringLiteral("DM Mono"));
+    EXPECT_EQ(shortcut_font_info.pixelSize(), 11);
 }
 
 TEST_F(MainWindowTest, SharedShellTypographyFitsWithoutClipping) {
@@ -889,7 +900,7 @@ TEST_F(MainWindowTest, BlankClickClearsSelectionAndAllowsSameRowToReopen) {
     EXPECT_TRUE(passwords()->selectedItems().isEmpty());
     EXPECT_EQ(passwords()->currentItem(), nullptr);
     EXPECT_FALSE(detail()->HasEntry());
-    EXPECT_FALSE(detail()->isVisible());
+    EXPECT_TRUE(detail()->isVisible());
     QTest::mouseClick(passwords()->viewport(), Qt::LeftButton, Qt::NoModifier,
                       passwords()->visualItemRect(passwords()->item(0)).center());
     EXPECT_TRUE(detail()->HasEntry());
@@ -903,7 +914,7 @@ TEST_F(MainWindowTest, EscapeFromListClearsSelectionAndDetail) {
     EXPECT_TRUE(passwords()->selectedItems().isEmpty());
     EXPECT_EQ(passwords()->currentItem(), nullptr);
     EXPECT_FALSE(detail()->HasEntry());
-    EXPECT_FALSE(detail()->isVisible());
+    EXPECT_TRUE(detail()->isVisible());
 }
 
 TEST_F(MainWindowTest, ClearingSelectionDoesNotReopenCurrentPassword) {
@@ -1240,14 +1251,15 @@ TEST_F(MainWindowTest, RowDeleteOnlyTrashesItsOwnRecord) {
     passwords()->item(1)->setSelected(true);
     const auto id = passwords()->item(2)->data(Qt::UserRole).toLongLong();
     auto* card = passwords()->itemWidget(passwords()->item(2));
-    auto* remove = card->findChild<QToolButton*>("PasswordCardDeleteButton");
-    ASSERT_NE(remove, nullptr);
+    ASSERT_NE(card, nullptr);
+    EXPECT_EQ(card->findChild<QToolButton*>("PasswordCardDeleteButton"), nullptr);
     QTimer::singleShot(0, []() {
         auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
         ASSERT_NE(message, nullptr);
         message->button(QMessageBox::Yes)->click();
     });
-    QTest::mouseClick(remove, Qt::LeftButton);
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnDeleteRequested",
+                                          Q_ARG(std::int64_t, id)));
     EXPECT_TRUE(password_dao_->FindById(id)->is_deleted);
     EXPECT_EQ(password_dao_->ListActive().size(), 2u);
 }
@@ -1589,7 +1601,7 @@ TEST_F(MainWindowTest, RightMouseGestureNeverOpensOrReplacesDetail) {
 
     QTest::mousePress(list->viewport(), Qt::RightButton, Qt::NoModifier, first);
     EXPECT_FALSE(detail()->HasEntry());
-    EXPECT_FALSE(detail()->isVisible());
+    EXPECT_TRUE(detail()->isVisible());
     QTest::mouseRelease(list->viewport(), Qt::RightButton, Qt::NoModifier, first);
     EXPECT_FALSE(detail()->HasEntry());
     EXPECT_TRUE(list->item(0)->isSelected());
@@ -1621,7 +1633,7 @@ TEST_F(MainWindowTest, ContextMenuTargetsUnselectedEntryWithoutOpeningDetail) {
         EXPECT_TRUE(target->isSelected());
         EXPECT_EQ(passwords()->selectedItems().size(), 1);
         EXPECT_FALSE(detail()->HasEntry());
-        EXPECT_FALSE(detail()->isVisible());
+        EXPECT_TRUE(detail()->isVisible());
         EXPECT_FALSE(menu->actions().isEmpty());
         menu->close();
     });
@@ -1711,6 +1723,7 @@ TEST_F(MainWindowTest, CardActionsReachableAndTimeThreshold) {
     auto entry = password_dao_->ListActive().front();
     entry.title = QString(180, QChar('T'));
     entry.username = QString(180, QChar('U'));
+    entry.is_favorite = true;
     ASSERT_TRUE(password_dao_->Update(entry));
     window_->Reload();
     window_->show();
@@ -1719,27 +1732,23 @@ TEST_F(MainWindowTest, CardActionsReachableAndTimeThreshold) {
     auto* time = card->findChild<QLabel*>("PasswordCardTime");
     auto* star = card->findChild<QLabel*>("PasswordCardStar");
     auto* remove = card->findChild<QToolButton*>("PasswordCardDeleteButton");
+    ASSERT_NE(time, nullptr);
+    ASSERT_NE(star, nullptr);
+    EXPECT_EQ(remove, nullptr);
     for (int width : {480, 360, 359, 300}) {
-        card->resize(width, 60);
+        card->resize(width, 64);
         QApplication::processEvents();
         EXPECT_EQ(time->isHidden(), width < 360);
-        EXPECT_EQ(remove->size(), QSize(32, 32));
-        EXPECT_LE(remove->geometry().right(), card->width());
         EXPECT_EQ(star->size(), QSize(20, 20));
+        EXPECT_LE(star->geometry().right(), card->width());
         EXPECT_FALSE(time->toolTip().isEmpty());
         EXPECT_EQ(time->toolTip(), time->accessibleName());
-        EXPECT_LE(star->geometry().right(), remove->geometry().left());
         auto* title = card->findChild<QLabel*>("PasswordCardTitle");
         auto* username = card->findChild<QLabel*>("PasswordCardMeta");
         EXPECT_LE(title->geometry().right(),
                   (width >= 360 ? time : star)->geometry().left());
         EXPECT_LE(username->geometry().right(),
                   (width >= 360 ? time : star)->geometry().left());
-        const auto before_focus = remove->geometry();
-        remove->setFocus();
-        QTest::mouseMove(remove, remove->rect().center());
-        QApplication::processEvents();
-        EXPECT_EQ(remove->geometry(), before_focus);
         if (width >= 360) {
             EXPECT_EQ(time->width(), 80);
             EXPECT_LE(time->geometry().right(), star->geometry().left());
@@ -1774,13 +1783,15 @@ TEST_F(MainWindowTest, RemovingOtherEntryPreservesDisplayedDetailAndTemporaryEye
     auto* value = detail()->findChild<QLabel*>("DetailFieldValueMono");
     detail()->findChildren<QToolButton*>("DetailFieldButton").at(1)->click();
     const auto previous_text = value->text();
-    auto* other_card = passwords()->itemWidget(passwords()->item(1));
+    const auto other_id =
+        passwords()->item(1)->data(Qt::UserRole).toLongLong();
     QTimer::singleShot(0, [] {
         auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
         ASSERT_NE(dialog, nullptr);
         dialog->button(QMessageBox::Yes)->click();
     });
-    other_card->findChild<QToolButton*>("PasswordCardDeleteButton")->click();
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnDeleteRequested",
+                                          Q_ARG(std::int64_t, other_id)));
     EXPECT_EQ(detail()->entry_id(), displayed);
     EXPECT_EQ(value->text(), previous_text);
     search()->setText(QStringLiteral("Work"));

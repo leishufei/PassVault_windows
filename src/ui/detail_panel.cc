@@ -24,9 +24,9 @@ namespace passvault::ui {
 
 namespace {
 
-constexpr int kIconButtonSize = 30;
+constexpr int kIconButtonSize = 28;
 constexpr int kIconSize = 16;
-constexpr int kHeaderIconSize = 22;
+constexpr int kHeaderActionSize = 32;
 constexpr int kAvatarSize = 48;
 
 QLabel* MakeLabel(const QString& text, const QString& object_name) {
@@ -65,7 +65,6 @@ DetailPanel::DetailPanel(QWidget* parent)
     setObjectName(QStringLiteral("DetailPanel"));
     setFrameShape(QFrame::NoFrame);
     setMinimumWidth(360);
-    setMaximumWidth(460);
     auto* shadow = new QGraphicsDropShadowEffect(this);
     shadow->setBlurRadius(45);
     shadow->setColor(ThemeManager::Instance()->Color(QStringLiteral("shadow")));
@@ -131,8 +130,8 @@ QWidget* DetailPanel::BuildContentPage() {
     page->setObjectName(QStringLiteral("DetailContent"));
     scroll->setWidget(page);
     auto* outer = new QVBoxLayout(page);
-    outer->setContentsMargins(28, 28, 28, 28);
-    outer->setSpacing(20);
+    outer->setContentsMargins(24, 24, 24, 24);
+    outer->setSpacing(16);
 
     auto* header = new QWidget(page);
     header->setObjectName(QStringLiteral("DetailHeader"));
@@ -157,7 +156,7 @@ QWidget* DetailPanel::BuildContentPage() {
     title_col->addWidget(header_title_);
     header_tag_ = MakeLabel(QString(), QStringLiteral("DetailTag"));
     header_tag_->setWordWrap(false);
-    header_tag_->setMaximumWidth(100);
+    header_tag_->setMaximumWidth(120);
     header_tag_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Maximum);
     title_col->addWidget(header_tag_, 0, Qt::AlignLeft);
 
@@ -173,6 +172,8 @@ QWidget* DetailPanel::BuildContentPage() {
     header_edit_->setObjectName(QStringLiteral("DetailHeaderButton"));
     header_edit_->setCursor(Qt::PointingHandCursor);
     header_edit_->setFlat(true);
+    header_edit_->setFixedSize(kHeaderActionSize, kHeaderActionSize);
+    header_edit_->setToolTip(QStringLiteral("编辑"));
     header_edit_->setIcon(IconLoader::Load(
         QStringLiteral("pencil"),
         ThemeManager::Instance()->Color(QStringLiteral("text-secondary")),
@@ -188,13 +189,15 @@ QWidget* DetailPanel::BuildContentPage() {
     header_favorite_ = new QToolButton(actions);
     header_favorite_->setObjectName(QStringLiteral("DetailHeaderButton"));
     header_favorite_->setCheckable(true);
+    header_favorite_->setCursor(Qt::PointingHandCursor);
+    header_favorite_->setFixedSize(kHeaderActionSize, kHeaderActionSize);
     header_favorite_->setToolTip(QStringLiteral("收藏"));
     header_favorite_->setAccessibleName(QStringLiteral("收藏"));
     header_favorite_->setIcon(IconLoader::Load(
         QStringLiteral("star"),
         ThemeManager::Instance()->Color(QStringLiteral("text-quaternary")),
-        kHeaderIconSize));
-    header_favorite_->setIconSize(QSize(kHeaderIconSize, kHeaderIconSize));
+        kIconSize));
+    header_favorite_->setIconSize(QSize(kIconSize, kIconSize));
     connect(header_favorite_, &QToolButton::toggled, this, [this](bool checked) {
         if (!entry_ || entry_->is_deleted) return;
         emit FavoriteToggleRequested(entry_->id, checked);
@@ -203,18 +206,21 @@ QWidget* DetailPanel::BuildContentPage() {
 
     header_delete_ = new QToolButton(actions);
     header_delete_->setObjectName(QStringLiteral("DetailHeaderDeleteButton"));
+    header_delete_->setCursor(Qt::PointingHandCursor);
+    header_delete_->setFixedSize(kHeaderActionSize, kHeaderActionSize);
     header_delete_->setToolTip(QStringLiteral("删除密码"));
     header_delete_->setAccessibleName(QStringLiteral("删除密码"));
     header_delete_->setIcon(IconLoader::Load(
         QStringLiteral("trash-2"),
         ThemeManager::Instance()->Color(QStringLiteral("danger")), kIconSize));
-    header_delete_->setIconSize(QSize(20, 20));
+    header_delete_->setIconSize(QSize(kIconSize, kIconSize));
     connect(header_delete_, &QToolButton::clicked, this, [this]() {
         if (entry_) emit DeleteRequested(entry_->id);
     });
     action_layout->addWidget(header_delete_);
     header_close_ = MakeIconButton(QStringLiteral("x"), QStringLiteral("关闭详情"));
     header_close_->setObjectName(QStringLiteral("DetailCloseButton"));
+    header_close_->setFixedSize(kHeaderActionSize, kHeaderActionSize);
     connect(header_close_, &QToolButton::clicked, this,
             &DetailPanel::CloseRequested);
     action_layout->addWidget(header_close_);
@@ -248,7 +254,7 @@ QWidget* DetailPanel::BuildContentPage() {
     info_card->setFrameShape(QFrame::NoFrame);
     auto* info_layout = new QVBoxLayout(info_card);
     info_layout->setContentsMargins(0, 0, 0, 0);
-    info_layout->setSpacing(0);
+    info_layout->setSpacing(12);
 
     auto build_row = [&](const QString& label_text, QLabel* value,
                          std::initializer_list<QToolButton**> buttons) {
@@ -274,11 +280,8 @@ QWidget* DetailPanel::BuildContentPage() {
             row_layout->addWidget(*btn_ptr);
         }
         info_layout->addWidget(row);
+        return row;
     };
-
-    title_value_ = MakeLabel(QString(), QStringLiteral("DetailTitleValue"));
-    build_row(QStringLiteral("标题"), title_value_, {});
-    info_layout->addWidget(MakeDivider());
 
     username_copy_ = MakeIconButton(QStringLiteral("copy"),
                                     QStringLiteral("复制用户名"));
@@ -287,9 +290,11 @@ QWidget* DetailPanel::BuildContentPage() {
     });
     username_value_ = MakeLabel(QString(), QStringLiteral("DetailFieldValue"));
     username_value_->setObjectName(QStringLiteral("DetailFieldValue"));
-    build_row(QStringLiteral("用户名"), username_value_, {&username_copy_});
+    username_row_ =
+        build_row(QStringLiteral("用户名"), username_value_, {&username_copy_});
 
-    info_layout->addWidget(MakeDivider());
+    username_divider_ = MakeDivider();
+    info_layout->addWidget(username_divider_);
 
     password_toggle_ = MakeIconButton(QStringLiteral("eye"),
                                       QStringLiteral("显示密码"));
@@ -307,7 +312,8 @@ QWidget* DetailPanel::BuildContentPage() {
     build_row(QStringLiteral("密码"), password_value_,
               {&password_toggle_, &password_copy_});
 
-    info_layout->addWidget(MakeDivider());
+    website_divider_ = MakeDivider();
+    info_layout->addWidget(website_divider_);
 
     website_open_ = MakeIconButton(QStringLiteral("external-link"),
                                    QStringLiteral("打开网站"));
@@ -316,14 +322,13 @@ QWidget* DetailPanel::BuildContentPage() {
     });
     website_value_ = MakeLabel(QString(), QStringLiteral("DetailFieldValueLink"));
     website_value_->setObjectName(QStringLiteral("DetailFieldValueLink"));
-    build_row(QStringLiteral("网址"), website_value_, {&website_open_});
+    website_row_ =
+        build_row(QStringLiteral("网址"), website_value_, {&website_open_});
 
-    info_layout->addWidget(MakeDivider());
-    category_value_ = MakeLabel(QString(), QStringLiteral("DetailCategoryValue"));
-    build_row(QStringLiteral("分类"), category_value_, {});
-    info_layout->addWidget(MakeDivider());
+    notes_divider_ = MakeDivider();
+    info_layout->addWidget(notes_divider_);
     notes_value_ = MakeLabel(QString(), QStringLiteral("DetailNotesValue"));
-    build_row(QStringLiteral("备注"), notes_value_, {});
+    notes_row_ = build_row(QStringLiteral("备注"), notes_value_, {});
 
     outer->addWidget(info_card);
 
@@ -379,8 +384,8 @@ void DetailPanel::ClearEntry() {
     entry_.reset();
     password_plain_.reset();
     header_title_->SetFullText(QString());
-    for (auto* label : {title_value_, username_value_, password_value_,
-                        website_value_, notes_value_, category_value_}) {
+    for (auto* label : {username_value_, password_value_, website_value_,
+                        notes_value_}) {
         label->clear();
         label->setAccessibleName(QString());
     }
@@ -408,7 +413,7 @@ void DetailPanel::RefreshView() {
         header_tag_->setText(tag);
         header_tag_->ensurePolished();
         header_tag_->setMinimumWidth(
-            qMin(100, header_tag_->fontMetrics().horizontalAdvance(tag) + 16));
+            qMin(120, header_tag_->fontMetrics().horizontalAdvance(tag) + 16));
         header_tag_->show();
     }
 
@@ -418,38 +423,44 @@ void DetailPanel::RefreshView() {
         ? ThemeManager::Instance()->Color(QStringLiteral("warning"))
         : ThemeManager::Instance()->Color(QStringLiteral("text-quaternary"));
     header_favorite_->setIcon(
-        IconLoader::Load(QStringLiteral("star"), star_color, kHeaderIconSize));
+        IconLoader::Load(QStringLiteral("star"), star_color, kIconSize));
 
     risky_banner_->setVisible(false);
 
+    const bool has_username = !e.username.isEmpty();
     username_value_->setText(e.username);
-    username_copy_->setEnabled(!e.username.isEmpty());
+    username_copy_->setEnabled(has_username);
+    if (username_row_) username_row_->setVisible(has_username);
+    if (username_divider_) username_divider_->setVisible(has_username);
 
     UpdatePasswordDisplay();
 
-    if (e.website.isEmpty()) {
-        website_value_->setText(QString());
-        website_open_->setEnabled(false);
-    } else {
-        website_value_->setText(e.website);
-        website_open_->setEnabled(true);
-    }
+    const bool has_website = !e.website.isEmpty();
+    website_value_->setText(has_website ? e.website : QString());
+    website_open_->setEnabled(has_website);
+    if (website_row_) website_row_->setVisible(has_website);
+    if (website_divider_) website_divider_->setVisible(has_website);
 
     created_value_->setText(FormatTimestamp(e.created_at));
     updated_value_->setText(FormatTimestamp(e.updated_at));
+    const bool has_notes = !e.notes.isEmpty();
     notes_value_->setText(e.notes);
-    title_value_->setText(e.title);
-    category_value_->setText(CategoryName(e.category_id));
-    for (auto* label : {title_value_, username_value_, website_value_,
-                        notes_value_, category_value_}) {
+    if (notes_row_) notes_row_->setVisible(has_notes);
+    if (notes_divider_) notes_divider_->setVisible(has_notes);
+    for (auto* label : {username_value_, website_value_, notes_value_}) {
         label->setAccessibleName(label->text());
     }
     header_edit_->setEnabled(e.is_deleted || password_plain_.has_value());
+    header_edit_->setFixedSize(
+        e.is_deleted ? QSize(52, kHeaderActionSize)
+                     : QSize(kHeaderActionSize, kHeaderActionSize));
     header_edit_->setText(e.is_deleted ? QStringLiteral("还原") : QString());
     header_edit_->setIcon(e.is_deleted ? QIcon() : IconLoader::Load(
         QStringLiteral("pencil"),
         ThemeManager::Instance()->Color(QStringLiteral("text-secondary")),
         kIconSize));
+    header_edit_->setToolTip(e.is_deleted ? QStringLiteral("还原")
+                                          : QStringLiteral("编辑"));
     header_edit_->setAccessibleName(e.is_deleted ? QStringLiteral("还原")
                                                 : QStringLiteral("编辑"));
     header_delete_->setEnabled(true);
@@ -495,7 +506,7 @@ void DetailPanel::RefreshThemeAssets() {
             ? QStringLiteral("warning")
             : QStringLiteral("text-quaternary");
         header_favorite_->setIcon(
-            icon(QStringLiteral("star"), token, kHeaderIconSize));
+            icon(QStringLiteral("star"), token, kIconSize));
     }
     if (risky_icon_) {
         risky_icon_->setPixmap(
@@ -506,6 +517,12 @@ void DetailPanel::RefreshThemeAssets() {
         username_copy_->setIcon(icon(QStringLiteral("copy"),
                                      QStringLiteral("text-tertiary"),
                                      kIconSize));
+    }
+    if (password_toggle_) {
+        password_toggle_->setIcon(icon(
+            password_visible_ ? QStringLiteral("eye-off")
+                              : QStringLiteral("eye"),
+            QStringLiteral("text-tertiary"), kIconSize));
     }
     if (password_copy_) {
         password_copy_->setIcon(icon(QStringLiteral("copy"),

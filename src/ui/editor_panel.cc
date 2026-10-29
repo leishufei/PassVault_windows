@@ -124,18 +124,19 @@ QWidget* EditorPanel::BuildEditorPage() {
 
     auto* header = new QWidget(page);
     header->setObjectName(QStringLiteral("EditorHeader"));
-    header->setFixedHeight(68);
+    header->setFixedHeight(64);
     auto* header_layout = new QHBoxLayout(header);
-    header_layout->setContentsMargins(28, 0, 28, 0);
+    header_layout->setContentsMargins(24, 0, 24, 0);
     header_layout->setSpacing(12);
 
     auto* header_back = new QToolButton(header);
     header_back->setObjectName(QStringLiteral("EditorHeaderBack"));
     header_back->setIcon(LoadEditorIcon(QStringLiteral("arrow-left"),
-                                       QStringLiteral("muted-7"), 18));
-    header_back->setIconSize(QSize(18, 18));
+                                       QStringLiteral("muted-7"), 16));
+    header_back->setIconSize(QSize(16, 16));
     header_back->setToolTip(QStringLiteral("返回"));
-    header_back->setFixedSize(24, 24);
+    header_back->setCursor(Qt::PointingHandCursor);
+    header_back->setFixedSize(32, 32);
     connect(header_back, &QToolButton::clicked, this,
             &EditorPanel::OnCancelClicked);
     header_layout->addWidget(header_back, 0, Qt::AlignVCenter);
@@ -146,9 +147,10 @@ QWidget* EditorPanel::BuildEditorPage() {
     header_close_ = new QToolButton(header);
     header_close_->setObjectName(QStringLiteral("EditorHeaderClose"));
     header_close_->setIcon(LoadEditorIcon(QStringLiteral("x"),
-                                          QStringLiteral("muted-7"), 20));
-    header_close_->setIconSize(QSize(20, 20));
+                                          QStringLiteral("muted-7"), 16));
+    header_close_->setIconSize(QSize(16, 16));
     header_close_->setToolTip(QStringLiteral("关闭"));
+    header_close_->setCursor(Qt::PointingHandCursor);
     header_close_->setFixedSize(32, 32);
     connect(header_close_, &QToolButton::clicked, this,
             &EditorPanel::OnCancelClicked);
@@ -161,7 +163,7 @@ QWidget* EditorPanel::BuildEditorPage() {
     auto* footer = new QWidget(page);
     footer->setObjectName(QStringLiteral("EditorFooter"));
     auto* footer_layout = new QHBoxLayout(footer);
-    footer_layout->setContentsMargins(28, 16, 28, 16);
+    footer_layout->setContentsMargins(24, 16, 24, 16);
     footer_layout->setSpacing(8);
     cancel_button_ = new QPushButton(QStringLiteral("取消"), footer);
     cancel_button_->setObjectName(QStringLiteral("EditorCancelButton"));
@@ -195,12 +197,11 @@ QWidget* EditorPanel::BuildOverviewPage() {
     auto* content = new QWidget;
     content->setObjectName(QStringLiteral("EditorContent"));
     auto* content_layout = new QHBoxLayout(content);
-    content_layout->setContentsMargins(28, 24, 28, 24);
+    content_layout->setContentsMargins(24, 20, 24, 24);
     content_layout->setSpacing(0);
 
     auto* container = new QWidget(content);
     container->setObjectName(QStringLiteral("EditorBody"));
-    container->setFixedWidth(340);
     auto* v = new QVBoxLayout(container);
     v->setContentsMargins(0, 0, 0, 0);
     v->setSpacing(16);
@@ -273,7 +274,8 @@ QWidget* EditorPanel::BuildOverviewPage() {
     generate_button_->setIconSize(QSize(12, 12));
     generate_button_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     generate_button_->setToolTip(QStringLiteral("生成密码"));
-    generate_button_->setFixedHeight(18);
+    generate_button_->setCursor(Qt::PointingHandCursor);
+    generate_button_->setFixedHeight(22);
     connect(generate_button_, &QToolButton::clicked, this,
             &EditorPanel::OnShowGenerator);
     password_header_layout->addWidget(generate_button_);
@@ -283,7 +285,7 @@ QWidget* EditorPanel::BuildOverviewPage() {
     password_field_->setObjectName(QStringLiteral("EditorPasswordField"));
     password_field_->setFixedHeight(36);
     auto* password_row_layout = new QHBoxLayout(password_field_);
-    password_row_layout->setContentsMargins(8, 0, 6, 0);
+    password_row_layout->setContentsMargins(12, 0, 4, 0);
     password_row_layout->setSpacing(4);
     password_input_ = new QLineEdit(password_field_);
     password_input_->setObjectName(QStringLiteral("EditorPasswordInput"));
@@ -293,11 +295,12 @@ QWidget* EditorPanel::BuildOverviewPage() {
     preview_toggle_ = new QToolButton(password_field_);
     preview_toggle_->setObjectName(QStringLiteral("EditorPreviewToggle"));
     preview_toggle_->setCheckable(true);
+    preview_toggle_->setCursor(Qt::PointingHandCursor);
     preview_toggle_->setIcon(LoadEditorIcon(QStringLiteral("eye"),
-                                            QStringLiteral("hint-8"), 14));
-    preview_toggle_->setIconSize(QSize(14, 14));
+                                            QStringLiteral("hint-8"), 16));
+    preview_toggle_->setIconSize(QSize(16, 16));
     preview_toggle_->setToolTip(QStringLiteral("显示 / 隐藏密码"));
-    preview_toggle_->setFixedSize(24, 24);
+    preview_toggle_->setFixedSize(28, 28);
     connect(preview_toggle_, &QToolButton::toggled, this,
             &EditorPanel::OnTogglePasswordPreview);
     password_row_layout->addWidget(password_input_, 1);
@@ -370,7 +373,7 @@ QWidget* EditorPanel::BuildOverviewPage() {
     add_field(QStringLiteral("备注"), notes_input_);
 
     v->addStretch(1);
-    content_layout->addWidget(container, 1, Qt::AlignHCenter | Qt::AlignTop);
+    content_layout->addWidget(container, 1);
     scroll->setWidget(content);
     return scroll;
 }
@@ -384,18 +387,19 @@ QWidget* EditorPanel::BuildGeneratorPage() {
 
     auto* header = new QWidget(page);
     header->setObjectName(QStringLiteral("EditorGeneratorHeader"));
-    header->setFixedHeight(68);
+    header->setFixedHeight(64);
     auto* header_layout = new QHBoxLayout(header);
-    header_layout->setContentsMargins(28, 0, 28, 0);
+    header_layout->setContentsMargins(24, 0, 24, 0);
     header_layout->setSpacing(12);
 
     auto* back = new QToolButton(header);
     back->setObjectName(QStringLiteral("EditorGeneratorBack"));
     back->setIcon(LoadEditorIcon(QStringLiteral("arrow-left"),
-                                QStringLiteral("muted-7"), 18));
-    back->setIconSize(QSize(18, 18));
+                                QStringLiteral("muted-7"), 16));
+    back->setIconSize(QSize(16, 16));
     back->setToolTip(QStringLiteral("返回编辑"));
-    back->setFixedSize(24, 24);
+    back->setCursor(Qt::PointingHandCursor);
+    back->setFixedSize(32, 32);
     connect(back, &QToolButton::clicked, this, &EditorPanel::OnHideGenerator);
     header_layout->addWidget(back, 0, Qt::AlignVCenter);
 
@@ -406,9 +410,10 @@ QWidget* EditorPanel::BuildGeneratorPage() {
     auto* close = new QToolButton(header);
     close->setObjectName(QStringLiteral("EditorGeneratorClose"));
     close->setIcon(
-        LoadEditorIcon(QStringLiteral("x"), QStringLiteral("muted-7"), 20));
-    close->setIconSize(QSize(20, 20));
+        LoadEditorIcon(QStringLiteral("x"), QStringLiteral("muted-7"), 16));
+    close->setIconSize(QSize(16, 16));
     close->setToolTip(QStringLiteral("关闭"));
+    close->setCursor(Qt::PointingHandCursor);
     close->setFixedSize(32, 32);
     connect(close, &QToolButton::clicked, this, &EditorPanel::OnHideGenerator);
     header_layout->addWidget(close);
@@ -424,12 +429,11 @@ QWidget* EditorPanel::BuildGeneratorPage() {
     auto* content = new QWidget;
     content->setObjectName(QStringLiteral("EditorGeneratorContent"));
     auto* content_layout = new QHBoxLayout(content);
-    content_layout->setContentsMargins(28, 24, 28, 24);
+    content_layout->setContentsMargins(24, 20, 24, 24);
     content_layout->setSpacing(0);
 
     auto* body = new QWidget(content);
     body->setObjectName(QStringLiteral("EditorGeneratorBody"));
-    body->setFixedWidth(340);
     auto* body_layout = new QVBoxLayout(body);
     body_layout->setContentsMargins(0, 0, 0, 0);
     body_layout->setSpacing(0);
@@ -548,14 +552,14 @@ QWidget* EditorPanel::BuildGeneratorPage() {
     body_layout->addWidget(generator_error_);
     body_layout->addStretch(1);
 
-    content_layout->addWidget(body, 1, Qt::AlignHCenter | Qt::AlignTop);
+    content_layout->addWidget(body, 1);
     scroll->setWidget(content);
     root->addWidget(scroll, 1);
 
     auto* footer = new QWidget(page);
     footer->setObjectName(QStringLiteral("EditorGeneratorFooter"));
     auto* footer_layout = new QHBoxLayout(footer);
-    footer_layout->setContentsMargins(28, 16, 28, 16);
+    footer_layout->setContentsMargins(24, 16, 24, 16);
     footer_layout->setSpacing(8);
     footer_layout->addStretch(1);
     auto* regenerate = new QPushButton(QStringLiteral("重新生成"), footer);
@@ -672,7 +676,7 @@ void EditorPanel::ResetFields() {
     preview_toggle_->setChecked(false);
     password_input_->setEchoMode(QLineEdit::Password);
     preview_toggle_->setIcon(LoadEditorIcon(QStringLiteral("eye"),
-                                            QStringLiteral("hint-8"), 14));
+                                            QStringLiteral("hint-8"), 16));
     FillCategoryCombo();
     if (category_combo_->count() > 0) category_combo_->setCurrentIndex(0);
     UpdateValidationErrors(false, false);
@@ -689,7 +693,7 @@ void EditorPanel::FillFromEntry(const DecryptedEntry& entry) {
     preview_toggle_->setChecked(false);
     password_input_->setEchoMode(QLineEdit::Password);
     preview_toggle_->setIcon(LoadEditorIcon(QStringLiteral("eye"),
-                                            QStringLiteral("hint-8"), 14));
+                                            QStringLiteral("hint-8"), 16));
     for (int i = 0; i < category_combo_->count(); ++i) {
         if (category_combo_->itemData(i).toLongLong() ==
             entry.entry.category_id) {
@@ -732,7 +736,7 @@ void EditorPanel::ApplyPasswordVisibility(bool visible) {
     password_input_->setEchoMode(visible ? QLineEdit::Normal : QLineEdit::Password);
     preview_toggle_->setIcon(LoadEditorIcon(
         visible ? QStringLiteral("eye-off") : QStringLiteral("eye"),
-        QStringLiteral("hint-8"), 14));
+        QStringLiteral("hint-8"), 16));
 }
 
 void EditorPanel::SetDefaultPasswordVisible(bool visible) {
@@ -795,22 +799,22 @@ void EditorPanel::RefreshThemeAssets() {
 
     set_tool_icon(QStringLiteral("EditorHeaderBack"),
                   QStringLiteral("arrow-left"), QStringLiteral("muted-7"),
-                  18);
+                  16);
     set_tool_icon(QStringLiteral("EditorHeaderClose"), QStringLiteral("x"),
-                  QStringLiteral("muted-7"), 20);
+                  QStringLiteral("muted-7"), 16);
     set_tool_icon(QStringLiteral("EditorGenerateButton"),
                   QStringLiteral("refresh-cw"), QStringLiteral("accent"), 12);
     if (preview_toggle_) {
         preview_toggle_->setIcon(LoadEditorIcon(
             preview_toggle_->isChecked() ? QStringLiteral("eye-off")
                                          : QStringLiteral("eye"),
-            QStringLiteral("hint-8"), 14));
+            QStringLiteral("hint-8"), 16));
     }
     set_tool_icon(QStringLiteral("EditorGeneratorBack"),
                   QStringLiteral("arrow-left"), QStringLiteral("muted-7"),
-                  18);
+                  16);
     set_tool_icon(QStringLiteral("EditorGeneratorClose"),
-                  QStringLiteral("x"), QStringLiteral("muted-7"), 20);
+                  QStringLiteral("x"), QStringLiteral("muted-7"), 16);
     set_tool_icon(QStringLiteral("EditorGeneratorRefresh"),
                   QStringLiteral("refresh-cw"), QStringLiteral("accent"), 16);
     if (auto* regenerate = findChild<QPushButton*>(
@@ -846,7 +850,7 @@ void EditorPanel::OnTogglePasswordPreview() {
                                           : QLineEdit::Password);
     preview_toggle_->setIcon(LoadEditorIcon(
         visible ? QStringLiteral("eye-off") : QStringLiteral("eye"),
-        QStringLiteral("hint-8"), 14));
+        QStringLiteral("hint-8"), 16));
 }
 
 void EditorPanel::OnShowGenerator() {
