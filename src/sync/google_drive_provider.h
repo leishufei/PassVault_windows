@@ -48,6 +48,9 @@ class GoogleDriveProvider : public QObject, public CloudStorageProvider {
     std::optional<CloudDownloadResult> DownloadBackupWithVersion(
         const QString& remote_name, QString* out_error) override;
 
+    CloudReadResult ReadBackup(const QString& remote_name,
+                               QString* out_error) override;
+
     UploadIfMatchStatus UploadBackupIfMatch(
         const QByteArray& data, const QString& remote_name,
         const QString& expected_version, QString* out_error) override;
@@ -68,7 +71,7 @@ class GoogleDriveProvider : public QObject, public CloudStorageProvider {
                                        const QByteArray& metadata_json,
                                        const QByteArray& file_data);
 
-    std::optional<QString> GetOrCreateFolder(QString* out_error);
+    std::optional<QString> GetOrCreateFolder(QString* out_error, bool create = true);
     std::optional<QString> FindFileId(const QString& file_name,
                                       const QString& folder_id,
                                       QString* out_error);

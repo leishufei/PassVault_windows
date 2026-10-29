@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QHash>
 #include <QString>
+#include <QScopedValueRollback>
 
 #include <algorithm>
 #include <cstdint>
@@ -138,6 +139,10 @@ SyncManager::SyncManager(storage::PasswordDao* pwd_dao,
 
 SyncManager::Result SyncManager::PerformSync(const QString& remote_name,
                                               int max_retries) {
+    if (paused_ || busy_) {
+        return {false, StatusKind::kError, QStringLiteral("同步已暂停或正在执行")};
+    }
+    QScopedValueRollback<bool> busy(busy_, true);
     emit SyncStarted();
     Result final_result;
     for (int i = 0; i < max_retries; ++i) {
@@ -176,16 +181,22 @@ SyncManager::DoSyncOutcome SyncManager::DoSyncOnce(const QString& remote_name) {
         reinterpret_cast<const char*>(master_pwd->data()), master_pwd->size());
 
     // 1. Local snapshot
-    auto local_passwords = pwd_dao_->ListIncludingDeleted();
-    auto local_categories = cat_dao_->ListIncludingDeleted();
+    const auto local_passwords = pwd_dao_->ReadAll();
+    if (!local_passwords) {
+        return {DoSyncStatus::kFatal, QStringLiteral("读取本地密码失败")};
+    }
+    const auto local_categories = cat_dao_->ReadAll();
+    if (!local_categories) {
+        return {DoSyncStatus::kFatal, QStringLiteral("读取本地分类失败")};
+    }
     const auto local_markers = pwd_dao_->ListDeletionMarkers();
     if (!local_markers) {
         return {DoSyncStatus::kFatal, QStringLiteral("读取永久删除标记失败")};
     }
 
     QHash<std::int64_t, QString> cat_id_to_uuid;
-    cat_id_to_uuid.reserve(local_categories.size() + 1);
-    for (const auto& c : local_categories) {
+    cat_id_to_uuid.reserve(local_categories->size() + 1);
+    for (const auto& c : *local_categories) {
         cat_id_to_uuid.insert(c.id, c.uuid);
     }
     cat_id_to_uuid.insert(0, QString{});
@@ -195,9 +206,9 @@ SyncManager::DoSyncOutcome SyncManager::DoSyncOnce(const QString& remote_name) {
     QString cloud_version;
     {
         QString err;
-        auto download =
-            provider_->DownloadBackupWithVersion(remote_name, &err);
-        if (download) {
+        const auto read = provider_->ReadBackup(remote_name, &err);
+        const auto* download = &read.backup;
+        if (read.status == CloudReadStatus::kFound) {
             cloud_version = download->version;
             auto backup = CloudBackupFormat::FromJsonBytes(download->data);
             if (!backup) {
@@ -217,17 +228,17 @@ SyncManager::DoSyncOutcome SyncManager::DoSyncOnce(const QString& remote_name) {
                             "云端为 V1 旧格式，请先在 Android 端同步升级到 V2")};
             }
             cloud_payload = std::move(parsed);
-        } else {
-            // No cloud file or transient network error: treat as first sync
-            // and take the empty-cloud upload path.
+        } else if (read.status == CloudReadStatus::kMissing) {
             cloud_version.clear();
+        } else {
+            return {DoSyncStatus::kFatal, QStringLiteral("读取云端备份失败")};
         }
     }
 
     // 3. Merge categories
     QHash<QString, CategorySyncItemV2> local_cat_map;
-    local_cat_map.reserve(local_categories.size());
-    for (const auto& c : local_categories) {
+    local_cat_map.reserve(local_categories->size());
+    for (const auto& c : *local_categories) {
         local_cat_map.insert(c.uuid, CategoryToSyncItem(c));
     }
     QHash<QString, CategorySyncItemV2> cloud_cat_map;
@@ -261,18 +272,21 @@ SyncManager::DoSyncOutcome SyncManager::DoSyncOnce(const QString& remote_name) {
     }
 
     // Reload categories, rebuild uuid -> id map
-    auto updated_categories = cat_dao_->ListIncludingDeleted();
+    const auto updated_categories = cat_dao_->ReadAll();
+    if (!updated_categories) {
+        return {DoSyncStatus::kFatal, QStringLiteral("读取合并分类失败")};
+    }
     QHash<QString, std::int64_t> cat_uuid_to_id;
-    cat_uuid_to_id.reserve(updated_categories.size() + 1);
-    for (const auto& c : updated_categories) {
+    cat_uuid_to_id.reserve(updated_categories->size() + 1);
+    for (const auto& c : *updated_categories) {
         cat_uuid_to_id.insert(c.uuid, c.id);
     }
     cat_uuid_to_id.insert(QString{}, 0);
 
     // 5. Build local password sync items using original mapping
     QHash<QString, PasswordSyncItemV2> local_pw_map;
-    local_pw_map.reserve(local_passwords.size());
-    for (const auto& p : local_passwords) {
+    local_pw_map.reserve(local_passwords->size());
+    for (const auto& p : *local_passwords) {
         auto item = PasswordEntryToSyncItem(p, cat_id_to_uuid, *session_key);
         if (!item) {
             return {DoSyncStatus::kFatal,
@@ -353,26 +367,35 @@ SyncManager::DoSyncOutcome SyncManager::DoSyncOnce(const QString& remote_name) {
 
     // 7. Dedup categories by name
     const std::int64_t now_ms = QDateTime::currentMSecsSinceEpoch();
-    const bool dedup_changed = DedupCategoriesByName(now_ms);
+    const auto dedup_changed = DedupCategoriesByName(now_ms);
+    if (!dedup_changed) {
+        return {DoSyncStatus::kFatal, QStringLiteral("读取去重分类失败")};
+    }
 
     // 8. Reload final state and rebuild sync items
-    auto final_categories = cat_dao_->ListIncludingDeleted();
-    auto final_passwords = pwd_dao_->ListIncludingDeleted();
+    const auto final_categories = cat_dao_->ReadAll();
+    if (!final_categories) {
+        return {DoSyncStatus::kFatal, QStringLiteral("读取最终分类失败")};
+    }
+    const auto final_passwords = pwd_dao_->ReadAll();
+    if (!final_passwords) {
+        return {DoSyncStatus::kFatal, QStringLiteral("读取最终密码失败")};
+    }
     QHash<std::int64_t, QString> final_cat_id_to_uuid;
-    final_cat_id_to_uuid.reserve(final_categories.size() + 1);
-    for (const auto& c : final_categories) {
+    final_cat_id_to_uuid.reserve(final_categories->size() + 1);
+    for (const auto& c : *final_categories) {
         final_cat_id_to_uuid.insert(c.id, c.uuid);
     }
     final_cat_id_to_uuid.insert(0, QString{});
 
     std::vector<CategorySyncItemV2> final_cat_items;
-    final_cat_items.reserve(final_categories.size());
-    for (const auto& c : final_categories) {
+    final_cat_items.reserve(final_categories->size());
+    for (const auto& c : *final_categories) {
         final_cat_items.push_back(CategoryToSyncItem(c));
     }
     std::vector<PasswordSyncItemV2> final_pw_items;
-    final_pw_items.reserve(final_passwords.size());
-    for (const auto& p : final_passwords) {
+    final_pw_items.reserve(final_passwords->size());
+    for (const auto& p : *final_passwords) {
         auto item =
             PasswordEntryToSyncItem(p, final_cat_id_to_uuid, *session_key);
         if (!item) {
@@ -386,13 +409,21 @@ SyncManager::DoSyncOutcome SyncManager::DoSyncOnce(const QString& remote_name) {
     if (!final_markers) {
         return {DoSyncStatus::kFatal, QStringLiteral("读取永久删除标记失败")};
     }
+    bool markers_changed = false;
     for (const auto& marker : *final_markers) {
         final_pw_items.push_back(DeletionMarkerToSyncItem(marker));
+        const auto cloud = cloud_pw_map.constFind(marker.uuid);
+        if (cloud == cloud_pw_map.cend() ||
+            cloud->updated_at != marker.deleted_at ||
+            !IsContentlessTombstone(*cloud)) {
+            markers_changed = true;
+        }
     }
 
     // 9. Upload if needed
     const bool need_upload = cat_merge.has_local_changes ||
-                             pw_merge.has_local_changes || dedup_changed ||
+                             pw_merge.has_local_changes || markers_changed ||
+                             *dedup_changed ||
                              !cloud_payload;
     if (need_upload) {
         SyncPayloadV2 payload;
@@ -435,11 +466,12 @@ SyncManager::DoSyncOutcome SyncManager::DoSyncOnce(const QString& remote_name) {
     return {DoSyncStatus::kSuccess, QString{}};
 }
 
-bool SyncManager::DedupCategoriesByName(std::int64_t now_ms) {
-    auto all = cat_dao_->ListIncludingDeleted();
+std::optional<bool> SyncManager::DedupCategoriesByName(std::int64_t now_ms) {
+    const auto all = cat_dao_->ReadAll();
+    if (!all) return std::nullopt;
     // Group non-deleted, non-default, non-uncategorized by trim+lowercase name
     QHash<QString, std::vector<Category>> groups;
-    for (const auto& c : all) {
+    for (const auto& c : *all) {
         if (c.is_deleted || c.is_default || c.id == 0) continue;
         const QString key = c.name.trimmed().toLower();
         groups[key].push_back(c);
@@ -463,55 +495,6 @@ bool SyncManager::DedupCategoriesByName(std::int64_t now_ms) {
         }
     }
     return changed;
-}
-
-SyncManager::Result SyncManager::ChangeCloudMasterPassword(
-    const QString& old_password, const QString& new_password,
-    const QString& remote_name) {
-    if (!provider_) {
-        return {false, StatusKind::kError, QStringLiteral("未配置云端 Provider")};
-    }
-    const QByteArray old_pwd_bytes = old_password.toUtf8();
-    const QByteArray new_pwd_bytes = new_password.toUtf8();
-    const std::string_view old_view(old_pwd_bytes.constData(),
-                                    static_cast<std::size_t>(old_pwd_bytes.size()));
-    const std::string_view new_view(new_pwd_bytes.constData(),
-                                    static_cast<std::size_t>(new_pwd_bytes.size()));
-
-    for (int i = 0; i < kDefaultMaxRetries; ++i) {
-        QString err;
-        auto download = provider_->DownloadBackupWithVersion(remote_name, &err);
-        if (!download) {
-            return {false, StatusKind::kError, QStringLiteral("下载云端备份失败: ") + err};
-        }
-        auto backup = CloudBackupFormat::FromJsonBytes(download->data);
-        if (!backup) {
-            return {false, StatusKind::kError, QStringLiteral("云端备份 JSON 解析失败")};
-        }
-        auto plain = CloudCryptoService::DecryptFromCloud(*backup, old_view);
-        if (!plain) {
-            return {false, StatusKind::kError,
-                    QStringLiteral("旧主密码解密云端失败：主密码不匹配")};
-        }
-        auto new_backup = CloudCryptoService::EncryptForCloud(*plain, new_view);
-        if (!new_backup) {
-            return {false, StatusKind::kError, QStringLiteral("新主密码加密云端失败")};
-        }
-        const QByteArray file_bytes = new_backup->ToJsonBytes();
-
-        QString up_err;
-        auto status = provider_->UploadBackupIfMatch(
-            file_bytes, remote_name, download->version, &up_err);
-        if (status == UploadIfMatchStatus::kSuccess) {
-            return {true, StatusKind::kSuccess, QString{}};
-        }
-        if (status == UploadIfMatchStatus::kError) {
-            return {false, StatusKind::kError, QStringLiteral("上传失败: ") + up_err};
-        }
-        // kVersionMismatch: retry
-    }
-    return {false, StatusKind::kConflict,
-            QStringLiteral("多次重试后仍存在并发冲突")};
 }
 
 }  // namespace passvault::sync

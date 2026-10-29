@@ -21,6 +21,9 @@ class SyncScheduler : public QObject {
     void set_debounce_ms(int ms) { debounce_ms_ = ms; }
     int debounce_ms() const { return debounce_ms_; }
 
+    void SetPaused(bool paused);
+    bool is_paused() const { return paused_; }
+
     void MarkDirty();
 
     void SyncImmediately();
@@ -36,6 +39,8 @@ class SyncScheduler : public QObject {
 
     SyncManager* sync_manager_;
     QTimer* timer_;
+    bool paused_ = false;
+    bool dirty_ = false;
     int debounce_ms_ = kDefaultDebounceMs;
 };
 

@@ -40,6 +40,7 @@ class GoogleOAuthClient : public QObject {
     virtual void CancelAuthorization();
 
     void RefreshAccessToken();
+    QString EnsureAccessToken();
 
     void RevokeTokens();
 
@@ -75,6 +76,7 @@ class GoogleOAuthClient : public QObject {
     QString expected_state_;
     QString pending_verifier_;
 
+    bool refreshing_ = false;
     QString access_token_;
     QDateTime access_token_expires_at_;
 };

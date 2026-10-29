@@ -23,7 +23,25 @@ void SessionManager::Unlock(crypto::SessionKey session_key,
     if (was_locked) emit LockChanged(false);
 }
 
+bool SessionManager::BeginPasswordChange() {
+    if (password_change_active_ || !unlocked_) return false;
+    password_change_active_ = true;
+    lock_requested_ = false;
+    return true;
+}
+
+void SessionManager::EndPasswordChange(bool keep_locked) {
+    password_change_active_ = false;
+    const bool must_lock = keep_locked || lock_requested_;
+    lock_requested_ = false;
+    if (must_lock) Lock();
+}
+
 void SessionManager::Lock() {
+    if (password_change_active_) {
+        lock_requested_ = true;
+        return;
+    }
     if (!unlocked_) return;
     session_key_.reset();
     master_password_.Clear();
@@ -32,6 +50,8 @@ void SessionManager::Lock() {
 }
 
 void SessionManager::ResetForTests() {
+    password_change_active_ = false;
+    lock_requested_ = false;
     session_key_.reset();
     master_password_.Clear();
     unlocked_ = false;

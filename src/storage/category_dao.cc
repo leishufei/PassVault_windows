@@ -61,6 +61,18 @@ std::vector<model::Category> RunListQuery(Database& db,
 
 CategoryDao::CategoryDao(Database& db) : db_(db) {}
 
+std::optional<std::vector<model::Category>> CategoryDao::ReadAll() {
+    try {
+        Statement stmt(db_.handle(), std::string("SELECT ") +
+                       kSelectAllColumns + " FROM categories");
+        std::vector<model::Category> rows;
+        while (stmt.Step()) rows.push_back(ReadRow(stmt));
+        return rows;
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
 std::vector<model::Category> CategoryDao::ListActive() {
     return RunListQuery(db_, std::string("SELECT ") + kSelectAllColumns +
                                  " FROM categories WHERE isDeleted = 0 "

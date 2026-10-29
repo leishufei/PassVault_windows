@@ -14,6 +14,8 @@
 #include "storage/database.h"
 #include "storage/password_dao.h"
 #include "storage/schema.h"
+#include "storage/category_dao.h"
+#include "master_password/password_change_coordinator.h"
 
 namespace {
 
@@ -30,7 +32,10 @@ class ProbeHangTest : public ::testing::Test {
         manager_ =
             std::make_unique<passvault::master_password::MasterPasswordManager>(
                 *store_);
-        manager_->set_password_dao(dao_.get());
+        categories_ = std::make_unique<passvault::storage::CategoryDao>(*db_);
+        coordinator_ = std::make_unique<passvault::master_password::PasswordChangeCoordinator>(
+            *store_, *manager_, *dao_, *categories_, []() { return true; });
+        ASSERT_TRUE(coordinator_->SaveBinding(passvault::master_password::CloudBinding::kLocal));
     }
 
     std::int64_t InsertEncrypted(const passvault::crypto::SessionKey& key,
@@ -51,6 +56,8 @@ class ProbeHangTest : public ::testing::Test {
         return dao_->Insert(entry).value_or(-1);
     }
 
+    std::unique_ptr<passvault::storage::CategoryDao> categories_;
+    std::unique_ptr<passvault::master_password::PasswordChangeCoordinator> coordinator_;
     QTemporaryDir dir_;
     std::unique_ptr<passvault::master_password::MasterPasswordStore> store_;
     std::unique_ptr<passvault::storage::Database> db_;
@@ -71,9 +78,10 @@ TEST_F(ProbeHangTest, First) {
     empty.uuid = QStringLiteral("uuid-e");
     empty.title = QStringLiteral("empty");
     dao_->Insert(empty);
-    const auto r = manager_->PrepareChange(QString(12, QLatin1Char('i')),
-                                          QString(12, QLatin1Char('r')));
-    EXPECT_TRUE(r.success);
+    const auto r = coordinator_->Change(QString(12, QLatin1Char('i')),
+                                          QString(12, QLatin1Char('r')),
+                                          QString(12, QLatin1Char('r')), nullptr);
+    EXPECT_EQ(r.outcome, passvault::master_password::PasswordChangeCoordinator::Outcome::kUnchanged);
 }
 
 TEST_F(ProbeHangTest, Second) {
@@ -90,9 +98,10 @@ TEST_F(ProbeHangTest, Second) {
                     QStringLiteral("uuid-f"));
     const auto rb = store_->Load();
     ASSERT_TRUE(rb.has_value());
-    const auto r = manager_->PrepareChange(QString(12, QLatin1Char('i')),
-                                           QString(12, QLatin1Char('r')));
-    EXPECT_FALSE(r.success);
+    const auto r = coordinator_->Change(QString(12, QLatin1Char('i')),
+                                           QString(12, QLatin1Char('r')),
+                                          QString(12, QLatin1Char('r')), nullptr);
+    EXPECT_EQ(r.outcome, passvault::master_password::PasswordChangeCoordinator::Outcome::kUnchanged);
     const auto ra = store_->Load();
     ASSERT_TRUE(ra.has_value());
     const auto e = dao_->FindById(a);

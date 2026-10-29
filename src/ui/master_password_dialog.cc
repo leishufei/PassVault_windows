@@ -42,7 +42,7 @@ QString SubtitleFor(MasterPasswordDialog::Mode mode) {
             return QStringLiteral("输入主密码继续使用您的密码库。");
         case MasterPasswordDialog::Mode::kChange:
             return QStringLiteral(
-                "修改后，本设备上的保险库会使用新主密码重新加密。");
+                "修改后，本地保险库与已绑定的云端备份将使用新主密码。曾绑定云端时需要联网核对。");
     }
     return {};
 }
@@ -110,6 +110,10 @@ QString MasterPasswordDialog::OldPassword() const {
 
 QString MasterPasswordDialog::NewPassword() const {
     return new_edit_ ? new_edit_->text() : QString();
+}
+
+QString MasterPasswordDialog::ConfirmedPassword() const {
+    return confirm_edit_ ? confirm_edit_->text() : QString();
 }
 
 void MasterPasswordDialog::SetErrorText(const QString& text) {

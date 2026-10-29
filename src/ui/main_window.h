@@ -12,6 +12,7 @@
 #include "sync/sync_manager.h"
 
 class QAction;
+class QCloseEvent;
 class QHBoxLayout;
 class QLabel;
 class QLineEdit;
@@ -56,17 +57,20 @@ class MainWindow : public QMainWindow {
     ~MainWindow() override;
 
     void Reload();
+    void SetMigrationActive(bool active);
     void SetSessionKey(const crypto::SessionKey* session_key);
     PreferencesPage* preferences_page() const { return preferences_page_; }
 
  signals:
     void LockRequested();
+    void DeferredExitRequested();
     void OpenSettingsRequested();
     void ImportCsvRequested();
     void ExportCsvRequested();
     void MasterPasswordChangeRequested();
 
  protected:
+    void closeEvent(QCloseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void changeEvent(QEvent* event) override;
@@ -130,6 +134,7 @@ class MainWindow : public QMainWindow {
     void ShowPasswordCreate();
 
     Deps deps_;
+    bool migration_active_ = false;
     QStackedWidget* central_stack_ = nullptr;
     QWidget* workspace_page_ = nullptr;
     QWidget* sidebar_ = nullptr;

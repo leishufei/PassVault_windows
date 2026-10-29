@@ -2,11 +2,14 @@
 #include <QDateTime>
 
 #include <QByteArray>
+#include <QElapsedTimer>
 #include <QSignalSpy>
 #include <QString>
+#include <QTest>
 
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -29,6 +32,7 @@
 #include "sync/cloud_crypto_service.h"
 #include "sync/cloud_storage_provider.h"
 #include "sync/sync_manager.h"
+#include "sync/sync_scheduler.h"
 
 namespace {
 
@@ -117,6 +121,7 @@ class FakeProvider : public CloudStorageProvider {
 
     bool UploadBackup(const QByteArray& data, const QString&,
                       QString*) override {
+        if (on_upload) std::exchange(on_upload, {})();
         ++upload_count_;
         data_ = data;
         version_ = NextVersion();
@@ -144,10 +149,18 @@ class FakeProvider : public CloudStorageProvider {
         return r;
     }
 
+    passvault::sync::CloudReadResult ReadBackup(const QString& name, QString* error) override {
+        if (on_read) std::exchange(on_read, {})();
+        auto result = DownloadBackupWithVersion(name, error);
+        if (!result) return {passvault::sync::CloudReadStatus::kMissing, {}};
+        return {passvault::sync::CloudReadStatus::kFound, *result};
+    }
+
     UploadIfMatchStatus UploadBackupIfMatch(const QByteArray& data,
                                             const QString&,
                                             const QString& expected_version,
                                             QString* out_error) override {
+        if (on_upload) std::exchange(on_upload, {})();
         if (always_mismatch_) {
             if (out_error) *out_error = QStringLiteral("simulated mismatch");
             return UploadIfMatchStatus::kVersionMismatch;
@@ -176,6 +189,9 @@ class FakeProvider : public CloudStorageProvider {
         data_ = data;
         version_ = version;
     }
+
+    std::function<void()> on_read;
+    std::function<void()> on_upload;
 
  private:
     QString NextVersion() {
@@ -214,6 +230,11 @@ class SyncManagerTest : public ::testing::Test {
         return SyncPayloadV2::FromJsonBytes(*plain);
     }
 
+    void CheckPermanentDeletionDuringRead(bool old_cloud);
+    void CheckFullReadFailure(const char* table, int read_to_deny,
+                              int expected_category_scans,
+                              bool delete_during_read = false);
+
     std::unique_ptr<Database> db_;
     std::unique_ptr<PasswordDao> pwd_dao_;
     std::unique_ptr<CategoryDao> cat_dao_;
@@ -222,6 +243,193 @@ class SyncManagerTest : public ::testing::Test {
 };
 
 }  // namespace
+
+void SyncManagerTest::CheckFullReadFailure(
+    const char* table, int read_to_deny, int expected_category_scans,
+    bool delete_during_read) {
+    manager_->set_provider(&provider_);
+    const auto now = QDateTime::currentMSecsSinceEpoch();
+    Category category;
+    category.uuid = QStringLiteral("read-category");
+    category.name = QStringLiteral("Read category");
+    category.created_at = now;
+    category.updated_at = now;
+    const auto category_id = cat_dao_->Insert(category);
+    ASSERT_TRUE(category_id);
+    auto active = MakeEntry(71, QStringLiteral("synthetic"), now);
+    active.category_id = *category_id;
+    ASSERT_TRUE(pwd_dao_->Insert(active));
+    auto trash = MakeEntry(72, QStringLiteral("synthetic"), now);
+    trash.is_deleted = true;
+    const auto trash_id = pwd_dao_->Insert(trash);
+    ASSERT_TRUE(trash_id);
+    SyncPayloadV2 cloud;
+    for (const auto& entry : {active, trash}) {
+        PasswordSyncItemV2 item;
+        item.uuid = entry.uuid;
+        item.title = entry.title;
+        item.username = entry.username;
+        item.password = QStringLiteral("synthetic");
+        item.created_at = entry.created_at;
+        item.updated_at = entry.updated_at;
+        item.is_deleted = entry.is_deleted;
+        cloud.passwords.push_back(item);
+    }
+    const auto backup = CloudCryptoService::EncryptForCloud(
+        cloud.ToJsonBytes(), kMasterPassword);
+    ASSERT_TRUE(backup);
+    const auto original_cloud = backup->ToJsonBytes();
+    provider_.SetCloudDirectly(original_cloud, QStringLiteral("original"));
+
+    struct ReadFailure {
+        const char* table;
+        int target;
+        int reads = 0;
+        int denied = 0;
+        int category_scans = 0;
+        int scans_at_denial = -1;
+        int password_uuid_reads = 0;
+        int uuid_reads_at_denial = -1;
+    } failure{table, read_to_deny};
+    ASSERT_EQ(sqlite3_trace_v2(
+        db_->handle(), SQLITE_TRACE_STMT,
+        [](unsigned, void* context, void* statement, void*) {
+            auto& state = *static_cast<ReadFailure*>(context);
+            const std::string_view sql =
+                sqlite3_sql(static_cast<sqlite3_stmt*>(statement));
+            if (sql.find("SELECT ") == 0 &&
+                sql.find(" FROM categories") != std::string_view::npos &&
+                sql.find(" WHERE ") == std::string_view::npos) {
+                ++state.category_scans;
+            }
+            if (sql.find("SELECT ") == 0 &&
+                sql.find(" FROM password_entries WHERE uuid = ?") !=
+                    std::string_view::npos) {
+                ++state.password_uuid_reads;
+            }
+            return 0;
+        }, &failure), SQLITE_OK);
+    const auto install_failure = [&] {
+        EXPECT_EQ(sqlite3_set_authorizer(
+            db_->handle(),
+            [](void* context, int action, const char* table_name,
+               const char* column, const char*, const char*) {
+                auto& state = *static_cast<ReadFailure*>(context);
+                if (action == SQLITE_READ && table_name && column &&
+                    std::strcmp(table_name, state.table) == 0 &&
+                    std::strcmp(column, "id") == 0 &&
+                    ++state.reads == state.target) {
+                    ++state.denied;
+                    state.scans_at_denial = state.category_scans;
+                    state.uuid_reads_at_denial = state.password_uuid_reads;
+                    return SQLITE_DENY;
+                }
+                return SQLITE_OK;
+            }, &failure), SQLITE_OK);
+    };
+    bool cloud_read = false;
+    bool deleted = false;
+    provider_.on_read = [&] {
+        cloud_read = true;
+        if (delete_during_read) {
+            EXPECT_EQ(pwd_dao_->BulkPermanentlyDelete({*trash_id}, now), 1);
+            deleted = true;
+            install_failure();
+        }
+    };
+    if (!delete_during_read) install_failure();
+    const auto result = manager_->PerformSync();
+    EXPECT_EQ(sqlite3_set_authorizer(db_->handle(), nullptr, nullptr), SQLITE_OK);
+    EXPECT_EQ(sqlite3_trace_v2(db_->handle(), 0, nullptr, nullptr), SQLITE_OK);
+    EXPECT_EQ(failure.denied, 1);
+    EXPECT_EQ(failure.scans_at_denial, expected_category_scans);
+    EXPECT_EQ(cloud_read, expected_category_scans != 0);
+    if (delete_during_read) {
+        EXPECT_TRUE(deleted);
+        EXPECT_EQ(failure.uuid_reads_at_denial, 2);
+        EXPECT_FALSE(pwd_dao_->FindByUuid(trash.uuid));
+        const auto markers = pwd_dao_->ListDeletionMarkers();
+        ASSERT_TRUE(markers);
+        ASSERT_EQ(markers->size(), 1u);
+        EXPECT_EQ(markers->front().uuid, trash.uuid);
+        EXPECT_EQ(markers->front().deleted_at, now);
+    }
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(result.kind, SyncManager::StatusKind::kError);
+    EXPECT_EQ(provider_.upload_count(), 0);
+    ASSERT_TRUE(provider_.data());
+    EXPECT_TRUE(*provider_.data() == original_cloud);
+    EXPECT_EQ(provider_.version(), QStringLiteral("original"));
+    const auto preserved = pwd_dao_->FindByUuid(active.uuid);
+    ASSERT_TRUE(preserved);
+    EXPECT_TRUE(preserved->encrypted_password == active.encrypted_password);
+    EXPECT_EQ(preserved->category_id, *category_id);
+}
+
+TEST_F(SyncManagerTest, FinalPasswordReadFailureDoesNotUploadPartialBackup) {
+    CheckFullReadFailure("password_entries", 3, 4, true);
+}
+
+TEST_F(SyncManagerTest, FinalCategoryReadFailureDoesNotUploadPartialBackup) {
+    CheckFullReadFailure("categories", 4, 3, true);
+}
+
+TEST_F(SyncManagerTest, InitialPasswordReadFailureStopsBeforeCloudRead) {
+    CheckFullReadFailure("password_entries", 1, 0);
+}
+
+TEST_F(SyncManagerTest, InitialCategoryReadFailureStopsBeforeCloudRead) {
+    CheckFullReadFailure("categories", 1, 0);
+}
+
+TEST_F(SyncManagerTest, MergedCategoryReadFailureStopsSync) {
+    CheckFullReadFailure("categories", 3, 1);
+}
+
+TEST_F(SyncManagerTest, DedupCategoryReadFailureStopsSync) {
+    CheckFullReadFailure("categories", 4, 2);
+}
+
+TEST_F(SyncManagerTest, LegitimatelyEmptyLocalAndCloudSyncSucceeds) {
+    manager_->set_provider(&provider_);
+    const auto passwords = pwd_dao_->ReadAll();
+    ASSERT_TRUE(passwords);
+    ASSERT_TRUE(passwords->empty());
+    ASSERT_TRUE(db_->Execute("DELETE FROM categories"));
+    ASSERT_TRUE(manager_->PerformSync().success);
+    EXPECT_EQ(provider_.upload_count(), 1);
+    const auto cloud = DecodeCloud(provider_);
+    ASSERT_TRUE(cloud);
+    EXPECT_TRUE(cloud->passwords.empty());
+    EXPECT_TRUE(cloud->categories.empty());
+}
+
+TEST_F(SyncManagerTest, FullReadsPreserveCategoryReferenceInUploadedPayload) {
+    manager_->set_provider(&provider_);
+    Category category;
+    category.uuid = QStringLiteral("category-reference");
+    category.name = QStringLiteral("Reference");
+    category.created_at = QDateTime::currentMSecsSinceEpoch();
+    category.updated_at = category.created_at;
+    const auto id = cat_dao_->Insert(category);
+    ASSERT_TRUE(id);
+    auto entry = MakeEntry(73, QStringLiteral("synthetic"), category.updated_at);
+    entry.category_id = *id;
+    ASSERT_TRUE(pwd_dao_->Insert(entry));
+    ASSERT_TRUE(manager_->PerformSync().success);
+    const auto cloud = DecodeCloud(provider_);
+    ASSERT_TRUE(cloud);
+    ASSERT_EQ(cloud->passwords.size(), 1u);
+    EXPECT_EQ(cloud->passwords.front().category_uuid, category.uuid);
+    bool found_category = false;
+    for (const auto& item : cloud->categories) {
+        if (item.uuid == category.uuid) {
+            found_category = true;
+            EXPECT_EQ(item.name, category.name);
+        }
+    }
+    EXPECT_TRUE(found_category);
+}
 
 TEST_F(SyncManagerTest, NoProviderFailsFast) {
     QSignalSpy started(manager_.get(), &SyncManager::SyncStarted);
@@ -532,4 +740,113 @@ TEST_F(SyncManagerTest, ReceivedMarkerWriteFailureKeepsOriginalContentAndReports
     EXPECT_EQ(preserved->encrypted_password, original.encrypted_password);
     EXPECT_TRUE(pwd_dao_->ListDeletionMarkers()->empty());
     EXPECT_EQ(provider_.upload_count(), 0);
+}
+
+void SyncManagerTest::CheckPermanentDeletionDuringRead(bool old_cloud) {
+    manager_->set_provider(&provider_);
+    const auto now = QDateTime::currentMSecsSinceEpoch();
+    auto entry = MakeEntry(old_cloud ? 2 : 1, QStringLiteral("synthetic"), now);
+    entry.is_deleted = true;
+    const auto id = pwd_dao_->Insert(entry);
+    ASSERT_TRUE(id);
+    SyncPayloadV2 payload;
+    if (old_cloud) {
+        PasswordSyncItemV2 cloud;
+        cloud.uuid = entry.uuid;
+        cloud.title = entry.title;
+        cloud.password = QStringLiteral("synthetic");
+        cloud.created_at = entry.created_at;
+        cloud.updated_at = entry.updated_at;
+        cloud.is_deleted = true;
+        payload.passwords.push_back(cloud);
+    }
+    const auto backup = CloudCryptoService::EncryptForCloud(
+        payload.ToJsonBytes(), kMasterPassword);
+    ASSERT_TRUE(backup);
+    provider_.SetCloudDirectly(backup->ToJsonBytes(), QStringLiteral("remote"));
+    provider_.on_read = [&] {
+        EXPECT_EQ(pwd_dao_->BulkPermanentlyDelete({*id}, now), 1);
+    };
+    for (int round = 0; round < 2; ++round) {
+        ASSERT_TRUE(manager_->PerformSync().success);
+        EXPECT_FALSE(pwd_dao_->FindByUuid(entry.uuid));
+        EXPECT_TRUE(pwd_dao_->ListActive().empty());
+        ASSERT_TRUE(pwd_dao_->ListTrashIds());
+        EXPECT_TRUE(pwd_dao_->ListTrashIds()->empty());
+        const auto markers = pwd_dao_->ListDeletionMarkers();
+        ASSERT_TRUE(markers);
+        ASSERT_EQ(markers->size(), 1u);
+        for (const auto& marker : *markers) EXPECT_EQ(marker.deleted_at, now);
+        const auto uploaded = DecodeCloud(provider_);
+        ASSERT_TRUE(uploaded);
+        ASSERT_EQ(uploaded->passwords.size(), markers->size());
+        for (const auto& item : uploaded->passwords) {
+            EXPECT_TRUE(item.is_deleted);
+            EXPECT_TRUE(item.title.isEmpty());
+            EXPECT_TRUE(item.username.isEmpty());
+            EXPECT_TRUE(item.password.isEmpty());
+            EXPECT_TRUE(item.website.isEmpty());
+            EXPECT_TRUE(item.notes.isEmpty());
+            EXPECT_TRUE(item.category_uuid.isEmpty());
+            EXPECT_FALSE(item.is_favorite);
+            EXPECT_EQ(item.icon_color, 0);
+            EXPECT_EQ(item.created_at, 0);
+            EXPECT_EQ(item.updated_at, now);
+        }
+    }
+}
+
+TEST_F(SyncManagerTest, PermanentDeletionDuringReadSurvivesEmptyCloud) {
+    CheckPermanentDeletionDuringRead(false);
+}
+
+TEST_F(SyncManagerTest, PermanentDeletionDuringReadSurvivesMatchingOldCloud) {
+    CheckPermanentDeletionDuringRead(true);
+}
+
+TEST_F(SyncManagerTest, PermanentDeletionDuringUploadRetainsDirtyAfterBusyTimeout) {
+    manager_->set_provider(&provider_);
+    passvault::sync::SyncScheduler scheduler(manager_.get());
+    scheduler.set_debounce_ms(20);
+    QSignalSpy triggered(&scheduler, &passvault::sync::SyncScheduler::SyncTriggered);
+    const auto now = QDateTime::currentMSecsSinceEpoch();
+    auto entry = MakeEntry(1, QStringLiteral("synthetic"), now);
+    entry.is_deleted = true;
+    const auto id = pwd_dao_->Insert(entry);
+    ASSERT_TRUE(id);
+    provider_.on_upload = [&] {
+        EXPECT_TRUE(manager_->is_busy());
+        EXPECT_EQ(pwd_dao_->BulkPermanentlyDelete({*id}, now), 1);
+        scheduler.MarkDirty();
+        QTest::qWait(80);
+        EXPECT_EQ(triggered.count(), 1);
+        EXPECT_TRUE(scheduler.IsPending());
+        scheduler.SyncImmediately();
+        EXPECT_EQ(triggered.count(), 1);
+        EXPECT_TRUE(scheduler.IsPending());
+    };
+    scheduler.SyncImmediately();
+    EXPECT_FALSE(pwd_dao_->FindByUuid(entry.uuid));
+    QElapsedTimer wait;
+    wait.start();
+    while (provider_.upload_count() < 2 && wait.elapsed() < 3000) {
+        QTest::qWait(20);
+    }
+    ASSERT_EQ(provider_.upload_count(), 2);
+    EXPECT_FALSE(scheduler.IsPending());
+    const auto markers = pwd_dao_->ListDeletionMarkers();
+    ASSERT_TRUE(markers);
+    ASSERT_EQ(markers->size(), 1u);
+    EXPECT_EQ(markers->front().deleted_at, now);
+    const auto uploaded = DecodeCloud(provider_);
+    ASSERT_TRUE(uploaded);
+    ASSERT_EQ(uploaded->passwords.size(), 1u);
+    EXPECT_TRUE(uploaded->passwords.front().is_deleted);
+    EXPECT_TRUE(uploaded->passwords.front().title.isEmpty());
+    EXPECT_TRUE(uploaded->passwords.front().password.isEmpty());
+    EXPECT_EQ(uploaded->passwords.front().updated_at, now);
+    ASSERT_TRUE(manager_->PerformSync().success);
+    EXPECT_FALSE(pwd_dao_->FindByUuid(entry.uuid));
+    EXPECT_TRUE(pwd_dao_->ListTrashIds()->empty());
+    EXPECT_EQ(provider_.upload_count(), 2);
 }

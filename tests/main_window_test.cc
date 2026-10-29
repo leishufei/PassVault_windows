@@ -1309,3 +1309,44 @@ TEST_F(MainWindowTest, TrashRowActionsScheduleDebouncedSyncAndPreserveUnselected
     EXPECT_TRUE(scheduler.IsPending());
     window_.reset();
 }
+
+TEST_F(MainWindowTest, MigrationBlocksWritesClearsEditorAndDefersExit) {
+    window_->show();
+    newButton()->click();
+    auto* title = editor()->findChild<QLineEdit*>(QStringLiteral("EditorTitleInput"));
+    ASSERT_NE(title, nullptr);
+    title->setText(QStringLiteral("pending isolated edit"));
+    auto* password = editor()->findChild<QLineEdit*>(QStringLiteral("EditorPasswordInput"));
+    ASSERT_NE(password, nullptr);
+    password->setText(QStringLiteral("isolated pending password"));
+    const auto before = password_dao_->ReadAll();
+    ASSERT_TRUE(before);
+    QSignalSpy exit(window_.get(), &MainWindow::DeferredExitRequested);
+    passvault::ui::ClipboardManager::Instance()->CopySensitive(QStringLiteral("isolated clipboard"));
+    window_->SetMigrationActive(true);
+    EXPECT_TRUE(QApplication::clipboard()->text().isEmpty());
+    EXPECT_TRUE(title->text().isEmpty());
+    EXPECT_TRUE(password->text().isEmpty());
+    EXPECT_FALSE(detail()->HasEntry());
+    EXPECT_FALSE(newButton()->isEnabled());
+    EXPECT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnEditorSaveRequested"));
+    QMetaObject::invokeMethod(window_.get(), "OnNewPassword");
+    QMetaObject::invokeMethod(window_.get(), "OnFavoriteToggleRequested",
+        Q_ARG(std::int64_t, before->front().id), Q_ARG(bool, true));
+    EXPECT_FALSE(window_->close());
+    EXPECT_EQ(exit.count(), 1);
+    EXPECT_TRUE(window_->isVisible());
+    const auto after = password_dao_->ReadAll();
+    ASSERT_TRUE(after);
+    ASSERT_EQ(before->size(), after->size());
+    for (std::size_t i = 0; i < after->size(); ++i) {
+        EXPECT_EQ(after->at(i).encrypted_password, before->at(i).encrypted_password);
+        EXPECT_EQ(after->at(i).updated_at, before->at(i).updated_at);
+        EXPECT_EQ(after->at(i).is_favorite, before->at(i).is_favorite);
+    }
+    window_->SetMigrationActive(false);
+    window_->SetSessionKey(&*session_key_);
+    newButton()->click();
+    EXPECT_TRUE(newButton()->isEnabled());
+    EXPECT_TRUE(editor()->isVisible());
+}

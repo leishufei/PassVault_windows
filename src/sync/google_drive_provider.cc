@@ -105,6 +105,7 @@ GoogleDriveProvider::HttpResult GoogleDriveProvider::SendRequestSync(
     EnsureNetwork();
 
     QNetworkRequest request{QUrl(url)};
+    request.setTransferTimeout(30000);
     request.setRawHeader("Authorization",
                          QByteArrayLiteral("Bearer ") + token.toUtf8());
     if (!content_type.isEmpty()) {
@@ -127,14 +128,12 @@ GoogleDriveProvider::HttpResult GoogleDriveProvider::SendRequestSync(
     result.http_status =
         reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     result.body = reply->readAll();
-    if (reply->error() != QNetworkReply::NoError && !result.ok()) {
+    if (reply->error() != QNetworkReply::NoError) {
         result.error =
             QStringLiteral("HTTP %1: %2").arg(result.http_status).arg(reply->errorString());
     } else if (result.http_status < 200 || result.http_status >= 300) {
         result.error =
-            QStringLiteral("HTTP %1: %2")
-                .arg(result.http_status)
-                .arg(QString::fromUtf8(result.body.left(512)));
+            QStringLiteral("HTTP %1").arg(result.http_status);
     }
     reply->deleteLater();
     return result;
@@ -159,7 +158,7 @@ GoogleDriveProvider::HttpResult GoogleDriveProvider::SendMultipartUploadSync(
     return SendRequestSync(verb, url, body, content_type);
 }
 
-std::optional<QString> GoogleDriveProvider::GetOrCreateFolder(QString* out_error) {
+std::optional<QString> GoogleDriveProvider::GetOrCreateFolder(QString* out_error, bool create) {
     QUrlQuery query;
     query.addQueryItem(QStringLiteral("spaces"), QStringLiteral("drive"));
     const QString q = QStringLiteral(
@@ -188,11 +187,19 @@ std::optional<QString> GoogleDriveProvider::GetOrCreateFolder(QString* out_error
         if (out_error) *out_error = QStringLiteral("Malformed folder list response");
         return std::nullopt;
     }
+    if (!doc.object().value(QStringLiteral("files")).isArray()) {
+        if (out_error) *out_error = QStringLiteral("Malformed file list");
+        return std::nullopt;
+    }
     const QJsonArray files = doc.object().value(QStringLiteral("files")).toArray();
     if (!files.isEmpty()) {
         const QString id = files.at(0).toObject().value(QStringLiteral("id")).toString();
         if (!id.isEmpty()) return id;
+        if (out_error) *out_error = QStringLiteral("Folder id missing");
+        return std::nullopt;
     }
+
+    if (!create) return QString{};
 
     // Create folder.
     QJsonObject meta;
@@ -245,12 +252,23 @@ std::optional<QString> GoogleDriveProvider::FindFileId(const QString& file_name,
         return std::nullopt;
     }
 
-    const QJsonDocument doc = QJsonDocument::fromJson(result.body);
+    QJsonParseError parse_error{};
+    const QJsonDocument doc = QJsonDocument::fromJson(result.body, &parse_error);
+    if (parse_error.error != QJsonParseError::NoError || !doc.isObject() ||
+        !doc.object().value(QStringLiteral("files")).isArray()) {
+        if (out_error) *out_error = QStringLiteral("Malformed file list");
+        return std::nullopt;
+    }
     const QJsonArray files = doc.object().value(QStringLiteral("files")).toArray();
     if (files.isEmpty()) {
         return QString{};  // File not found (empty string signals "not present")
     }
-    return files.at(0).toObject().value(QStringLiteral("id")).toString();
+    const QString id = files.at(0).toObject().value(QStringLiteral("id")).toString();
+    if (id.isEmpty()) {
+        if (out_error) *out_error = QStringLiteral("File id missing");
+        return std::nullopt;
+    }
+    return id;
 }
 
 std::optional<QString> GoogleDriveProvider::GetFileModifiedTime(
@@ -366,38 +384,46 @@ std::optional<QByteArray> GoogleDriveProvider::DownloadBackup(
 
 std::optional<CloudDownloadResult> GoogleDriveProvider::DownloadBackupWithVersion(
     const QString& remote_name, QString* out_error) {
-    auto folder_id = GetOrCreateFolder(out_error);
-    if (!folder_id) return std::nullopt;
+    auto result = ReadBackup(remote_name, out_error);
+    if (result.status != CloudReadStatus::kFound) return std::nullopt;
+    return result.backup;
+}
 
+CloudReadResult GoogleDriveProvider::ReadBackup(
+    const QString& remote_name, QString* out_error) {
+    auto folder_id = GetOrCreateFolder(out_error, false);
+    if (!folder_id) return {};
+    if (folder_id->isEmpty()) return {CloudReadStatus::kMissing, {}};
     auto file_id = FindFileId(remote_name, *folder_id, out_error);
-    if (!file_id) return std::nullopt;
-    if (file_id->isEmpty()) {
-        if (out_error) *out_error = QStringLiteral("Backup file not found on Drive");
-        return std::nullopt;
-    }
-
-    auto modified_time = GetFileModifiedTime(*file_id, out_error);
-    if (!modified_time) return std::nullopt;
-
+    if (!file_id) return {};
+    if (file_id->isEmpty()) return {CloudReadStatus::kMissing, {}};
+    auto before = GetFileModifiedTime(*file_id, out_error);
+    if (!before) return {};
     auto body = DownloadFileMedia(*file_id, out_error);
-    if (!body) return std::nullopt;
-
-    CloudDownloadResult out;
-    out.data = *body;
-    out.version = *modified_time;
-    return out;
+    if (!body) return {};
+    auto after = GetFileModifiedTime(*file_id, out_error);
+    if (!after || *before != *after) {
+        if (out_error) *out_error = QStringLiteral("Backup changed during download");
+        return {};
+    }
+    return {CloudReadStatus::kFound, {*body, *after}};
 }
 
 UploadIfMatchStatus GoogleDriveProvider::UploadBackupIfMatch(
     const QByteArray& data, const QString& remote_name,
     const QString& expected_version, QString* out_error) {
-    auto folder_id = GetOrCreateFolder(out_error);
+    auto folder_id = GetOrCreateFolder(out_error, expected_version.isEmpty());
     if (!folder_id) return UploadIfMatchStatus::kError;
+    if (folder_id->isEmpty()) return UploadIfMatchStatus::kVersionMismatch;
 
     auto file_id = FindFileId(remote_name, *folder_id, out_error);
     if (!file_id) return UploadIfMatchStatus::kError;
 
     if (file_id->isEmpty()) {
+        if (!expected_version.isEmpty()) {
+            if (out_error) *out_error = QStringLiteral("Expected backup disappeared");
+            return UploadIfMatchStatus::kVersionMismatch;
+        }
         if (CreateFile(remote_name, *folder_id, data, out_error)) {
             return UploadIfMatchStatus::kSuccess;
         }

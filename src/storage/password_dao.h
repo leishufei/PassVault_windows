@@ -25,6 +25,7 @@ class PasswordDao {
 
     std::vector<model::PasswordEntry> ListActive();
     std::vector<model::PasswordEntry> ListIncludingDeleted();
+    std::optional<std::vector<model::PasswordEntry>> ReadAll();
     std::vector<model::PasswordEntry> ListByCategory(std::int64_t category_id);
     std::vector<std::int64_t> ListIdsByCategory(std::int64_t category_id);
 

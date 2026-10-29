@@ -1,5 +1,7 @@
 #include "ui/main_window.h"
 
+#include <QCloseEvent>
+
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
@@ -270,6 +272,24 @@ MainWindow::MainWindow(const Deps& deps, QWidget* parent)
 }
 
 MainWindow::~MainWindow() = default;
+
+void MainWindow::SetMigrationActive(bool active) {
+    migration_active_ = active;
+    centralWidget()->setEnabled(!active);
+    if (active) {
+        SetSessionKey(nullptr);
+        ClipboardManager::Instance()->ClearSensitive();
+    }
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+    if (migration_active_) {
+        event->ignore();
+        emit DeferredExitRequested();
+        return;
+    }
+    QMainWindow::closeEvent(event);
+}
 
 void MainWindow::SetSessionKey(const crypto::SessionKey* session_key) {
     deps_.session_key = session_key;
@@ -1254,9 +1274,13 @@ bool MainWindow::EncryptAndAssign(model::PasswordEntry* entry,
     return true;
 }
 
-void MainWindow::OnNewPassword() { ShowPasswordCreate(); }
+void MainWindow::OnNewPassword() {
+    if (migration_active_) return;
+    ShowPasswordCreate();
+}
 
 void MainWindow::OnAddCategory() {
+    if (migration_active_) return;
     if (!deps_.category_dao || !deps_.session_key) return;
     bool accepted = false;
     const QString name = QInputDialog::getText(
@@ -1264,7 +1288,7 @@ void MainWindow::OnAddCategory() {
                              QStringLiteral("分类名称"), QLineEdit::Normal,
                              QString(), &accepted)
                              .trimmed();
-    if (!accepted) return;
+    if (!accepted || migration_active_ || !deps_.session_key) return;
     if (name.isEmpty()) {
         Toast::Show(this, QStringLiteral("分类名称不能为空"),
                     Toast::Level::kWarning);
@@ -1306,6 +1330,7 @@ void MainWindow::OnAddCategory() {
 }
 
 void MainWindow::ShowPasswordCreate() {
+    if (migration_active_) return;
     if (!editor_panel_ || !deps_.session_key) return;
     QList<model::Category> cats;
     for (const auto& c : categories_) cats.append(c);
@@ -1315,6 +1340,7 @@ void MainWindow::ShowPasswordCreate() {
 }
 
 void MainWindow::OnRenameCategory(std::int64_t category_id) {
+    if (migration_active_) return;
     if (!deps_.session_key || !deps_.category_dao) return;
     auto category = deps_.category_dao->FindById(category_id);
     if (!category || category->is_deleted) return;
@@ -1322,7 +1348,7 @@ void MainWindow::OnRenameCategory(std::int64_t category_id) {
     const QString name = QInputDialog::getText(
         this, QStringLiteral("重命名分类"), QStringLiteral("分类名称"),
         QLineEdit::Normal, category->name, &accepted).trimmed();
-    if (!accepted || name == category->name) return;
+    if (!accepted || migration_active_ || !deps_.session_key || name == category->name) return;
     if (name.isEmpty()) {
         Toast::Show(this, QStringLiteral("分类名称不能为空"),
                     Toast::Level::kWarning);
@@ -1347,6 +1373,7 @@ void MainWindow::OnRenameCategory(std::int64_t category_id) {
 }
 
 void MainWindow::OnDeleteCategory(std::int64_t category_id) {
+    if (migration_active_) return;
     if (!deps_.session_key || !deps_.category_dao || !deps_.password_dao) return;
     const auto category = deps_.category_dao->FindById(category_id);
     if (!category || category->is_deleted) return;
@@ -1382,6 +1409,7 @@ void MainWindow::OnDeleteCategory(std::int64_t category_id) {
 }
 
 void MainWindow::PersistCategoryOrder() {
+    if (migration_active_) return;
     if (suppress_selection_ || !deps_.session_key || !deps_.password_dao ||
         !deps_.category_dao) return;
     bool success = false;
@@ -1409,6 +1437,7 @@ void MainWindow::PersistCategoryOrder() {
 }
 
 void MainWindow::OpenEditDialog(std::int64_t entry_id) {
+    if (migration_active_) return;
     if (!editor_panel_ || !deps_.session_key) return;
     auto found = deps_.password_dao->FindById(entry_id);
     if (!found.has_value() || found->is_deleted) return;
@@ -1427,6 +1456,7 @@ void MainWindow::OpenEditDialog(std::int64_t entry_id) {
 }
 
 void MainWindow::OnEditorSaveRequested() {
+    if (migration_active_) return;
     if (!editor_panel_ || !editor_panel_->IsOpen() || !deps_.session_key) return;
     auto result = editor_panel_->Result();
     if (editor_entry_id_ < 0) {
@@ -1482,6 +1512,7 @@ void MainWindow::OnDeleteSelected() {
 }
 
 void MainWindow::DeleteEntries(const std::vector<std::int64_t>& ids) {
+    if (migration_active_) return;
     if (!deps_.session_key || !deps_.password_dao || ids.empty()) return;
     if (selected_category_ == kSectionTrash) {
         PermanentlyDeleteEntries(ids, false);
@@ -1532,6 +1563,7 @@ void MainWindow::OnRestoreSelected() {
 }
 
 void MainWindow::RestoreEntries(const std::vector<std::int64_t>& ids) {
+    if (migration_active_) return;
     if (!deps_.session_key || selected_category_ != kSectionTrash ||
         ids.empty()) return;
     FinishTrashOperation(deps_.password_dao->BulkRestore(
@@ -1539,11 +1571,13 @@ void MainWindow::RestoreEntries(const std::vector<std::int64_t>& ids) {
 }
 
 void MainWindow::OnEmptyTrash() {
+    if (migration_active_) return;
     PermanentlyDeleteEntries({}, true);
 }
 
 void MainWindow::PermanentlyDeleteEntries(
     const std::vector<std::int64_t>& ids, bool empty_trash) {
+    if (migration_active_) return;
     if (!deps_.session_key || selected_category_ != kSectionTrash) return;
     const auto trash_ids = deps_.password_dao->ListTrashIds();
     if (!trash_ids) {
@@ -1625,6 +1659,7 @@ void MainWindow::OnOpenWebsiteRequested(std::int64_t entry_id) {
 }
 
 void MainWindow::OnFavoriteToggleRequested(std::int64_t entry_id, bool desired) {
+    if (migration_active_) return;
     if (!deps_.session_key) return;
     const auto entry = deps_.password_dao->FindById(entry_id);
     if (!entry || entry->is_deleted) return;

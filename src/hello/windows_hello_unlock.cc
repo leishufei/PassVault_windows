@@ -95,7 +95,10 @@ bool WindowsHelloUnlock::IsAvailable() {
 }
 
 bool WindowsHelloUnlock::IsEnrolled() const {
-    return QFile::exists(storage_path_);
+    if (!QFile::exists(storage_path_)) return false;
+    QFile file(storage_path_);
+    if (!file.open(QIODevice::ReadOnly)) return true;
+    return file.readAll() != QByteArrayLiteral("passvault-hello-invalidated");
 }
 
 bool WindowsHelloUnlock::Enroll(const QString& master_password) {
@@ -165,6 +168,19 @@ std::optional<QString> WindowsHelloUnlock::Unlock() {
     plain->fill('\0');
     last_error_ = HelloError::kOk;
     return pw;
+}
+
+bool WindowsHelloUnlock::Invalidate() {
+    if (!QFile::exists(storage_path_)) return true;
+    QSaveFile out(storage_path_);
+    const auto marker = QByteArrayLiteral("passvault-hello-invalidated");
+    if (!out.open(QIODevice::WriteOnly) || out.write(marker) != marker.size() ||
+        !out.commit()) {
+        last_error_ = HelloError::kIoError;
+        return false;
+    }
+    last_error_ = HelloError::kOk;
+    return true;
 }
 
 bool WindowsHelloUnlock::Disable() {

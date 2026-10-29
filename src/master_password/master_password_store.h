@@ -27,6 +27,9 @@ class MasterPasswordStore {
     bool Exists() const;
     std::optional<MasterRecord> Load() const;
     bool Save(const MasterRecord& record) const;
+    static std::optional<QByteArray> Encode(const MasterRecord& record);
+    static std::optional<QByteArray> Protect(const QByteArray& bytes);
+    static std::optional<QByteArray> Unprotect(const QByteArray& bytes);
     bool Clear() const;
 
     // Raw DPAPI blob, used to snapshot and restore the record around a

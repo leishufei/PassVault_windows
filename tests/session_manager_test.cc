@@ -91,3 +91,41 @@ TEST_F(SessionManagerTest, UnlockWhileUnlockedReplacesSilently) {
     EXPECT_EQ(spy.count(), 0);
     EXPECT_EQ(mgr->session_key()->data()[0], 2);
 }
+
+TEST_F(SessionManagerTest, PasswordChangeDefersLockAndRejectsReentry) {
+    auto* session = SessionManager::Instance();
+    EXPECT_FALSE(session->BeginPasswordChange());
+    session->Unlock(MakeKey(1), MakePwd("isolated"));
+    ASSERT_TRUE(session->BeginPasswordChange());
+    EXPECT_FALSE(session->BeginPasswordChange());
+    QSignalSpy locked(session, &SessionManager::LockChanged);
+    session->Lock();
+    EXPECT_TRUE(session->lock_requested());
+    EXPECT_TRUE(session->IsUnlocked());
+    EXPECT_EQ(locked.count(), 0);
+    session->EndPasswordChange(false);
+    EXPECT_FALSE(session->IsUnlocked());
+    EXPECT_EQ(session->session_key(), nullptr);
+    EXPECT_EQ(session->master_password(), nullptr);
+    ASSERT_EQ(locked.count(), 1);
+    EXPECT_TRUE(locked.at(0).at(0).toBool());
+}
+
+TEST_F(SessionManagerTest, UnknownCloudResultForcesLockWithoutUnlockSignal) {
+    auto* session = SessionManager::Instance();
+    session->Unlock(MakeKey(1), MakePwd("isolated"));
+    ASSERT_TRUE(session->BeginPasswordChange());
+    session->EndPasswordChange(true);
+    EXPECT_FALSE(session->IsUnlocked());
+    EXPECT_FALSE(session->password_change_active());
+}
+
+TEST_F(SessionManagerTest, CompletedChangeRebindsNewKeyOnlyWhenNoLockWasRequested) {
+    auto* session = SessionManager::Instance();
+    session->Unlock(MakeKey(1), MakePwd("isolated-old"));
+    ASSERT_TRUE(session->BeginPasswordChange());
+    session->Unlock(MakeKey(2), MakePwd("isolated-new"));
+    session->EndPasswordChange(false);
+    ASSERT_TRUE(session->IsUnlocked());
+    EXPECT_EQ(session->session_key()->data()[0], 2);
+}

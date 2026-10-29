@@ -130,3 +130,17 @@ TEST_F(WindowsHelloUnlockTest, EmptyMasterPasswordRoundTrips) {
 }
 
 }  // namespace
+
+TEST_F(WindowsHelloUnlockTest, MigrationInvalidationPersistsWithoutDeletingCredentialFile) {
+    unlock_->set_availability_for_testing(true);
+    unlock_->set_prompt_result_for_testing(true);
+    ASSERT_TRUE(unlock_->Enroll(QStringLiteral("isolated-master")));
+    ASSERT_TRUE(unlock_->Invalidate());
+    EXPECT_TRUE(QFile::exists(path_));
+    WindowsHelloUnlock reopened(path_);
+    reopened.set_availability_for_testing(true);
+    reopened.set_prompt_result_for_testing(true);
+    EXPECT_FALSE(reopened.IsEnrolled());
+    EXPECT_FALSE(reopened.Unlock());
+    EXPECT_TRUE(reopened.Invalidate());
+}

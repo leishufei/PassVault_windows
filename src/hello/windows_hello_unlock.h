@@ -33,6 +33,7 @@ class WindowsHelloUnlock {
     std::optional<QString> Unlock();
 
     bool Disable();
+    bool Invalidate();
 
     HelloError last_error() const { return last_error_; }
 

@@ -21,6 +21,10 @@ class SessionManager : public QObject {
                 crypto::SecureBytes master_password);
 
     void Lock();
+    bool BeginPasswordChange();
+    void EndPasswordChange(bool keep_locked);
+    bool password_change_active() const { return password_change_active_; }
+    bool lock_requested() const { return lock_requested_; }
 
     const crypto::SessionKey* session_key() const {
         return unlocked_ ? session_key_.get() : nullptr;
@@ -43,6 +47,8 @@ class SessionManager : public QObject {
     std::unique_ptr<crypto::SessionKey> session_key_;
     crypto::SecureBytes master_password_;
     bool unlocked_ = false;
+    bool password_change_active_ = false;
+    bool lock_requested_ = false;
 };
 
 }  // namespace passvault::session

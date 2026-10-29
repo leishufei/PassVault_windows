@@ -18,6 +18,13 @@ enum class UploadIfMatchStatus {
     kError,
 };
 
+enum class CloudReadStatus { kFound, kMissing, kError };
+
+struct CloudReadResult {
+    CloudReadStatus status = CloudReadStatus::kError;
+    CloudDownloadResult backup;
+};
+
 class CloudStorageProvider {
  public:
     virtual ~CloudStorageProvider() = default;
@@ -40,6 +47,14 @@ class CloudStorageProvider {
 
     virtual std::optional<CloudDownloadResult> DownloadBackupWithVersion(
         const QString& remote_name, QString* out_error) = 0;
+
+    // Legacy providers cannot assert that a failed download means missing.
+    virtual CloudReadResult ReadBackup(const QString& remote_name,
+                                       QString* out_error) {
+        auto result = DownloadBackupWithVersion(remote_name, out_error);
+        if (!result) return {};
+        return {CloudReadStatus::kFound, std::move(*result)};
+    }
 
     virtual UploadIfMatchStatus UploadBackupIfMatch(
         const QByteArray& data, const QString& remote_name,

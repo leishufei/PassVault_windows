@@ -33,6 +33,7 @@ class MasterPasswordDialog : public QDialog {
 
     QString OldPassword() const;
     QString NewPassword() const;
+    QString ConfirmedPassword() const;
 
     void SetErrorText(const QString& text);
 

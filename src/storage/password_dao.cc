@@ -104,6 +104,18 @@ std::vector<model::PasswordEntry> RunListQuery(Database& db,
 
 PasswordDao::PasswordDao(Database& db) : db_(db) {}
 
+std::optional<std::vector<model::PasswordEntry>> PasswordDao::ReadAll() {
+    try {
+        Statement stmt(db_.handle(), std::string("SELECT ") +
+                       kSelectAllColumns + " FROM password_entries");
+        std::vector<model::PasswordEntry> rows;
+        while (stmt.Step()) rows.push_back(ReadRow(stmt));
+        return rows;
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
 std::vector<model::PasswordEntry> PasswordDao::ListActive() {
     return RunListQuery(
         db_,
@@ -604,6 +616,23 @@ bool PasswordDao::ApplyDeletionMarker(const QString& uuid,
 bool PasswordDao::ApplySyncedEntry(const model::PasswordEntry& entry) {
     try {
         Transaction tx(db_);
+        // Network event-loop reentry may have changed either state since merging.
+        {
+            Statement marker(db_.handle(),
+                "SELECT deletedAt FROM password_deletion_markers WHERE uuid = ?");
+            marker.BindText(1, entry.uuid);
+            if (marker.Step() && marker.ColumnInt64(0) >= entry.updated_at) {
+                return tx.Commit();
+            }
+        }
+        {
+            Statement current(db_.handle(),
+                "SELECT updatedAt FROM password_entries WHERE uuid = ?");
+            current.BindText(1, entry.uuid);
+            if (current.Step() && current.ColumnInt64(0) >= entry.updated_at) {
+                return tx.Commit();
+            }
+        }
         InsertOne(db_, entry);
         Statement remove(db_.handle(),
                          "DELETE FROM password_deletion_markers WHERE uuid = ?");

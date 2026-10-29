@@ -4,6 +4,7 @@
 #include <QString>
 
 #include <cstdint>
+#include <optional>
 
 namespace passvault::storage {
 class PasswordDao;
@@ -47,14 +48,12 @@ class SyncManager : public QObject {
     void set_provider(CloudStorageProvider* provider) { provider_ = provider; }
     CloudStorageProvider* provider() const { return provider_; }
 
+    void set_paused(bool paused) { paused_ = paused; }
+    bool is_busy() const { return busy_; }
+
     Result PerformSync(const QString& remote_name = QString::fromLatin1(
                            kDefaultRemoteFileName),
                        int max_retries = kDefaultMaxRetries);
-
-    Result ChangeCloudMasterPassword(
-        const QString& old_password, const QString& new_password,
-        const QString& remote_name = QString::fromLatin1(
-            kDefaultRemoteFileName));
 
  signals:
     void SyncStarted();
@@ -74,12 +73,14 @@ class SyncManager : public QObject {
 
     DoSyncOutcome DoSyncOnce(const QString& remote_name);
 
-    bool DedupCategoriesByName(std::int64_t now_ms);
+    std::optional<bool> DedupCategoriesByName(std::int64_t now_ms);
 
     storage::PasswordDao* pwd_dao_;
     storage::CategoryDao* cat_dao_;
     session::SessionManager* session_;
     CloudStorageProvider* provider_ = nullptr;
+    bool paused_ = false;
+    bool busy_ = false;
 };
 
 }  // namespace passvault::sync

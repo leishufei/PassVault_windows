@@ -13,6 +13,8 @@ add_executable(passvault_tests
     master_password_store_test.cc
     probe_test.cc
     master_password_manager_test.cc
+    password_change_coordinator_test.cc
+    cloud_migration_transport_test.cc
     session_manager_test.cc
     auto_lock_timer_test.cc
     csv_writer_test.cc
@@ -59,6 +61,7 @@ add_executable(passvault_tests
     "${CMAKE_SOURCE_DIR}/src/storage/category_dao.cc"
     "${CMAKE_SOURCE_DIR}/src/master_password/master_password_store.cc"
     "${CMAKE_SOURCE_DIR}/src/master_password/master_password_manager.cc"
+    "${CMAKE_SOURCE_DIR}/src/master_password/password_change_coordinator.cc"
     "${CMAKE_SOURCE_DIR}/src/session/session_manager.cc"
     "${CMAKE_SOURCE_DIR}/src/session/auto_lock_timer.cc"
     "${CMAKE_SOURCE_DIR}/src/csv/csv_writer.cc"

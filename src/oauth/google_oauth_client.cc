@@ -1,6 +1,9 @@
 #include "oauth/google_oauth_client.h"
 
 #include <QDesktopServices>
+#include <QEventLoop>
+#include <QScopedValueRollback>
+#include <QTimer>
 #include <QHash>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -137,6 +140,7 @@ void GoogleOAuthClient::ExchangeCode(const QString& code,
                                      const QString& verifier) {
     EnsureNetwork();
     QNetworkRequest req{QUrl(QString::fromLatin1(kTokenEndpoint))};
+    req.setTransferTimeout(25000);
     req.setHeader(QNetworkRequest::ContentTypeHeader,
                   QStringLiteral("application/x-www-form-urlencoded"));
     QUrlQuery body;
@@ -153,6 +157,31 @@ void GoogleOAuthClient::ExchangeCode(const QString& code,
             [this, reply]() { ApplyTokenResponse(reply, false); });
 }
 
+QString GoogleOAuthClient::EnsureAccessToken() {
+    if (refreshing_) return {};
+    if (!access_token_.isEmpty() &&
+        access_token_expires_at_ > QDateTime::currentDateTimeUtc().addSecs(60)) {
+        return access_token_;
+    }
+    QScopedValueRollback<bool> guard(refreshing_, true);
+    QEventLoop loop;
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    bool done = false;
+    bool success = false;
+    const auto ok = connect(this, &GoogleOAuthClient::AccessTokenRefreshed,
+                            &loop, [&]() { done = true; success = true; loop.quit(); });
+    const auto failed = connect(this, &GoogleOAuthClient::AccessTokenRefreshFailed,
+                                &loop, [&]() { done = true; loop.quit(); });
+    connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    timeout.start(30000);
+    RefreshAccessToken();
+    if (!done) loop.exec();
+    disconnect(ok);
+    disconnect(failed);
+    return success ? access_token_ : QString{};
+}
+
 void GoogleOAuthClient::RefreshAccessToken() {
     if (token_store_ == nullptr) {
         emit AccessTokenRefreshFailed(QStringLiteral("no token store"));
@@ -166,6 +195,7 @@ void GoogleOAuthClient::RefreshAccessToken() {
     }
     EnsureNetwork();
     QNetworkRequest req{QUrl(QString::fromLatin1(kTokenEndpoint))};
+    req.setTransferTimeout(25000);
     req.setHeader(QNetworkRequest::ContentTypeHeader,
                   QStringLiteral("application/x-www-form-urlencoded"));
     QUrlQuery body;

@@ -18,6 +18,7 @@ class CategoryDao {
 
     std::vector<model::Category> ListActive();
     std::vector<model::Category> ListIncludingDeleted();
+    std::optional<std::vector<model::Category>> ReadAll();
 
     std::optional<model::Category> FindById(std::int64_t id);
     std::optional<model::Category> FindByUuid(const QString& uuid);

@@ -141,6 +141,7 @@ std::optional<MasterRecord> MasterPasswordStore::Load() const {
     QFile file(file_path_);
     if (!file.open(QIODevice::ReadOnly)) return std::nullopt;
     const QByteArray blob = file.readAll();
+    if (file.error() != QFileDevice::NoError) return std::nullopt;
     file.close();
 
     auto plaintext = UnprotectData(blob);
@@ -151,22 +152,34 @@ std::optional<MasterRecord> MasterPasswordStore::Load() const {
     return record;
 }
 
-bool MasterPasswordStore::Save(const MasterRecord& record) const {
-    if (record.password_hash.size() != kPasswordHashHexLen) return false;
-    if (record.kdf_salt.size() != kKdfSaltSize) return false;
-
+std::optional<QByteArray> MasterPasswordStore::Encode(
+    const MasterRecord& record) {
+    if (record.password_hash.size() != kPasswordHashHexLen ||
+        record.kdf_salt.size() != kKdfSaltSize) return std::nullopt;
     QByteArray plaintext = SerializeRecord(record);
     auto ciphertext = ProtectData(plaintext);
     plaintext.fill('\0');
-    if (!ciphertext.has_value()) return false;
+    return ciphertext;
+}
 
-    return WriteBlob(file_path_, *ciphertext);
+std::optional<QByteArray> MasterPasswordStore::Protect(const QByteArray& bytes) {
+    return ProtectData(bytes);
+}
+
+std::optional<QByteArray> MasterPasswordStore::Unprotect(const QByteArray& bytes) {
+    return UnprotectData(bytes);
+}
+
+bool MasterPasswordStore::Save(const MasterRecord& record) const {
+    auto ciphertext = Encode(record);
+    return ciphertext && SaveRaw(*ciphertext);
 }
 
 std::optional<QByteArray> MasterPasswordStore::LoadRaw() const {
     QFile file(file_path_);
     if (!file.open(QIODevice::ReadOnly)) return std::nullopt;
     const QByteArray blob = file.readAll();
+    if (file.error() != QFileDevice::NoError) return std::nullopt;
     file.close();
     if (blob.isEmpty()) return std::nullopt;
     return blob;

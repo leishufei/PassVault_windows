@@ -150,3 +150,23 @@ TEST_F(SyncSchedulerTest, SyncImmediatelyCancelsPendingAndRunsNow) {
     EXPECT_FALSE(scheduler_->IsPending());
     EXPECT_EQ(triggered.count(), 1);
 }
+
+TEST_F(SyncSchedulerTest, MigrationPauseStopsPendingAndDirectSyncThenReschedulesDirty) {
+    sync_manager_->set_provider(&provider_);
+    scheduler_->MarkDirty();
+    ASSERT_TRUE(scheduler_->IsPending());
+    scheduler_->SetPaused(true);
+    EXPECT_FALSE(scheduler_->IsPending());
+    QSignalSpy triggered(scheduler_.get(), &SyncScheduler::SyncTriggered);
+    QSignalSpy started(sync_manager_.get(), &SyncManager::SyncStarted);
+    scheduler_->MarkDirty();
+    scheduler_->SyncImmediately();
+    EXPECT_FALSE(sync_manager_->PerformSync().success);
+    QTest::qWait(100);
+    EXPECT_EQ(triggered.count(), 0);
+    EXPECT_EQ(started.count(), 0);
+    scheduler_->SetPaused(false);
+    EXPECT_TRUE(scheduler_->IsPending());
+    ASSERT_TRUE(triggered.wait(400));
+    EXPECT_EQ(triggered.count(), 1);
+}

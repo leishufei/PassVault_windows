@@ -7,6 +7,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSignalSpy>
+#include <QSettings>
 #include <QTest>
 #include <QToolButton>
 
@@ -381,3 +382,16 @@ TEST(MasterPasswordDialogTest, ThemeSwitchPreservesInputsPreviewAndError) {
 }
 
 }  // namespace
+
+TEST(MasterPasswordVisibilityIsolationTest, UiDefaultDoesNotExposeAuthenticationFields) {
+    QSettings().setValue("ui/default_show_passwords", true);
+    for (auto mode : {Mode::kSetup, Mode::kUnlock, Mode::kChange}) {
+        MasterPasswordDialog dialog(mode);
+        const auto fields = dialog.findChildren<QLineEdit*>();
+        ASSERT_FALSE(fields.isEmpty());
+        for (auto* field : fields) {
+            EXPECT_EQ(field->echoMode(), QLineEdit::Password);
+        }
+    }
+    QSettings().setValue("ui/default_show_passwords", false);
+}
