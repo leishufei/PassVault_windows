@@ -166,6 +166,14 @@ class SidebarItemDelegate final : public QStyledItemDelegate {
 
         painter->save();
         painter->setRenderHint(QPainter::Antialiasing, true);
+        if (selected) {
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(theme->Color(QStringLiteral("primary")));
+            const QRect indicator_rect(option.rect.left() + 2,
+                                       option.rect.top() + 8, 3,
+                                       std::max(12, option.rect.height() - 16));
+            painter->drawRoundedRect(indicator_rect, 1.5, 1.5);
+        }
         const QString icon_name =
             index.data(kSidebarIconRole).toString();
         const QRect icon_rect(content.left(),
@@ -187,18 +195,15 @@ class SidebarItemDelegate final : public QStyledItemDelegate {
                 std::max(22, count_metrics.horizontalAdvance(count_text) + 12);
             const QRect badge_rect(content.right() - badge_width + 1,
                                    content.center().y() - 9, badge_width, 18);
-            const bool system_section =
-                index.data(kSidebarSystemRole).toBool();
             painter->setPen(Qt::NoPen);
             painter->setBrush(theme->Color(
-                selected || system_section ? QStringLiteral("primary-tint-2")
-                                           : QStringLiteral("bg-muted")));
+                selected ? QStringLiteral("primary-tint-2")
+                         : QStringLiteral("bg-muted")));
             painter->drawRoundedRect(badge_rect, 9, 9);
             painter->setFont(count_font);
             painter->setPen(theme->Color(
-                selected || system_section
-                    ? QStringLiteral("primary-text-on-tint")
-                    : QStringLiteral("muted-8")));
+                selected ? QStringLiteral("primary-text-on-tint")
+                         : QStringLiteral("muted-8")));
             painter->drawText(badge_rect, Qt::AlignCenter, count_text);
             text_rect.setRight(badge_rect.left() - 8);
         }
@@ -612,7 +617,7 @@ QWidget* MainWindow::BuildWorkspaceHeader() {
     lock_button->setFixedSize(32, 32);
     lock_button->setIcon(IconLoader::Load(
         QStringLiteral("lock-keyhole"),
-        ThemeManager::Instance()->Color(QStringLiteral("primary")),
+        ThemeManager::Instance()->Color(QStringLiteral("text-secondary")),
         kIconSize));
     lock_button->setIconSize(QSize(kIconSize, kIconSize));
     connect(lock_button, &QToolButton::clicked, this,
@@ -875,8 +880,8 @@ void MainWindow::RefreshThemeAssets() {
     if (auto* button = findChild<QToolButton*>(
             QStringLiteral("HeaderLockButton"))) {
         button->setIcon(
-            icon(QStringLiteral("lock-keyhole"), QStringLiteral("primary"),
-                 kIconSize));
+            icon(QStringLiteral("lock-keyhole"),
+                 QStringLiteral("text-secondary"), kIconSize));
     }
     if (auto* button = findChild<QToolButton*>(
             QStringLiteral("HeaderMoreButton"))) {
@@ -1775,9 +1780,10 @@ void MainWindow::OnSyncClicked() {
 void MainWindow::RefreshSyncButton() {
     if (!sync_button_) return;
     const QString state = sync_button_->property("state").toString();
-    QString color = QStringLiteral("primary");
+    QString color = QStringLiteral("text-secondary");
     QString label = QStringLiteral("云端同步");
     if (state == QStringLiteral("busy")) {
+        color = QStringLiteral("primary");
         label = QStringLiteral("同步中…");
     } else if (state == QStringLiteral("ok")) {
         color = QStringLiteral("success");

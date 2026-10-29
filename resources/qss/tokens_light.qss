@@ -1,175 +1,180 @@
 /* PassVault design tokens - light theme. */
-/* Full palette mirrored from design.md (Figma "Redesign Password Manager UI" */
-/* light theme). Names use kebab-case; every hex kept lowercase. */
+/* Notion design language: warm paper canvas (#f6f5f4), near-black warm ink, */
+/* a single structural accent (Notion blue #0075de), hairline (#e6e6e6) */
+/* surfaces, and a decorative-only sticker palette for avatar tiles. */
 /* Existing semantic aliases (--bg-*, --text-*, --border-*, --accent-*, */
 /* --danger-*, --success-*, --strength-*, --toast-*, --focus-ring, --shadow) */
-/* are preserved so downstream QSS keeps working. */
+/* are preserved so downstream QSS and C++ token lookups keep working. */
 
 * {
-    /* ---- Brand / primary family (唯一结构色, Notion 蓝) ---- */
-    --primary: #276cf0;
-    --primary-pressed: #1d60df;
-    --primary-tint: #e8f0ff;
-    --primary-tint-2: #dbe9ff;
-    --primary-text-on-tint: #2369ee;
-    --primary-accent-text: #3777e7;
-    --primary-accent-alt: #3675de;
-    --primary-focus-border: #8ab3ff;
-    --primary-hover-surface: #eaf0f8;
-    --primary-hover-surface-2: #eaf2ff;
-    --primary-hover-surface-3: #eef4ff;
-    --primary-hover-surface-4: #eff4fa;
-    --primary-hover-surface-5: #edf2f8;
-    --primary-hover-surface-6: #f4f7fb;
-    --primary-tab-active-bg: #e4efff;
-    --primary-strength-bar: #2771ef;
-    --primary-strength-text: #3979e7;
-    --primary-icon-cloud: #4281f2;
-    --primary-icon-lock: #3b78df;
-    --primary-setting-icon: #3174e6;
-    --link: #2771ed;
+    /* ---- Brand / primary family (Notion blue, the only structural accent) ---- */
+    --primary: #0075de;
+    --primary-pressed: #005bab;
+    --primary-tint: #e7f1fb;
+    --primary-tint-2: #d6e8f9;
+    --primary-text-on-tint: #0068c6;
+    --primary-accent-text: #0068c6;
+    --primary-accent-alt: #0068c6;
+    --primary-focus-border: #5aa2e8;
+    --primary-hover-surface: #efeeec;
+    --primary-hover-surface-2: #efeeec;
+    --primary-hover-surface-3: #f1f0ee;
+    --primary-hover-surface-4: #f1f0ee;
+    --primary-hover-surface-5: #efeeec;
+    --primary-hover-surface-6: #f7f6f5;
+    --primary-tab-active-bg: #e7f1fb;
+    --primary-strength-bar: #0075de;
+    --primary-strength-text: #0068c6;
+    --primary-icon-cloud: #0075de;
+    --primary-icon-lock: #0075de;
+    --primary-setting-icon: #0075de;
+    --link: #0075de;
 
-    /* ---- Surfaces / backgrounds ---- */
-    --canvas: #eef2f7;
-    --shell: #fbfcfe;
+    /* ---- Surfaces / backgrounds (warm paper + white document) ---- */
+    --canvas: #f6f5f4;
+    --shell: #ffffff;
     --detail-bg: #ffffff;
     --card: #ffffff;
-    --card-selected: #eef4ff;
-    --card-hover: #f7faff;
-    --soft-bg: #f6f9fc;
-    --soft-bg-sync: #f7faff;
-    --soft-bg-sync-auth: #f8fbff;
-    --soft-bg-select: #fafcff;
+    --card-selected: #e7f1fb;
+    --card-hover: #f1f0ee;
+    --soft-bg: #f6f5f4;
+    --soft-bg-sync: #f6f5f4;
+    --soft-bg-sync-auth: #f6f5f4;
+    --soft-bg-select: #f6f5f4;
+    --input-bg: #ffffff;
 
     /* Legacy aliases (used across components.qss / app.qss). */
-    --bg-primary: #eef2f7;
-    --bg-canvas: #f8fafd;
+    --bg-primary: #f6f5f4;
+    --bg-canvas: #f6f5f4;
     --bg-elevated: #ffffff;
-    --bg-sidebar: #f2f6fb;
-    --bg-search: #f3f6fb;
-    --bg-hover: #eaf0f8;
-    --bg-muted: #edf1f7;
-    --bg-secondary: #f2f6fb;
-    --bg-tertiary: #edf1f7;
+    --bg-sidebar: #f3f2ef;
+    --bg-search: #ffffff;
+    --bg-hover: #ecebe8;
+    --bg-muted: #e6e5e2;
+    --bg-secondary: #f3f2ef;
+    --bg-tertiary: #e6e5e2;
 
-    /* ---- Text ---- */
-    --ink: #182230;
-    --ink-2: #29384a;
-    --body: #3e4e62;
-    --body-2: #4b5c70;
-    --muted: #526276;
-    --muted-2: #56677c;
-    --muted-3: #556579;
-    --muted-4: #53687e;
-    --muted-5: #5a6a7e;
-    --muted-6: #5c6d82;
-    --muted-7: #5e7085;
-    --muted-8: #5f6f82;
-    --muted-9: #647488;
-    --muted-10: #66778b;
-    --muted-11: #677688;
-    --muted-12: #68788c;
-    --muted-13: #6a7a90;
-    --muted-14: #4d637a;
-    --muted-15: #3e5d7b;
-    --hint: #6f7f92;
-    --hint-2: #6f8094;
-    --hint-3: #707f91;
-    --hint-4: #708093;
-    --hint-5: #728191;
-    --hint-6: #6c7b90;
-    --hint-7: #6d7c90;
-    --hint-8: #6a7c92;
-    --hint-9: #707f91;
-    --hint-10: #5d6f84;
-    --placeholder: #8392a5;
-    --placeholder-2: #7e8c9e;
-    --placeholder-3: #808fa1;
-    --placeholder-4: #8492a3;
-    --info-value: #2d4056;
-    --detail-copy: #537292;
-    --detail-copy-2: #648099;
-    --external-icon: #5681bd;
+    /* ---- Text (warm ink ramp: ink / charcoal / stone / ash) ---- */
+    --ink: #191918;
+    --ink-2: #31302e;
+    --body: #31302e;
+    --body-2: #4a4744;
+    --muted: #615d59;
+    --muted-2: #615d59;
+    --muted-3: #615d59;
+    --muted-4: #615d59;
+    --muted-5: #615d59;
+    --muted-6: #615d59;
+    --muted-7: #615d59;
+    --muted-8: #6f6b66;
+    --muted-9: #6f6b66;
+    --muted-10: #6f6b66;
+    --muted-11: #6f6b66;
+    --muted-12: #6f6b66;
+    --muted-13: #a39e98;
+    --muted-14: #4a4744;
+    --muted-15: #31302e;
+    --hint: #7d7873;
+    --hint-2: #7d7873;
+    --hint-3: #7d7873;
+    --hint-4: #7d7873;
+    --hint-5: #7d7873;
+    --hint-6: #7d7873;
+    --hint-7: #7d7873;
+    --hint-8: #8a857f;
+    --hint-9: #7d7873;
+    --hint-10: #6f6b66;
+    --placeholder: #a39e98;
+    --placeholder-2: #a39e98;
+    --placeholder-3: #a39e98;
+    --placeholder-4: #a39e98;
+    --info-value: #31302e;
+    --detail-copy: #615d59;
+    --detail-copy-2: #7d7873;
+    --external-icon: #0075de;
 
     /* Legacy text aliases. */
-    --text-primary: #182230;
-    --text-secondary: #4b5c70;
-    --text-tertiary: #6f7f92;
-    --text-quaternary: #8392a5;
+    --text-primary: #191918;
+    --text-secondary: #31302e;
+    --text-tertiary: #615d59;
+    --text-quaternary: #8e8983;
     --text-inverse: #ffffff;
 
-    /* ---- Borders ---- */
-    --border-shell: #d9e1eb;
-    --border-section: #e4e9ef;
-    --border-section-2: #e5eaf0;
-    --border-section-3: #e6ebf1;
-    --border-section-4: #e8edf3;
-    --border-panel: #dce4ee;
-    --border-panel-2: #dfe6ee;
-    --border-panel-3: #e1e8f0;
-    --border-panel-4: #e3e9f0;
-    --border-sidebar: #e3e8ef;
-    --border-sidebar-2: #e2e8f0;
-    --border-nav-hover: #e1eaf7;
-    --border-drawer-inner: #e5ebf1;
-    --border-card: #edf0f4;
-    --border-card-hover: #dce6f4;
-    --border-card-selected: #79a9ff;
-    --border-divider-hair: #e1e6ed;
+    /* ---- Borders (hairlines, never heavy frames) ---- */
+    --border-shell: #e6e6e6;
+    --border-section: #ededec;
+    --border-section-2: #ededec;
+    --border-section-3: #ededec;
+    --border-section-4: #ededec;
+    --border-panel: #e6e6e6;
+    --border-panel-2: #e6e6e6;
+    --border-panel-3: #e6e6e6;
+    --border-panel-4: #e6e6e6;
+    --border-sidebar: #e5e4e1;
+    --border-sidebar-2: #e5e4e1;
+    --border-nav-hover: #e5e4e1;
+    --border-drawer-inner: #e6e6e6;
+    --border-card: #e6e6e6;
+    --border-card-hover: #d8d7d4;
+    --border-card-selected: #9ec8f2;
+    --border-divider-hair: #ebeae7;
+    --border-input: #dddddd;
 
     /* Legacy border aliases. */
-    --border: #d9e1eb;
-    --border-strong: #dce4ee;
-    --border-soft: #e3e8ef;
-    --border-tertiary: #edf0f4;
+    --border: #e6e6e6;
+    --border-strong: #d9d8d5;
+    --border-soft: #e9e8e6;
+    --border-tertiary: #efeeec;
 
     /* ---- Accent (mapped from primary for legacy references) ---- */
-    --accent: #276cf0;
-    --accent-hover: #1d60df;
-    --accent-pressed: #1955c8;
-    --accent-soft: #e8f0ff;
-    --accent-soft-hover: #d9e5ff;
+    --accent: #0075de;
+    --accent-hover: #0069c8;
+    --accent-pressed: #005bab;
+    --accent-soft: #e7f1fb;
+    --accent-soft-hover: #d6e8f9;
     --accent-fg: #ffffff;
-    --avatar-0-bg: #ebf3ff;
-    --avatar-0-fg: #2577ce;
-    --avatar-1-bg: #e9f7ef;
-    --avatar-1-fg: #247a49;
-    --avatar-2-bg: #fff3df;
-    --avatar-2-fg: #9a5a00;
-    --avatar-3-bg: #f3edff;
-    --avatar-3-fg: #7051b5;
-    --avatar-4-bg: #ffedf0;
-    --avatar-4-fg: #ad3f55;
-    --avatar-5-bg: #edf1f6;
-    --avatar-5-fg: #4d5e70;
 
-    /* ---- Semantic ---- */
-    --success: #34a36a;
-    --success-text: #2e9d5b;
-    --success-tint: #e6f8ed;
-    --success-soft: #e2f2ea;
-    --warn: #d27d45;
-    --warn-text: #9d643c;
-    --warn-tint: #fff8f2;
-    --warn-border: #f1d9c5;
-    --warning: #d27d45;
-    --danger-text: #bd5b57;
-    --danger: #b7463e;
-    --danger-hover: #a03830;
-    --danger-soft: #fbe9e6;
-    --toggle-off: #cbd5e1;
+    /* Avatar tiles: Notion sticker palette (decoration only). */
+    --avatar-0-bg: #e8f4fd;
+    --avatar-0-fg: #0b6bcb;
+    --avatar-1-bg: #e6f6ea;
+    --avatar-1-fg: #15802d;
+    --avatar-2-bg: #fdf0e6;
+    --avatar-2-fg: #b84a00;
+    --avatar-3-bg: #f3ecfc;
+    --avatar-3-fg: #5b2d8a;
+    --avatar-4-bg: #ffeaf7;
+    --avatar-4-fg: #b82583;
+    --avatar-5-bg: #e4f5f4;
+    --avatar-5-fg: #1d7774;
 
-    --strength-weak: #b7463e;
-    --strength-medium: #d27d45;
-    --strength-strong: #34a36a;
+    /* ---- Semantic (status carried by the sticker palette) ---- */
+    --success: #1aae39;
+    --success-text: #15862c;
+    --success-tint: #e4f5e7;
+    --success-soft: #e4f5e7;
+    --warn: #dd5b00;
+    --warn-text: #a84500;
+    --warn-tint: #fdf2e9;
+    --warn-border: #f5d6bd;
+    --warning: #dd5b00;
+    --danger-text: #c4362f;
+    --danger: #d8413a;
+    --danger-hover: #bd342e;
+    --danger-soft: #fdebea;
+    --toggle-off: #d9d8d5;
 
-    --toast-bg: #1e2a38;
+    --strength-weak: #d8413a;
+    --strength-medium: #dd5b00;
+    --strength-strong: #1aae39;
+
+    --toast-bg: #2f2e2c;
     --toast-fg: #ffffff;
 
-    --focus-ring: #8ab3ff;
-    --shadow: rgba(52, 72, 99, 32);
-    --dialog-shadow: #324969;
-    --dialog-backdrop: rgba(49, 68, 93, 38);
+    --focus-ring: #5aa2e8;
+    --shadow: rgba(15, 15, 15, 26);
+    --dialog-shadow: #1c1b1a;
+    --dialog-backdrop: rgba(15, 15, 15, 92);
 
     /* ---- Brand tiles (password-card icon square) ---- */
     --brand-google-bg: #f7f8fa;
@@ -187,13 +192,15 @@
     --brand-notion-bg: #ffffff;
     --brand-notion-fg: #171717;
 
-    /* ---- Radii (design.md rounded scale) ---- */
+    /* ---- Radii (Notion rounded scale) ---- */
+    /* xs 4: inputs, chips | sm 5: menu items, list rows | md 8: buttons */
+    /* lg 10: avatar tiles | xl 12: cards | 2xl 16: large containers */
     --radius-xs: 4px;
-    --radius-sm: 6px;
+    --radius-sm: 5px;
     --radius-md: 8px;
     --radius-lg: 10px;
     --radius-xl: 12px;
     --radius-2xl: 16px;
-    --radius-shell: 22px;
+    --radius-shell: 16px;
     --radius-full: 9999px;
 }

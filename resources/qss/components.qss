@@ -1,8 +1,8 @@
-/* PassVault reusable components (Figma redesign). */
+/* PassVault reusable components (Notion design system). */
 
 QWidget {
     color: var(--text-primary);
-    font-family: "Noto Sans SC", "Microsoft YaHei UI", "Segoe UI";
+    font-family: "Inter Variable", "Noto Sans SC", "Microsoft YaHei UI", "Segoe UI";
     font-size: 13px;
 }
 
@@ -14,9 +14,9 @@ QToolTip {
     border-radius: 8px;
 }
 
-/* Buttons - unified 8px radius, 36px control height, accent solid + neutral outlined. */
+/* Utility & dialog buttons - Notion button-utility: white surface, 1px hairline, 8px radius. */
 QPushButton {
-    background-color: var(--bg-elevated);
+    background-color: var(--card);
     color: var(--text-primary);
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -122,12 +122,12 @@ QToolButton[soft="true"]:hover {
     background: var(--accent-soft-hover);
 }
 
-/* Text inputs - unified 8px radius, 36px height, 12px horizontal padding. */
+/* Text inputs - Notion text-input: white surface, 1px #dddddd border, tight 4px radius. */
 QLineEdit, QSpinBox, QDoubleSpinBox {
-    background-color: var(--bg-search);
+    background-color: var(--input-bg);
     color: var(--text-primary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
     padding: 0 12px;
     min-height: 36px;
     font-size: 14px;
@@ -135,10 +135,10 @@ QLineEdit, QSpinBox, QDoubleSpinBox {
     selection-color: var(--accent-fg);
 }
 QPlainTextEdit, QTextEdit {
-    background-color: var(--bg-search);
+    background-color: var(--input-bg);
     color: var(--text-primary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
     padding: 8px 12px;
     font-size: 14px;
     selection-background-color: var(--accent);
@@ -147,7 +147,7 @@ QPlainTextEdit, QTextEdit {
 QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus,
 QSpinBox:focus, QDoubleSpinBox:focus {
     border-color: var(--focus-ring);
-    background-color: var(--bg-elevated);
+    background-color: var(--input-bg);
 }
 QLineEdit:disabled, QPlainTextEdit:disabled, QTextEdit:disabled {
     color: var(--text-quaternary);
@@ -158,12 +158,12 @@ QLineEdit[error="true"] {
     background-color: var(--danger-soft);
 }
 
-/* Combo box */
+/* Combo box - tight 4px input radius, 8px popup menu */
 QComboBox {
-    background-color: var(--bg-elevated);
+    background-color: var(--input-bg);
     color: var(--text-primary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    border: 1px solid var(--border-input);
+    border-radius: 4px;
     padding: 0 30px 0 12px;
     min-height: 36px;
     font-size: 13px;
@@ -175,8 +175,8 @@ QComboBox::down-arrow { image: url(:/icons/chevron-down.svg); width: 14px; heigh
 QComboBox QAbstractItemView {
     background-color: var(--bg-elevated);
     color: var(--text-primary);
-    border: 1px solid var(--border-strong);
-    border-radius: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
     outline: 0;
     padding: 4px;
     selection-background-color: var(--accent-soft);
@@ -187,7 +187,7 @@ QComboBox QAbstractItemView::item {
     color: var(--text-primary);
     padding: 8px 12px;
     border: 0;
-    border-radius: 8px;
+    border-radius: 5px;
     min-height: 24px;
 }
 QComboBox QAbstractItemView::item:hover {
@@ -270,7 +270,7 @@ QListView, QTreeView, QTableView {
 }
 QListView::item, QTreeView::item {
     padding: 8px 12px;
-    border-radius: 8px;
+    border-radius: 5px;
 }
 QListView::item:hover, QTreeView::item:hover {
     background-color: var(--bg-hover);
@@ -305,17 +305,17 @@ QScrollBar::handle:hover { background: var(--text-tertiary); }
 QScrollBar::add-line, QScrollBar::sub-line { height: 0; width: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 
-/* Menu */
+/* Menu - Notion popover: hairline border, 8px frame, 5px items */
 QMenu {
     background-color: var(--bg-elevated);
     color: var(--text-primary);
-    border: 1px solid var(--border-strong);
-    border-radius: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
     padding: 4px;
 }
 QMenu::item {
     padding: 6px 22px;
-    border-radius: 8px;
+    border-radius: 5px;
 }
 QMenu::item:selected { background-color: var(--accent-soft); color: var(--accent); }
 QMenu::separator { height: 1px; background: var(--border); margin: 4px 8px; }
@@ -387,17 +387,18 @@ QDialog { background-color: var(--bg-elevated); }
  * Used by EditorPanel / PreferencesPage / legacy dialogs.
  * ============================================================ */
 
-/* ---------- Badges ---------- */
+/* ---------- Badges (Notion badge-pill: eyebrow 12px / 600 / +0.125px) ---------- */
 QLabel[variant="tag"] {
     background-color: var(--primary-tint);
-    color: var(--primary-text-on-tint);
-    border-radius: var(--radius-full);
+    color: var(--primary);
+    border-radius: 10px;
     padding: 2px 8px;
-    font-size: 11px;
-    font-weight: 500;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.125px;
 }
 QLabel[variant="count"] {
-    color: var(--primary-accent-text);
+    color: var(--text-tertiary);
     font-size: 12px;
     font-weight: 500;
     background: transparent;
@@ -407,8 +408,9 @@ QLabel[variant="status"] {
     color: var(--success-text);
     border-radius: var(--radius-sm);
     padding: 2px 8px;
-    font-size: 11px;
-    font-weight: 500;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.125px;
 }
 QLabel[variant="status"][tone="warn"] {
     background-color: var(--warn-tint);
@@ -424,7 +426,7 @@ QLabel[variant="kbd"] {
     border: 1px solid var(--border);
     border-radius: var(--radius-xs);
     padding: 1px 6px;
-    font-family: "DM Mono", "Noto Sans SC";
+    font-family: "DM Mono", "Inter Variable", "Noto Sans SC";
     font-size: 11px;
 }
 

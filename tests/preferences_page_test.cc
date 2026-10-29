@@ -539,21 +539,21 @@ TEST_F(PreferencesPageTest, LeaveLockToggleRendersDistinctSwitchStates) {
     EXPECT_NE(ImageHash(off_disabled), ImageHash(on_disabled));
 
     EXPECT_EQ(IndicatorPixel(off, 10, 10), QColor("#ffffff"));
-    EXPECT_EQ(IndicatorPixel(off, 25, 10), QColor("#cbd5e1"));
-    EXPECT_EQ(IndicatorPixel(on, 10, 10), QColor("#276cf0"));
+    EXPECT_EQ(IndicatorPixel(off, 25, 10), QColor("#d9d8d5"));
+    EXPECT_EQ(IndicatorPixel(on, 10, 10), QColor("#0075de"));
     EXPECT_EQ(IndicatorPixel(on, 26, 10), QColor("#ffffff"));
     EXPECT_EQ(IndicatorPixel(off_active, 10, 10), QColor("#ffffff"));
-    EXPECT_EQ(IndicatorPixel(off_active, 25, 10), QColor("#b8c5d6"));
-    EXPECT_EQ(IndicatorPixel(on_active, 10, 10), QColor("#1d5edb"));
+    EXPECT_EQ(IndicatorPixel(off_active, 25, 10), QColor("#c7c5c0"));
+    EXPECT_EQ(IndicatorPixel(on_active, 10, 10), QColor("#005bab"));
     EXPECT_EQ(IndicatorPixel(on_active, 26, 10), QColor("#ffffff"));
     EXPECT_EQ(IndicatorPixel(off_focused, 10, 10), QColor("#ffffff"));
-    EXPECT_EQ(IndicatorPixel(off_focused, 25, 10), QColor("#b8c5d6"));
-    EXPECT_EQ(IndicatorPixel(on_focused, 10, 10), QColor("#1d5edb"));
+    EXPECT_EQ(IndicatorPixel(off_focused, 25, 10), QColor("#c7c5c0"));
+    EXPECT_EQ(IndicatorPixel(on_focused, 10, 10), QColor("#005bab"));
     EXPECT_EQ(IndicatorPixel(on_focused, 26, 10), QColor("#ffffff"));
-    EXPECT_EQ(IndicatorPixel(off_disabled, 10, 10), QColor("#f8fafc"));
-    EXPECT_EQ(IndicatorPixel(off_disabled, 25, 10), QColor("#e2e8f0"));
-    EXPECT_EQ(IndicatorPixel(on_disabled, 10, 10), QColor("#9bb9f2"));
-    EXPECT_EQ(IndicatorPixel(on_disabled, 26, 10), QColor("#f8fafc"));
+    EXPECT_EQ(IndicatorPixel(off_disabled, 10, 10), QColor("#fbfbfa"));
+    EXPECT_EQ(IndicatorPixel(off_disabled, 25, 10), QColor("#ebeae7"));
+    EXPECT_EQ(IndicatorPixel(on_disabled, 10, 10), QColor("#8ec2f2"));
+    EXPECT_EQ(IndicatorPixel(on_disabled, 26, 10), QColor("#fbfbfa"));
 }
 
 TEST_F(PreferencesPageTest, BackButtonMatchesFigmaSize) {
@@ -590,7 +590,7 @@ TEST_F(PreferencesPageTest, HeaderTitleMatchesFigmaTypography) {
     QApplication::processEvents();
 
     const QFontInfo title_font_info(title->font());
-    EXPECT_EQ(title_font_info.family(), QStringLiteral("Noto Sans SC"));
+    EXPECT_EQ(title_font_info.family(), QStringLiteral("Inter Variable"));
     EXPECT_EQ(title_font_info.pixelSize(), 16);
     EXPECT_EQ(title_font_info.weight(), 700);
 }

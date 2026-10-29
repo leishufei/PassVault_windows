@@ -98,6 +98,7 @@ class Application::Impl {
         }
         auto* theme = ui::ThemeManager::Instance();
         static constexpr const char* kFontResources[] = {
+            ":/fonts/InterVariable.ttf",
             ":/fonts/NotoSansSC-VariableFont_wght.ttf",
             ":/fonts/DMMono-Regular.ttf",
             ":/fonts/DMMono-Medium.ttf",
@@ -110,7 +111,8 @@ class Application::Impl {
         }
         if (auto* q = qApp) {
             QFont app_font;
-            app_font.setFamilies({QStringLiteral("Noto Sans SC"),
+            app_font.setFamilies({QStringLiteral("Inter Variable"),
+                                  QStringLiteral("Noto Sans SC"),
                                   QStringLiteral("Microsoft YaHei UI"),
                                   QStringLiteral("Segoe UI")});
             app_font.setPixelSize(13);

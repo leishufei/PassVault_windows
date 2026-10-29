@@ -185,7 +185,7 @@ TEST(DetailPanelThemeTest, ThemeRefreshPreservesEntryAndPasswordVisibility) {
     ASSERT_NE(username, nullptr);
     EXPECT_EQ(QFontInfo(password->font()).family(), QStringLiteral("DM Mono"));
     EXPECT_EQ(QFontInfo(username->font()).family(),
-              QStringLiteral("Noto Sans SC"));
+              QStringLiteral("Inter Variable"));
     EXPECT_EQ(QFontInfo(password->font()).pixelSize(), 14);
     EXPECT_EQ(QFontInfo(username->font()).pixelSize(), 14);
     const QByteArray light_icon = IconPixels(toggle->icon());
@@ -197,7 +197,7 @@ TEST(DetailPanelThemeTest, ThemeRefreshPreservesEntryAndPasswordVisibility) {
     EXPECT_EQ(password->text(), QStringLiteral("secret-value"));
     EXPECT_EQ(QFontInfo(password->font()).family(), QStringLiteral("DM Mono"));
     EXPECT_EQ(QFontInfo(username->font()).family(),
-              QStringLiteral("Noto Sans SC"));
+              QStringLiteral("Inter Variable"));
     EXPECT_EQ(QFontInfo(password->font()).pixelSize(), 14);
     EXPECT_EQ(QFontInfo(username->font()).pixelSize(), 14);
 }

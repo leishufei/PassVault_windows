@@ -79,7 +79,7 @@ const char* SyncStateName(PreferencesPage::SyncUiState state) {
 }
 
 void SetThemeIcon(QLabel* label, const QString& icon_name,
-                  const QString& token = QStringLiteral("primary"),
+                  const QString& token = QStringLiteral("text-secondary"),
                   int size = kIconGlyphSize) {
     label->setProperty("themeIconName", icon_name);
     label->setProperty("themeIconToken", token);

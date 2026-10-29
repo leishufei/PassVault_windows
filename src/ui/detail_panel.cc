@@ -11,6 +11,7 @@
 #include <QScrollArea>
 #include <QSizePolicy>
 #include <QStackedLayout>
+#include <QStyle>
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -411,6 +412,10 @@ void DetailPanel::RefreshView() {
     const auto& e = *entry_;
 
     header_icon_->setText(AvatarInitials(e));
+    header_icon_->setProperty(
+        "colorIndex", static_cast<unsigned int>(e.icon_color) % 6);
+    header_icon_->style()->unpolish(header_icon_);
+    header_icon_->style()->polish(header_icon_);
     header_title_->SetFullText(e.title.isEmpty() ? QStringLiteral("(无标题)")
                                                  : e.title);
     const QString tag = CategoryName(e.category_id);

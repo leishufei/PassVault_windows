@@ -699,7 +699,7 @@ TEST_F(MainWindowTest, NewPasswordButtonMatchesFigmaTypography) {
     QApplication::processEvents();
 
     const QFontInfo button_font_info(button->font());
-    EXPECT_EQ(button_font_info.family(), QStringLiteral("Noto Sans SC"));
+    EXPECT_EQ(button_font_info.family(), QStringLiteral("Inter Variable"));
     EXPECT_EQ(button_font_info.pixelSize(), 14);
     EXPECT_EQ(button_font_info.weight(), 600);
 }

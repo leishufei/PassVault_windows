@@ -163,7 +163,7 @@ TEST_F(EditorPanelTest, PasswordInputUsesBodyTypography) {
     ASSERT_NE(username, nullptr);
     const QFontInfo username_font_info(username->font());
     EXPECT_EQ(password_font_info.family(), QStringLiteral("DM Mono"));
-    EXPECT_EQ(username_font_info.family(), QStringLiteral("Noto Sans SC"));
+    EXPECT_EQ(username_font_info.family(), QStringLiteral("Inter Variable"));
     EXPECT_EQ(password_font_info.pixelSize(), 14);
     EXPECT_EQ(username_font_info.pixelSize(), 14);
 }

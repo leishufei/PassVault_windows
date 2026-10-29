@@ -24,6 +24,7 @@ int main(int argc, char** argv) {
                         settings_dir.path());
 
     static constexpr const char* kFontResources[] = {
+        ":/fonts/InterVariable.ttf",
         ":/fonts/NotoSansSC-VariableFont_wght.ttf",
         ":/fonts/DMMono-Regular.ttf",
         ":/fonts/DMMono-Medium.ttf",
@@ -34,7 +35,8 @@ int main(int argc, char** argv) {
         }
     }
     QFont app_font;
-    app_font.setFamilies({QStringLiteral("Noto Sans SC"),
+    app_font.setFamilies({QStringLiteral("Inter Variable"),
+                          QStringLiteral("Noto Sans SC"),
                           QStringLiteral("Microsoft YaHei UI"),
                           QStringLiteral("Segoe UI")});
     app_font.setPixelSize(13);
