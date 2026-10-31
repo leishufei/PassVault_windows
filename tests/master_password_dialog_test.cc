@@ -317,8 +317,8 @@ TEST(MasterPasswordDialogTest, FooterButtonsKeepHeightAfterThemePolish) {
                                      passvault::ui::Theme::kDark}) {
             theme->ApplyTheme(appearance);
             QApplication::processEvents();
-            EXPECT_EQ(Button(dialog, "CancelButton")->height(), 36);
-            EXPECT_EQ(Button(dialog, "PrimaryButton")->height(), 36);
+            EXPECT_EQ(Button(dialog, "CancelButton")->height(), 32);
+            EXPECT_EQ(Button(dialog, "PrimaryButton")->height(), 32);
         }
     }
     theme->ApplyTheme(previous_theme);

@@ -9,6 +9,7 @@
 #include <QFont>
 #include <QFontInfo>
 #include <QFontMetrics>
+#include <QGlyphRun>
 #include <QImage>
 #include <QSettings>
 #include <QScrollArea>
@@ -27,6 +28,7 @@
 #include <QSignalSpy>
 #include <QStackedWidget>
 #include <QTest>
+#include <QTextLayout>
 #include <QTimer>
 #include <QToolButton>
 #include <QTabWidget>
@@ -349,7 +351,7 @@ TEST_F(MainWindowTest, WorkspaceHeaderSpansListAndDetail) {
     EXPECT_EQ(content->y(), header->geometry().bottom() + 1);
     EXPECT_EQ(divider->height(), 1);
     EXPECT_EQ(divider->width(), header->width());
-    EXPECT_EQ(search_container->height(), 36);
+    EXPECT_EQ(search_container->height(), 32);
     EXPECT_GE(search_container->width(), 260);
     EXPECT_LE(search_container->width(), 420);
     EXPECT_EQ(search_container->x(), 24);
@@ -405,7 +407,7 @@ TEST_F(MainWindowTest, PasswordCardsUseTargetDensityAndListStateLayer) {
     QApplication::processEvents();
 
     ASSERT_GT(passwords()->count(), 1);
-    EXPECT_EQ(passwords()->visualItemRect(passwords()->item(0)).height(), 64);
+    EXPECT_EQ(passwords()->visualItemRect(passwords()->item(0)).height(), 62);
     EXPECT_EQ(passwords()->spacing(), 6);
     auto* card = passwords()->itemWidget(passwords()->item(0));
     auto* fav_card = passwords()->itemWidget(passwords()->item(1));
@@ -420,7 +422,7 @@ TEST_F(MainWindowTest, PasswordCardsUseTargetDensityAndListStateLayer) {
     const QString stylesheet =
         passvault::ui::ThemeManager::Instance()->LoadStyleSheet();
     EXPECT_TRUE(
-        stylesheet.contains(QStringLiteral("#PasswordList::item:focus")));
+        stylesheet.contains(QStringLiteral("#PasswordList::item:selected:focus")));
     EXPECT_TRUE(stylesheet.contains(
         QStringLiteral("padding: 6px 18px 20px 18px")));
 }
@@ -699,9 +701,89 @@ TEST_F(MainWindowTest, NewPasswordButtonMatchesFigmaTypography) {
     QApplication::processEvents();
 
     const QFontInfo button_font_info(button->font());
-    EXPECT_EQ(button_font_info.family(), QStringLiteral("Inter Variable"));
-    EXPECT_EQ(button_font_info.pixelSize(), 14);
+    EXPECT_EQ(button_font_info.family(), QFontInfo(QApplication::font()).family());
+    EXPECT_EQ(button_font_info.pixelSize(), 13);
     EXPECT_EQ(button_font_info.weight(), 600);
+}
+
+TEST_F(MainWindowTest, UiGlyphsUseCcSwitchWindowsFonts) {
+    window_->show();
+    QApplication::processEvents();
+    const QFont font = newButton()->font();
+    for (const auto& sample : {
+             qMakePair(QStringLiteral("密码列表"),
+                       QStringLiteral("Microsoft YaHei UI")),
+             qMakePair(QStringLiteral("PassVault0123456789"),
+                       QFontInfo(QApplication::font()).family())}) {
+        QTextLayout layout(sample.first, font);
+        layout.beginLayout();
+        layout.createLine();
+        layout.endLayout();
+        const auto runs = layout.glyphRuns();
+        ASSERT_FALSE(runs.isEmpty());
+        for (const auto& run : runs) {
+            EXPECT_EQ(run.rawFont().familyName(), sample.second);
+        }
+    }
+}
+
+TEST_F(MainWindowTest, SelectedCardsUseBlueFillAndDistinctBorderInBothThemes) {
+    ThemeGuard guard;
+    for (const auto theme : {passvault::ui::Theme::kLight,
+                             passvault::ui::Theme::kDark}) {
+        auto* manager = passvault::ui::ThemeManager::Instance();
+        manager->ApplyTheme(theme);
+        window_->resize(1280, 800);
+        window_->show();
+        passwords()->setCurrentRow(0);
+        passwords()->setFocus(Qt::TabFocusReason);
+        QApplication::processEvents();
+        const QRect rect = passwords()->visualItemRect(passwords()->item(0));
+        const QImage image = passwords()->viewport()->grab().toImage();
+        const QColor fill = manager->Color(QStringLiteral("primary-tint"));
+        const QColor border = manager->Color(QStringLiteral("primary"));
+        EXPECT_NE(fill, border);
+        EXPECT_EQ(manager->Color(QStringLiteral("border-card-selected")), border);
+        EXPECT_EQ(image.pixelColor(rect.left(), rect.center().y()), border);
+        EXPECT_EQ(image.pixelColor(rect.left() + 5, rect.center().y()), fill);
+    }
+}
+
+TEST_F(MainWindowTest, HoverDoesNotHighlightOrSelectCard) {
+    ThemeGuard guard;
+    auto* manager = passvault::ui::ThemeManager::Instance();
+    for (const auto theme : {passvault::ui::Theme::kLight,
+                             passvault::ui::Theme::kDark}) {
+        manager->ApplyTheme(theme);
+        window_->resize(1280, 800);
+        window_->show();
+        passwords()->setCurrentRow(-1);
+        QApplication::processEvents();
+        const QRect rect = passwords()->visualItemRect(passwords()->item(0));
+        QTest::mouseMove(passwords()->viewport(), QPoint(1, 1));
+        QApplication::processEvents();
+        const QImage normal = passwords()->viewport()->grab().toImage();
+        EXPECT_EQ(normal.pixelColor(rect.left() + 5, rect.center().y()),
+                  manager->Color(QStringLiteral("card")));
+        QTest::mouseMove(passwords()->viewport(), rect.center());
+        QApplication::processEvents();
+        const QImage hovered = passwords()->viewport()->grab().toImage();
+        EXPECT_FALSE(passwords()->item(0)->isSelected());
+        EXPECT_EQ(hovered.pixelColor(rect.left(), rect.center().y()),
+                  manager->Color(QStringLiteral("border-card")));
+        EXPECT_EQ(hovered.pixelColor(rect.left() + 5, rect.center().y()),
+                  manager->Color(QStringLiteral("card")));
+
+        QTest::mouseClick(passwords()->viewport(), Qt::LeftButton, Qt::NoModifier,
+                          rect.center());
+        QApplication::processEvents();
+        const QImage selected = passwords()->viewport()->grab().toImage();
+        EXPECT_TRUE(passwords()->item(0)->isSelected());
+        EXPECT_EQ(selected.pixelColor(rect.left(), rect.center().y()),
+                  manager->Color(QStringLiteral("primary")));
+        EXPECT_EQ(selected.pixelColor(rect.left() + 5, rect.center().y()),
+                  manager->Color(QStringLiteral("primary-tint")));
+    }
 }
 
 TEST_F(MainWindowTest, SearchShortcutUsesBodyTypography) {
@@ -713,7 +795,7 @@ TEST_F(MainWindowTest, SearchShortcutUsesBodyTypography) {
     QApplication::processEvents();
 
     const QFontInfo shortcut_font_info(shortcut->font());
-    EXPECT_EQ(shortcut_font_info.family(), QStringLiteral("DM Mono"));
+    EXPECT_EQ(shortcut_font_info.family(), QStringLiteral("Consolas"));
     EXPECT_EQ(shortcut_font_info.pixelSize(), 11);
 }
 

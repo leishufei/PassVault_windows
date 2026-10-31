@@ -1,4 +1,4 @@
-/* PassVault application-specific styles (Notion design system). */
+/* PassVault application-specific styles (cc-switch design system). */
 
 /* ---------- Workspace shell ---------- */
 
@@ -26,17 +26,17 @@ QMainWindow, #WorkspaceRoot {
 }
 #Sidebar QLabel { background: transparent; }
 
-/* Primary workspace CTA: Notion pill button (#0075de / pressed #005bab, stadium 20px). */
+/* Primary workspace CTA: solid action button (#0075de / pressed #005bab, 6px radius). */
 #NewPasswordButton {
     background-color: var(--primary);
     color: var(--accent-fg);
     border: 1px solid var(--primary);
-    border-radius: 20px;
+    border-radius: 6px;
     padding: 0 16px;
-    min-height: 40px;
-    max-height: 40px;
+    min-height: 30px;
+    max-height: 30px;
     font-weight: 600;
-    font-size: 14px;
+    font-size: 13px;
 }
 #NewPasswordButton:hover {
     background-color: var(--accent-hover);
@@ -55,7 +55,7 @@ QMainWindow, #WorkspaceRoot {
 }
 #SidebarSectionList::item, #SidebarCategoryList::item {
     padding: 0 12px;
-    min-height: 36px;
+    min-height: 28px;
     border-radius: var(--radius-sm);
     color: var(--text-secondary);
     margin: 0;
@@ -65,12 +65,12 @@ QMainWindow, #WorkspaceRoot {
     color: var(--text-primary);
 }
 #SidebarSectionList::item:selected, #SidebarCategoryList::item:selected {
-    background-color: var(--primary-tint);
-    color: var(--primary-text-on-tint);
-    font-weight: 600;
+    background-color: var(--card-selected);
+    color: var(--text-primary);
+    font-weight: 500;
 }
 #SidebarCategoryList::item {
-    min-height: 34px;
+    min-height: 28px;
 }
 
 #SidebarDivider {
@@ -82,9 +82,8 @@ QMainWindow, #WorkspaceRoot {
 
 #SidebarSectionHeader {
     color: var(--text-tertiary);
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.125px;
+    font-size: 11px;
+    font-weight: 500;
     padding: 0 4px;
 }
 
@@ -111,8 +110,8 @@ QMainWindow, #WorkspaceRoot {
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
     padding: 0 12px;
-    min-height: 36px;
-    max-height: 36px;
+    min-height: 30px;
+    max-height: 30px;
     font-size: 13px;
     font-weight: 500;
     text-align: left;
@@ -154,10 +153,10 @@ QMainWindow, #WorkspaceRoot {
     border: none;
 }
 
-/* Notion text-input: white surface, 1px #dddddd border, tight 4px radius. */
+/* Input on card surface, 1px border-strong, 6px radius. */
 #SearchBarContainer {
     background-color: var(--input-bg);
-    border-radius: var(--radius-xs);
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border-input);
 }
 #SearchBarContainer[focused="true"] {
@@ -166,8 +165,8 @@ QMainWindow, #WorkspaceRoot {
 }
 #SearchBar {
     padding: 0 6px 0 8px;
-    min-height: 34px;
-    max-height: 34px;
+    min-height: 30px;
+    max-height: 30px;
     background: transparent;
     border: none;
     color: var(--text-primary);
@@ -186,7 +185,7 @@ QMainWindow, #WorkspaceRoot {
     color: var(--text-tertiary);
     border: 1px solid var(--border);
     border-radius: 4px;
-    font-family: "DM Mono", "Inter Variable", "Noto Sans SC";
+    font-family: "Consolas", "Liberation Mono", "Menlo", monospace;
     font-size: 11px;
 }
 
@@ -231,9 +230,9 @@ QMainWindow, #WorkspaceRoot {
 #ListTitleRow { background: transparent; }
 #ListTitle {
     color: var(--text-primary);
-    font-size: 16px;
-    font-weight: 700;
-    letter-spacing: -0.25px;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
 }
 #ListCount {
     color: var(--text-tertiary);
@@ -276,16 +275,11 @@ QMainWindow, #WorkspaceRoot {
     border: 1px solid var(--border-card);
     background: var(--card);
 }
-#PasswordList::item:hover {
-    background-color: var(--card-hover);
-    border-color: var(--border-card-hover);
-}
-#PasswordList::item:selected {
-    background-color: var(--card-selected);
-    border-color: var(--border-card-selected);
-}
-#PasswordList::item:focus {
-    border: 2px solid var(--focus-ring);
+#PasswordList::item:selected,
+#PasswordList::item:selected:hover,
+#PasswordList::item:selected:focus {
+    background-color: var(--primary-tint);
+    border: 1px solid var(--border-card-selected);
 }
 
 #PasswordCard {
@@ -293,13 +287,13 @@ QMainWindow, #WorkspaceRoot {
     border-radius: var(--radius-xl);
 }
 #PasswordCardIcon {
-    border-radius: var(--radius-lg);
+    border-radius: 8px;
     font-size: 14px;
     font-weight: 700;
-    min-width: 38px;
-    max-width: 38px;
-    min-height: 38px;
-    max-height: 38px;
+    min-width: 32px;
+    max-width: 32px;
+    min-height: 32px;
+    max-height: 32px;
 }
 #PasswordCardIcon[colorIndex="0"] {
     background-color: var(--avatar-0-bg);
@@ -328,11 +322,15 @@ QMainWindow, #WorkspaceRoot {
 #PasswordCardTitle {
     color: var(--text-primary);
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 500;
+    min-height: 20px;
+    max-height: 20px;
 }
 #PasswordCardMeta {
-    color: var(--text-tertiary);
+    color: var(--text-secondary);
     font-size: 12px;
+    min-height: 18px;
+    max-height: 18px;
 }
 #PasswordCardTime {
     color: var(--text-quaternary);
@@ -345,11 +343,11 @@ QMainWindow, #WorkspaceRoot {
     padding: 0;
 }
 #PasswordCardRestoreButton {
-    background-color: var(--card);
+    background-color: transparent;
     color: var(--text-primary);
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
     border-radius: var(--radius-md);
-    padding: 0 8px;
+    padding: 0;
     font-size: 12px;
     font-weight: 500;
 }
@@ -435,17 +433,17 @@ QMainWindow, #WorkspaceRoot {
 #DetailTitle {
     color: var(--text-primary);
     font-size: 18px;
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: -0.3px;
 }
 #DetailTag {
-    background-color: var(--primary-tint);
-    color: var(--primary);
+    background-color: transparent;
+    border: 1px solid var(--border-strong);
+    color: var(--text-secondary);
     border-radius: 10px;
     padding: 2px 10px;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.125px;
+    font-size: 11px;
+    font-weight: 500;
 }
 #DetailSubtitle {
     color: var(--hint-2);
@@ -524,7 +522,7 @@ QMainWindow, #WorkspaceRoot {
 }
 #DetailFieldValueMono {
     color: var(--text-primary);
-    font-family: "DM Mono", "Inter Variable", "Noto Sans SC";
+    font-family: "Consolas", "Liberation Mono", "Menlo", monospace;
     font-size: 14px;
     font-weight: 500;
     background: transparent;
@@ -565,7 +563,7 @@ QMainWindow, #WorkspaceRoot {
 }
 #DetailStampValue {
     color: var(--text-secondary);
-    font-family: "DM Mono", "Inter Variable", "Noto Sans SC";
+    font-family: "Consolas", "Liberation Mono", "Menlo", monospace;
     font-size: 12px;
     background: transparent;
 }
@@ -582,8 +580,8 @@ QMainWindow, #WorkspaceRoot {
     color: var(--text-primary);
 }
 #CategoryTree::item:selected {
-    background-color: var(--accent-soft);
-    color: var(--accent);
+    background-color: var(--card-selected);
+    color: var(--text-primary);
 }
 #CategoryTree::item:hover:!selected {
     background-color: var(--bg-hover);
@@ -603,7 +601,7 @@ QMainWindow, #WorkspaceRoot {
 }
 #DetailMonoValue {
     color: var(--text-primary);
-    font-family: "DM Mono", "Inter Variable", "Noto Sans SC";
+    font-family: "Consolas", "Liberation Mono", "Menlo", monospace;
     font-size: 14px;
 }
 
@@ -642,7 +640,7 @@ QMainWindow, #WorkspaceRoot {
 #DialogTitle {
     color: var(--text-primary);
     font-size: 18px;
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: -0.3px;
 }
 #DialogSubtitle {
@@ -661,9 +659,8 @@ QMainWindow, #WorkspaceRoot {
     background: var(--accent);
     border-radius: 10px;
     padding: 2px 10px;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.125px;
+    font-size: 11px;
+    font-weight: 500;
 }
 #BadgeSuccess { background: var(--success); }
 #BadgeWarning { background: var(--warning); color: var(--text-inverse); }
@@ -692,7 +689,7 @@ QMainWindow, #WorkspaceRoot {
 #EditorGeneratorHeaderTitle {
     color: var(--text-primary);
     font-size: 16px;
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: -0.25px;
 }
 #EditorHeaderBack,
@@ -724,7 +721,7 @@ QMainWindow, #WorkspaceRoot {
 
 #EditorSectionTitle {
     color: var(--text-primary);
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
 }
 
@@ -747,11 +744,11 @@ QMainWindow, #WorkspaceRoot {
 
 #EditorFooter QPushButton,
 #EditorGeneratorFooter QPushButton {
-    min-height: 36px;
-    max-height: 36px;
+    min-height: 30px;
+    max-height: 30px;
     padding: 0 18px;
     border-radius: var(--radius-md);
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
 }
 #EditorFooter QPushButton[flat="true"],
@@ -810,11 +807,11 @@ QMainWindow, #WorkspaceRoot {
     background-color: var(--input-bg);
     color: var(--text-primary);
     border-color: var(--border-input);
-    min-height: 36px;
-    max-height: 36px;
-    padding: 0 12px;
-    border-radius: 4px;
-    font-size: 14px;
+    min-height: 30px;
+    max-height: 30px;
+    padding: 0 10px;
+    border-radius: 6px;
+    font-size: 13px;
 }
 #EditorBody QLineEdit:focus {
     border-color: var(--focus-ring);
@@ -824,11 +821,11 @@ QMainWindow, #WorkspaceRoot {
     background-color: var(--input-bg);
     color: var(--text-primary);
     border-color: var(--border-input);
-    min-height: 36px;
-    max-height: 36px;
+    min-height: 30px;
+    max-height: 30px;
     padding: 0 30px 0 12px;
-    border-radius: 4px;
-    font-size: 14px;
+    border-radius: 6px;
+    font-size: 13px;
 }
 #EditorBody QComboBox:focus {
     border-color: var(--focus-ring);
@@ -849,8 +846,8 @@ QMainWindow, #WorkspaceRoot {
     color: var(--text-primary);
     border-color: var(--border-input);
     padding: 8px 12px;
-    border-radius: 4px;
-    font-size: 14px;
+    border-radius: 6px;
+    font-size: 13px;
 }
 #EditorBody QTextEdit:focus {
     border-color: var(--focus-ring);
@@ -859,7 +856,7 @@ QMainWindow, #WorkspaceRoot {
 #EditorPasswordField {
     background-color: var(--input-bg);
     border: 1px solid var(--border-input);
-    border-radius: 4px;
+    border-radius: 6px;
 }
 #EditorPasswordField[error="true"] {
     background-color: var(--danger-soft);
@@ -870,10 +867,10 @@ QMainWindow, #WorkspaceRoot {
     background: transparent;
     border: none;
     padding: 0;
-    min-height: 34px;
-    max-height: 34px;
-    font-family: "DM Mono", "Inter Variable", "Noto Sans SC";
-    font-size: 14px;
+    min-height: 30px;
+    max-height: 30px;
+    font-family: "Consolas", "Liberation Mono", "Menlo", monospace;
+    font-size: 13px;
 }
 
 #EditorPreviewToggle {
@@ -910,7 +907,7 @@ QMainWindow, #WorkspaceRoot {
 #EditorGeneratorPreviewCard {
     background-color: var(--soft-bg-sync);
     border: 1px solid var(--border-panel);
-    border-radius: 12px;
+    border-radius: 10px;
     margin-bottom: 24px;
 }
 
@@ -965,7 +962,7 @@ QMainWindow, #WorkspaceRoot {
 
 #EditorGeneratorOption {
     background: transparent;
-    border-radius: 8px;
+    border-radius: 10px;
 }
 
 #EditorGeneratorOption:hover {
@@ -1004,7 +1001,7 @@ QMainWindow, #WorkspaceRoot {
 #PreferencesHeaderTitle {
     color: var(--text-primary);
     font-size: 16px;
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: -0.25px;
 }
 #PreferencesBack {
@@ -1033,6 +1030,7 @@ QTabWidget#PreferencesTabs::pane {
     border-top: 1px solid var(--border-section-4);
     background: transparent;
 }
+QTabWidget#PreferencesTabs::tab-bar { left: 16px; }
 QTabWidget#PreferencesTabs QTabBar {
     background: transparent;
     border: none;
@@ -1040,20 +1038,21 @@ QTabWidget#PreferencesTabs QTabBar {
 QTabWidget#PreferencesTabs QTabBar::tab {
     background: transparent;
     color: var(--text-tertiary);
-    padding: 14px 20px;
+    padding: 9px 12px;
+    min-width: 48px;
     font-size: 13px;
     font-weight: 500;
     border: none;
     border-bottom: 2px solid transparent;
-    margin: 0;
+    margin: 0 8px 0 0;
 }
 QTabWidget#PreferencesTabs QTabBar::tab:hover {
     color: var(--text-primary);
 }
 QTabWidget#PreferencesTabs QTabBar::tab:selected {
-    color: var(--primary);
+    color: var(--text-primary);
     font-weight: 600;
-    border-bottom: 2px solid var(--primary);
+    border-bottom: 2px solid var(--text-primary);
 }
 
 #PreferencesTabPage { background: transparent; }
@@ -1063,15 +1062,15 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
     background-color: var(--soft-bg);
     border: 1px solid var(--border-section);
     border-radius: var(--radius-md);
-    min-width: 36px;
-    max-width: 36px;
-    min-height: 36px;
-    max-height: 36px;
+    min-width: 30px;
+    max-width: 30px;
+    min-height: 30px;
+    max-height: 30px;
 }
 #SettingRowTitle {
     color: var(--text-primary);
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 500;
     background: transparent;
 }
 #SettingRowDesc {
@@ -1124,20 +1123,20 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
     background: transparent;
 }
 #ChangeMasterButton {
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 0 14px;
-    min-height: 36px;
-    max-height: 36px;
+    min-height: 30px;
+    max-height: 30px;
     font-size: 13px;
 }
 #ClearLocalDataButton {
     background: transparent;
     color: var(--danger-text);
     border: 1px solid var(--danger-text);
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 0 14px;
-    min-height: 36px;
-    max-height: 36px;
+    min-height: 30px;
+    max-height: 30px;
     font-size: 13px;
     font-weight: 500;
 }
@@ -1171,7 +1170,7 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
 #SyncConnectionCard {
     background-color: var(--card);
     border: 1px solid var(--border-panel-3);
-    border-radius: 12px;
+    border-radius: 10px;
 }
 #SyncAuthCard,
 #SyncAccountCard,
@@ -1185,7 +1184,7 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
 }
 #SyncGoogleMark {
     background-color: var(--card);
-    color: var(--brand-google-fg);
+    color: var(--text-secondary);
     border: 1px solid var(--border-section-3);
     border-radius: 10px;
     font-size: 15px;
@@ -1210,7 +1209,7 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
 }
 #SyncLastValue {
     color: var(--text-primary);
-    font-family: "DM Mono", "Inter Variable", "Noto Sans SC";
+    font-family: "Consolas", "Liberation Mono", "Menlo", monospace;
     font-size: 12px;
     font-weight: 500;
     background: transparent;
@@ -1238,10 +1237,10 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
 #SyncNowButton,
 #AuthorizeCancelButton,
 #ChangeAccountButton {
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 0 14px;
-    min-height: 36px;
-    max-height: 36px;
+    min-height: 30px;
+    max-height: 30px;
     font-size: 13px;
     font-weight: 500;
 }
@@ -1260,7 +1259,7 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
 #MasterPasswordCard {
     background-color: var(--card);
     border: 1px solid var(--border-panel);
-    border-radius: 16px;
+    border-radius: 14px;
 }
 #MasterPasswordHeader {
     background: transparent;
@@ -1275,13 +1274,13 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
     background: transparent;
     color: var(--text-primary);
     font-size: 16px;
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: -0.25px;
 }
 #MasterPasswordClose {
     padding: 0;
     border: 1px solid transparent;
-    border-radius: 8px;
+    border-radius: 6px;
 }
 #MasterPasswordClose:hover {
     background-color: var(--bg-hover);
@@ -1305,11 +1304,11 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
     background-color: var(--input-bg);
     color: var(--text-primary);
     border: 1px solid var(--border-input);
-    border-radius: 4px;
-    padding: 0 12px;
-    min-height: 36px;
-    max-height: 36px;
-    font-size: 14px;
+    border-radius: 6px;
+    padding: 0 10px;
+    min-height: 30px;
+    max-height: 30px;
+    font-size: 13px;
 }
 #MasterPasswordDialog QLineEdit:focus {
     border-color: var(--focus-ring);
@@ -1327,10 +1326,10 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
 }
 #MasterPasswordFooter QPushButton {
     padding: 0 18px;
-    min-height: 36px;
-    max-height: 36px;
-    border-radius: 8px;
-    font-size: 14px;
+    min-height: 30px;
+    max-height: 30px;
+    border-radius: 6px;
+    font-size: 13px;
 }
 #MasterPasswordDialog QPushButton:focus {
     border-color: var(--focus-ring);
@@ -1370,7 +1369,7 @@ QTabWidget#ImportPreviewTabs::pane {
     background-color: var(--soft-bg-sync);
     color: var(--body);
     border: 1px solid var(--border-panel);
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 10px 12px;
     font-size: 12px;
 }
@@ -1386,18 +1385,25 @@ QTabWidget#ImportPreviewTabs QTabBar {
 QTabWidget#ImportPreviewTabs QTabBar::tab {
     background: transparent;
     color: var(--hint-6);
-    padding: 12px 16px;
+    padding: 7px 0;
+    min-height: 20px;
+    max-height: 20px;
     border: none;
     border-bottom: 2px solid transparent;
     font-size: 13px;
     font-weight: 500;
-    margin: 0;
+    margin: 0 16px 0 0;
 }
 QTabWidget#ImportPreviewTabs QTabBar::tab:hover {
     color: var(--muted-15);
 }
 QTabWidget#ImportPreviewTabs QTabBar::tab:selected {
-    color: var(--primary);
-    border-bottom: 2px solid var(--primary);
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--text-primary);
+    font-weight: 600;
+}
+#SidebarBrandName {
+    color: var(--text-primary);
+    font-size: 21px;
     font-weight: 600;
 }

@@ -70,16 +70,16 @@ constexpr std::int64_t kSectionFavorites = -2;
 constexpr std::int64_t kSectionUncategorized = 0;
 constexpr std::int64_t kSectionTrash = -3;
 
-constexpr int kSidebarWidth = 228;
+constexpr int kSidebarWidth = 208;
 constexpr int kDetailWidth = 400;
 constexpr int kPasswordListMinWidth = 420;
 constexpr int kWorkspaceHeaderHeight = 64;
 constexpr int kSearchMinWidth = 260;
 constexpr int kSearchMaxWidth = 420;
-constexpr int kSearchHeight = 36;
+constexpr int kSearchHeight = 32;
 constexpr int kIconSize = 16;
-constexpr int kSectionIconSize = 18;
-constexpr int kCardHeight = 64;
+constexpr int kSectionIconSize = 16;
+constexpr int kCardHeight = 62;
 constexpr int kSidebarBreakpoint = 1024;
 constexpr int kSidebarCountRole = Qt::UserRole + 1;
 constexpr int kSidebarSystemRole = Qt::UserRole + 2;
@@ -156,24 +156,13 @@ class SidebarItemDelegate final : public QStyledItemDelegate {
         const bool selected = option.state.testFlag(QStyle::State_Selected);
         const bool hovered = option.state.testFlag(QStyle::State_MouseOver);
         auto* theme = ThemeManager::Instance();
-        const QColor foreground = selected
-                                      ? theme->Color(QStringLiteral(
-                                            "primary-text-on-tint"))
-                                      : theme->Color(hovered
-                                            ? QStringLiteral("text-primary")
-                                            : QStringLiteral("text-secondary"));
+        const QColor foreground = theme->Color(
+            selected || hovered ? QStringLiteral("text-primary")
+                                : QStringLiteral("text-secondary"));
         const QRect content = option.rect.adjusted(12, 0, -12, 0);
 
         painter->save();
         painter->setRenderHint(QPainter::Antialiasing, true);
-        if (selected) {
-            painter->setPen(Qt::NoPen);
-            painter->setBrush(theme->Color(QStringLiteral("primary")));
-            const QRect indicator_rect(option.rect.left() + 2,
-                                       option.rect.top() + 8, 3,
-                                       std::max(12, option.rect.height() - 16));
-            painter->drawRoundedRect(indicator_rect, 1.5, 1.5);
-        }
         const QString icon_name =
             index.data(kSidebarIconRole).toString();
         const QRect icon_rect(content.left(),
@@ -188,7 +177,7 @@ class SidebarItemDelegate final : public QStyledItemDelegate {
         if (has_count && count > 0) {
             QFont count_font = option.font;
             count_font.setPixelSize(11);
-            count_font.setWeight(QFont::DemiBold);
+            count_font.setWeight(QFont::Medium);
             const QFontMetrics count_metrics(count_font);
             const QString count_text = QString::number(count);
             const int badge_width =
@@ -196,20 +185,16 @@ class SidebarItemDelegate final : public QStyledItemDelegate {
             const QRect badge_rect(content.right() - badge_width + 1,
                                    content.center().y() - 9, badge_width, 18);
             painter->setPen(Qt::NoPen);
-            painter->setBrush(theme->Color(
-                selected ? QStringLiteral("primary-tint-2")
-                         : QStringLiteral("bg-muted")));
+            painter->setBrush(theme->Color(QStringLiteral("bg-muted")));
             painter->drawRoundedRect(badge_rect, 9, 9);
             painter->setFont(count_font);
-            painter->setPen(theme->Color(
-                selected ? QStringLiteral("primary-text-on-tint")
-                         : QStringLiteral("muted-8")));
+            painter->setPen(theme->Color(QStringLiteral("muted-8")));
             painter->drawText(badge_rect, Qt::AlignCenter, count_text);
             text_rect.setRight(badge_rect.left() - 8);
         }
 
         QFont text_font = option.font;
-        if (selected) text_font.setWeight(QFont::DemiBold);
+        if (selected) text_font.setWeight(QFont::Medium);
         painter->setFont(text_font);
         painter->setPen(foreground);
         painter->drawText(text_rect, Qt::AlignLeft | Qt::AlignVCenter,
@@ -222,7 +207,7 @@ class SidebarItemDelegate final : public QStyledItemDelegate {
     QSize sizeHint(const QStyleOptionViewItem& option,
                    const QModelIndex& index) const override {
         QSize size = QStyledItemDelegate::sizeHint(option, index);
-        size.setHeight(index.data(kSidebarSystemRole).toBool() ? 36 : 34);
+        size.setHeight(28);
         return size;
     }
 };
@@ -257,7 +242,7 @@ QString AvatarInitial(const model::PasswordEntry& entry) {
 
 MainWindow::MainWindow(const Deps& deps, QWidget* parent)
     : QMainWindow(parent), deps_(deps) {
-    setWindowTitle(QStringLiteral("PassVault"));
+    setWindowTitle(QStringLiteral("PassVault · 密码保险库"));
     resize(1200, 800);
 
     auto* root = new QWidget(this);
@@ -382,6 +367,20 @@ QWidget* MainWindow::BuildSidebar() {
     layout->setContentsMargins(12, 20, 12, 16);
     layout->setSpacing(0);
 
+    auto* brand = new QWidget(sidebar);
+    auto* brand_layout = new QHBoxLayout(brand);
+    brand_layout->setContentsMargins(8, 0, 0, 18);
+    brand_layout->setSpacing(10);
+    auto* brand_icon = new QLabel(brand);
+    brand_icon->setPixmap(QPixmap(QStringLiteral(":/icons/passvault.png"))
+                              .scaled(36, 36, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    brand_layout->addWidget(brand_icon);
+    auto* brand_name = new QLabel(QStringLiteral("PassVault"), brand);
+    brand_name->setObjectName(QStringLiteral("SidebarBrandName"));
+    brand_layout->addWidget(brand_name);
+    brand_layout->addStretch(1);
+    layout->addWidget(brand);
+
     auto* new_button = new QPushButton(QStringLiteral("新建密码"), sidebar);
     new_button->setFocusPolicy(Qt::TabFocus);
     new_button->setObjectName(QStringLiteral("NewPasswordButton"));
@@ -394,7 +393,7 @@ QWidget* MainWindow::BuildSidebar() {
     new_button->setIconSize(QSize(17, 17));
     connect(new_button, &QPushButton::clicked, this,
             &MainWindow::OnNewPassword);
-    new_button->setFixedHeight(40);
+    new_button->setFixedHeight(32);
     layout->addWidget(new_button);
     layout->addSpacing(16);
 
@@ -406,7 +405,7 @@ QWidget* MainWindow::BuildSidebar() {
     sections_list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     sections_list_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     sections_list_->setItemDelegate(new SidebarItemDelegate(sections_list_));
-    sections_list_->setFixedHeight(4 * 36);
+    sections_list_->setFixedHeight(4 * 28);
     connect(sections_list_, &QListWidget::itemSelectionChanged, this,
             &MainWindow::OnSectionSelectionChanged);
     layout->addWidget(sections_list_);
@@ -488,7 +487,7 @@ QWidget* MainWindow::BuildSidebar() {
     sync_button_->setAccessibleName(QStringLiteral("立即同步"));
     sync_button_->setToolTip(QStringLiteral("立即同步"));
     sync_button_->setFocusPolicy(Qt::TabFocus);
-    sync_button_->setFixedHeight(36);
+    sync_button_->setFixedHeight(32);
     sync_button_->setCursor(Qt::PointingHandCursor);
     sync_button_->setIconSize(QSize(kIconSize, kIconSize));
     sync_button_->setProperty("state", QStringLiteral("idle"));
@@ -502,7 +501,7 @@ QWidget* MainWindow::BuildSidebar() {
     settings_button->setAccessibleName(QStringLiteral("设置"));
     settings_button->setToolTip(QStringLiteral("设置"));
     settings_button->setFocusPolicy(Qt::TabFocus);
-    settings_button->setFixedHeight(36);
+    settings_button->setFixedHeight(32);
     settings_button->setCursor(Qt::PointingHandCursor);
     settings_button->setIcon(IconLoader::Load(
         QStringLiteral("settings-2"),
@@ -1066,7 +1065,7 @@ QWidget* MainWindow::CreatePasswordCard(const model::PasswordEntry& entry) {
     card->setObjectName(QStringLiteral("PasswordCard"));
     card->setFrameShape(QFrame::NoFrame);
     auto* row = new QHBoxLayout(card);
-    row->setContentsMargins(14, 12, 14, 12);
+    row->setContentsMargins(16, 10, 16, 10);
     row->setSpacing(12);
 
     auto* avatar = new QLabel(AvatarInitial(entry), card);
@@ -1074,13 +1073,13 @@ QWidget* MainWindow::CreatePasswordCard(const model::PasswordEntry& entry) {
     avatar->setProperty(
         "colorIndex",
         static_cast<unsigned int>(entry.icon_color) % 6);
-    avatar->setFixedSize(38, 38);
+    avatar->setFixedSize(32, 32);
     avatar->setAlignment(Qt::AlignCenter);
     row->addWidget(avatar);
 
     auto* text_col = new QVBoxLayout();
     text_col->setContentsMargins(0, 0, 0, 0);
-    text_col->setSpacing(4);
+    text_col->setSpacing(2);
     auto* title = new ElidedLabel(
         entry.title.isEmpty() ? QStringLiteral("(无标题)") : entry.title, card);
     title->setObjectName(QStringLiteral("PasswordCardTitle"));

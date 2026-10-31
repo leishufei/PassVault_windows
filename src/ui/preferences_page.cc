@@ -30,7 +30,7 @@ constexpr const char* kLastSyncKey = "sync/last_sync_ms";
 
 constexpr int kHeaderHeight = 64;
 constexpr int kOuterCardMaxWidth = 840;
-constexpr int kIconBoxSize = 36;
+constexpr int kIconBoxSize = 32;
 constexpr int kIconGlyphSize = 18;
 constexpr int kSyncCardGap = 16;
 constexpr int kSyncCardPad = 16;
@@ -651,7 +651,7 @@ QWidget* PreferencesPage::BuildSecurityTab() {
     auto* wipe = new QPushButton(QStringLiteral("清除本地数据"), danger_zone);
     wipe->setObjectName(QStringLiteral("ClearLocalDataButton"));
     wipe->setProperty("danger", true);
-    wipe->setFixedHeight(36);
+    wipe->setFixedHeight(32);
     wipe->setCursor(Qt::PointingHandCursor);
     wipe->setIconSize(QSize(15, 15));
     wipe->setAccessibleName(QStringLiteral("清除本地数据"));

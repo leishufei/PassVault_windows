@@ -191,7 +191,7 @@ void MasterPasswordDialog::BuildUi() {
         auto* edit = new QLineEdit(field);
         edit->setObjectName(name);
         edit->setEchoMode(QLineEdit::Password);
-        edit->setFixedHeight(36);
+        edit->setFixedHeight(32);
         edit->setPlaceholderText(placeholder);
         edit->setAccessibleName(label_text);
         label->setBuddy(edit);
@@ -253,7 +253,7 @@ void MasterPasswordDialog::BuildUi() {
 
     auto* cancel = new QPushButton(QStringLiteral("取消"), footer);
     cancel->setObjectName(QStringLiteral("CancelButton"));
-    cancel->setFixedHeight(36);
+    cancel->setFixedHeight(32);
     primary_ = new QPushButton(
         mode_ == Mode::kUnlock
             ? QStringLiteral("解锁")
@@ -262,7 +262,7 @@ void MasterPasswordDialog::BuildUi() {
         footer);
     primary_->setObjectName(QStringLiteral("PrimaryButton"));
     primary_->setProperty("accent", true);
-    primary_->setFixedHeight(36);
+    primary_->setFixedHeight(32);
     primary_->setDefault(true);
     connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
     connect(primary_, &QPushButton::clicked, this,

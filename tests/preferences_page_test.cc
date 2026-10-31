@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QCryptographicHash>
 #include <QDateTime>
+#include <QDir>
 #include <QFile>
 #include <QFont>
 #include <QFontInfo>
@@ -21,6 +22,7 @@
 #include <QStyle>
 #include <QStyleOptionButton>
 #include <QTabWidget>
+#include <QTabBar>
 #include <QToolButton>
 
 #include "ui/preferences_page.h"
@@ -69,7 +71,7 @@ struct RenderedSwitch {
 RenderedSwitch RenderSwitchIndicator(QCheckBox* toggle, QStyle::State state) {
     QStyleOptionButton option;
     option.initFrom(toggle);
-    option.rect = QRect(0, 0, 36, 20);
+    option.rect = QRect(0, 0, 38, 28);
     option.state = state;
 
     QImage image(option.rect.size(), QImage::Format_ARGB32_Premultiplied);
@@ -152,6 +154,37 @@ class PreferencesPageTest : public ::testing::Test {
         return page_.findChild<QTabWidget*>(QStringLiteral("PreferencesTabs"));
     }
 };
+
+TEST_F(PreferencesPageTest, TabsHavePaddingAndDoNotOverlap) {
+    ThemeGuard guard;
+    passvault::ui::ThemeManager::Instance()->ApplyTheme(passvault::ui::Theme::kLight);
+    page_.resize(1200, 800);
+    page_.show();
+    QApplication::processEvents();
+    auto* tabs = page_.findChild<QTabWidget*>("PreferencesTabs");
+    const QString capture_dir = qEnvironmentVariable("PASSVAULT_UI_CAPTURE_DIR");
+    if (!capture_dir.isEmpty()) {
+        EXPECT_TRUE(page_.grab().save(QDir(capture_dir).filePath("settings.png")));
+    }
+    auto* bar = tabs->tabBar();
+    EXPECT_GE(bar->x(), 16);
+    for (int i = 0; i < bar->count(); ++i) {
+        const QRect rect = bar->tabRect(i);
+        EXPECT_GE(rect.width(), 64);
+        EXPECT_GE(rect.height(), 34);
+        if (i > 0) {
+            EXPECT_LT(bar->tabRect(i - 1).right(), rect.left());
+        }
+    }
+}
+
+TEST_F(PreferencesPageTest, SyncMarkUsesNeutralForeground) {
+    auto* mark = page_.findChild<QLabel*>("SyncGoogleMark");
+    ASSERT_NE(mark, nullptr);
+    mark->ensurePolished();
+    EXPECT_EQ(mark->palette().color(QPalette::WindowText),
+              passvault::ui::ThemeManager::Instance()->Color("text-secondary"));
+}
 
 TEST_F(PreferencesPageTest, ThemeComboEmitsSignal) {
     auto* combo = themeCombo();
@@ -471,7 +504,7 @@ TEST_F(PreferencesPageTest, LeaveLockToggleIndicatorMatchesFigmaSize) {
     option.initFrom(toggle);
     const QRect indicator = toggle->style()->subElementRect(
         QStyle::SE_CheckBoxIndicator, &option, toggle);
-    EXPECT_EQ(indicator.size(), QSize(36, 20));
+    EXPECT_EQ(indicator.size(), QSize(30, 18));
 }
 
 TEST_F(PreferencesPageTest, SwitchResourcesExist) {
@@ -486,74 +519,89 @@ TEST_F(PreferencesPageTest, SwitchResourcesExist) {
 }
 
 TEST_F(PreferencesPageTest, LeaveLockToggleRendersDistinctSwitchStates) {
-    QWidget parent;
-    parent.resize(1200, 800);
-    PreferencesPage page(&parent);
-    page.resize(parent.size());
-    auto* tabs =
-        page.findChild<QTabWidget*>(QStringLiteral("PreferencesTabs"));
-    auto* toggle = page.findChild<QCheckBox*>(QStringLiteral("LeaveLockToggle"));
-    ASSERT_NE(tabs, nullptr);
-    ASSERT_NE(toggle, nullptr);
-    tabs->setCurrentIndex(2);
-    parent.show();
-    toggle->ensurePolished();
-    toggle->setEnabled(true);
-    toggle->clearFocus();
-    QApplication::processEvents();
+    ThemeGuard guard;
+    for (const auto theme : {passvault::ui::Theme::kLight,
+                             passvault::ui::Theme::kDark}) {
+        const bool dark = theme == passvault::ui::Theme::kDark;
+        const QColor off_color(dark ? "#6f6f77" : "#888890");
+        const QColor on_color(dark ? "#2383e2" : "#0075de");
+        const QColor disabled_thumb(dark ? "#8c8c8f" : "#ffffff");
+        const QColor disabled_off(dark ? "#4b4b52" : "#c9c9cd");
+        const QColor disabled_on(dark ? "#295482" : "#8cc1f0");
+        SCOPED_TRACE(dark ? "dark" : "light");
+        passvault::ui::ThemeManager::Instance()->ApplyTheme(theme);
+        QWidget parent;
+        parent.resize(1200, 800);
+        PreferencesPage page(&parent);
+        page.resize(parent.size());
+        auto* tabs =
+            page.findChild<QTabWidget*>(QStringLiteral("PreferencesTabs"));
+        auto* toggle =
+            page.findChild<QCheckBox*>(QStringLiteral("LeaveLockToggle"));
+        ASSERT_NE(tabs, nullptr);
+        ASSERT_NE(toggle, nullptr);
+        tabs->setCurrentIndex(2);
+        parent.show();
+        toggle->ensurePolished();
+        toggle->setEnabled(true);
+        toggle->clearFocus();
+        QApplication::processEvents();
 
-    const RenderedSwitch off = RenderSwitchIndicator(
-        toggle, QStyle::State_Enabled | QStyle::State_Off);
-    const RenderedSwitch on = RenderSwitchIndicator(
-        toggle, QStyle::State_Enabled | QStyle::State_On);
-    const RenderedSwitch off_active = RenderSwitchIndicator(
-        toggle, QStyle::State_Enabled | QStyle::State_Off |
-                    QStyle::State_MouseOver);
-    const RenderedSwitch on_active = RenderSwitchIndicator(
-        toggle, QStyle::State_Enabled | QStyle::State_On |
-                    QStyle::State_MouseOver);
+        const RenderedSwitch off = RenderSwitchIndicator(
+            toggle, QStyle::State_Enabled | QStyle::State_Off);
+        const RenderedSwitch on = RenderSwitchIndicator(
+            toggle, QStyle::State_Enabled | QStyle::State_On);
+        const RenderedSwitch off_active = RenderSwitchIndicator(
+            toggle, QStyle::State_Enabled | QStyle::State_Off |
+                        QStyle::State_MouseOver);
+        const RenderedSwitch on_active = RenderSwitchIndicator(
+            toggle, QStyle::State_Enabled | QStyle::State_On |
+                        QStyle::State_MouseOver);
 
-    toggle->setFocus(Qt::OtherFocusReason);
-    QApplication::processEvents();
-    ASSERT_TRUE(toggle->hasFocus());
-    const RenderedSwitch off_focused = RenderSwitchIndicator(
-        toggle, QStyle::State_Enabled | QStyle::State_Off |
-                    QStyle::State_HasFocus);
-    const RenderedSwitch on_focused = RenderSwitchIndicator(
-        toggle, QStyle::State_Enabled | QStyle::State_On |
-                    QStyle::State_HasFocus);
+        toggle->setFocus(Qt::OtherFocusReason);
+        QApplication::processEvents();
+        ASSERT_TRUE(toggle->hasFocus());
+        const RenderedSwitch off_focused = RenderSwitchIndicator(
+            toggle, QStyle::State_Enabled | QStyle::State_Off |
+                        QStyle::State_HasFocus);
+        const RenderedSwitch on_focused = RenderSwitchIndicator(
+            toggle, QStyle::State_Enabled | QStyle::State_On |
+                        QStyle::State_HasFocus);
 
-    toggle->clearFocus();
-    toggle->setEnabled(false);
-    QApplication::processEvents();
-    const RenderedSwitch off_disabled =
-        RenderSwitchIndicator(toggle, QStyle::State_Off);
-    const RenderedSwitch on_disabled =
-        RenderSwitchIndicator(toggle, QStyle::State_On);
+        toggle->clearFocus();
+        toggle->setEnabled(false);
+        QApplication::processEvents();
+        const RenderedSwitch off_disabled =
+            RenderSwitchIndicator(toggle, QStyle::State_Off);
+        const RenderedSwitch on_disabled =
+            RenderSwitchIndicator(toggle, QStyle::State_On);
 
-    EXPECT_NE(ImageHash(off), ImageHash(on));
-    EXPECT_NE(ImageHash(off), ImageHash(off_active));
-    EXPECT_NE(ImageHash(on), ImageHash(on_active));
-    EXPECT_NE(ImageHash(off_disabled), ImageHash(off));
-    EXPECT_NE(ImageHash(on_disabled), ImageHash(on));
-    EXPECT_NE(ImageHash(off_disabled), ImageHash(on_disabled));
+        EXPECT_NE(ImageHash(off), ImageHash(on));
+        EXPECT_EQ(ImageHash(off), ImageHash(off_active));
+        EXPECT_EQ(ImageHash(on), ImageHash(on_active));
+        EXPECT_NE(ImageHash(off_disabled), ImageHash(off));
+        EXPECT_NE(ImageHash(on_disabled), ImageHash(on));
+        EXPECT_NE(ImageHash(off_disabled), ImageHash(on_disabled));
 
-    EXPECT_EQ(IndicatorPixel(off, 10, 10), QColor("#ffffff"));
-    EXPECT_EQ(IndicatorPixel(off, 25, 10), QColor("#d9d8d5"));
-    EXPECT_EQ(IndicatorPixel(on, 10, 10), QColor("#0075de"));
-    EXPECT_EQ(IndicatorPixel(on, 26, 10), QColor("#ffffff"));
-    EXPECT_EQ(IndicatorPixel(off_active, 10, 10), QColor("#ffffff"));
-    EXPECT_EQ(IndicatorPixel(off_active, 25, 10), QColor("#c7c5c0"));
-    EXPECT_EQ(IndicatorPixel(on_active, 10, 10), QColor("#005bab"));
-    EXPECT_EQ(IndicatorPixel(on_active, 26, 10), QColor("#ffffff"));
-    EXPECT_EQ(IndicatorPixel(off_focused, 10, 10), QColor("#ffffff"));
-    EXPECT_EQ(IndicatorPixel(off_focused, 25, 10), QColor("#c7c5c0"));
-    EXPECT_EQ(IndicatorPixel(on_focused, 10, 10), QColor("#005bab"));
-    EXPECT_EQ(IndicatorPixel(on_focused, 26, 10), QColor("#ffffff"));
-    EXPECT_EQ(IndicatorPixel(off_disabled, 10, 10), QColor("#fbfbfa"));
-    EXPECT_EQ(IndicatorPixel(off_disabled, 25, 10), QColor("#ebeae7"));
-    EXPECT_EQ(IndicatorPixel(on_disabled, 10, 10), QColor("#8ec2f2"));
-    EXPECT_EQ(IndicatorPixel(on_disabled, 26, 10), QColor("#fbfbfa"));
+        EXPECT_EQ(IndicatorPixel(off, 10, 10), QColor("#ffffff"));
+        EXPECT_EQ(IndicatorPixel(off, 25, 10), off_color);
+        EXPECT_EQ(IndicatorPixel(on, 10, 10), on_color);
+        EXPECT_EQ(IndicatorPixel(on, 26, 10), QColor("#ffffff"));
+        EXPECT_EQ(IndicatorPixel(off_active, 10, 10), QColor("#ffffff"));
+        EXPECT_EQ(IndicatorPixel(off_active, 25, 10), off_color);
+        EXPECT_EQ(IndicatorPixel(on_active, 10, 10), on_color);
+        EXPECT_EQ(IndicatorPixel(on_active, 26, 10), QColor("#ffffff"));
+        EXPECT_EQ(IndicatorPixel(off_focused, 10, 10), QColor("#ffffff"));
+        EXPECT_EQ(IndicatorPixel(off_focused, 25, 10), off_color);
+        EXPECT_EQ(IndicatorPixel(on_focused, 10, 10), on_color);
+        EXPECT_EQ(IndicatorPixel(on_focused, 26, 10), QColor("#ffffff"));
+        EXPECT_EQ(IndicatorPixel(off_disabled, 10, 10),
+                  disabled_thumb);
+        EXPECT_EQ(IndicatorPixel(off_disabled, 25, 10), disabled_off);
+        EXPECT_EQ(IndicatorPixel(on_disabled, 10, 10), disabled_on);
+        EXPECT_EQ(IndicatorPixel(on_disabled, 26, 10),
+                  disabled_thumb);
+    }
 }
 
 TEST_F(PreferencesPageTest, BackButtonMatchesFigmaSize) {
@@ -590,9 +638,9 @@ TEST_F(PreferencesPageTest, HeaderTitleMatchesFigmaTypography) {
     QApplication::processEvents();
 
     const QFontInfo title_font_info(title->font());
-    EXPECT_EQ(title_font_info.family(), QStringLiteral("Inter Variable"));
+    EXPECT_EQ(title_font_info.family(), QFontInfo(QApplication::font()).family());
     EXPECT_EQ(title_font_info.pixelSize(), 16);
-    EXPECT_EQ(title_font_info.weight(), 700);
+    EXPECT_EQ(title_font_info.weight(), 600);
 }
 
 TEST_F(PreferencesPageTest, HeaderTypographyBaselineFitsWithoutClipping) {

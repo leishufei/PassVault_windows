@@ -1,13 +1,14 @@
 /* PassVault design tokens - light theme. */
-/* Notion design language: warm paper canvas (#f6f5f4), near-black warm ink, */
-/* a single structural accent (Notion blue #0075de), hairline (#e6e6e6) */
-/* surfaces, and a decorative-only sticker palette for avatar tiles. */
+/* cc-switch design language: neutral gray structure (white canvas and card */
+/* surfaces, zinc text ramp) with a single blue action color (#0075de). */
+/* Blue is reserved for primary buttons, switches, focus rings, links and */
+/* action text and password card selection; navigation stays neutral gray. */
 /* Existing semantic aliases (--bg-*, --text-*, --border-*, --accent-*, */
 /* --danger-*, --success-*, --strength-*, --toast-*, --focus-ring, --shadow) */
 /* are preserved so downstream QSS and C++ token lookups keep working. */
 
 * {
-    /* ---- Brand / primary family (Notion blue, the only structural accent) ---- */
+    /* ---- Primary / action family (blue action color) ---- */
     --primary: #0075de;
     --primary-pressed: #005bab;
     --primary-tint: #e7f1fb;
@@ -16,115 +17,115 @@
     --primary-accent-text: #0068c6;
     --primary-accent-alt: #0068c6;
     --primary-focus-border: #5aa2e8;
-    --primary-hover-surface: #efeeec;
-    --primary-hover-surface-2: #efeeec;
-    --primary-hover-surface-3: #f1f0ee;
-    --primary-hover-surface-4: #f1f0ee;
-    --primary-hover-surface-5: #efeeec;
-    --primary-hover-surface-6: #f7f6f5;
-    --primary-tab-active-bg: #e7f1fb;
+    --primary-hover-surface: #efeff2;
+    --primary-hover-surface-2: #efeff2;
+    --primary-hover-surface-3: #efeff2;
+    --primary-hover-surface-4: #efeff2;
+    --primary-hover-surface-5: #efeff2;
+    --primary-hover-surface-6: #f5f5f7;
+    --primary-tab-active-bg: #e4e4ea;
     --primary-strength-bar: #0075de;
     --primary-strength-text: #0068c6;
-    --primary-icon-cloud: #0075de;
-    --primary-icon-lock: #0075de;
-    --primary-setting-icon: #0075de;
+    --primary-icon-cloud: #52525b;
+    --primary-icon-lock: #52525b;
+    --primary-setting-icon: #52525b;
     --link: #0075de;
 
-    /* ---- Surfaces / backgrounds (warm paper + white document) ---- */
-    --canvas: #f6f5f4;
+    /* ---- Surfaces / backgrounds (neutral canvas + white surfaces) ---- */
+    --canvas: #ffffff;
     --shell: #ffffff;
     --detail-bg: #ffffff;
     --card: #ffffff;
-    --card-selected: #e7f1fb;
-    --card-hover: #f1f0ee;
-    --soft-bg: #f6f5f4;
-    --soft-bg-sync: #f6f5f4;
-    --soft-bg-sync-auth: #f6f5f4;
-    --soft-bg-select: #f6f5f4;
+    --card-selected: #e4e4ea;
+    --card-hover: #efeff2;
+    --soft-bg: #efeff2;
+    --soft-bg-sync: #efeff2;
+    --soft-bg-sync-auth: #efeff2;
+    --soft-bg-select: #efeff2;
     --input-bg: #ffffff;
 
     /* Legacy aliases (used across components.qss / app.qss). */
-    --bg-primary: #f6f5f4;
-    --bg-canvas: #f6f5f4;
+    --bg-primary: #ffffff;
+    --bg-canvas: #ffffff;
     --bg-elevated: #ffffff;
-    --bg-sidebar: #f3f2ef;
+    --bg-sidebar: #f5f5f7;
     --bg-search: #ffffff;
-    --bg-hover: #ecebe8;
-    --bg-muted: #e6e5e2;
-    --bg-secondary: #f3f2ef;
-    --bg-tertiary: #e6e5e2;
+    --bg-hover: #efeff2;
+    --bg-muted: #efeff2;
+    --bg-secondary: #f5f5f7;
+    --bg-tertiary: #e4e4ea;
 
-    /* ---- Text (warm ink ramp: ink / charcoal / stone / ash) ---- */
-    --ink: #191918;
-    --ink-2: #31302e;
-    --body: #31302e;
-    --body-2: #4a4744;
-    --muted: #615d59;
-    --muted-2: #615d59;
-    --muted-3: #615d59;
-    --muted-4: #615d59;
-    --muted-5: #615d59;
-    --muted-6: #615d59;
-    --muted-7: #615d59;
-    --muted-8: #6f6b66;
-    --muted-9: #6f6b66;
-    --muted-10: #6f6b66;
-    --muted-11: #6f6b66;
-    --muted-12: #6f6b66;
-    --muted-13: #a39e98;
-    --muted-14: #4a4744;
-    --muted-15: #31302e;
-    --hint: #7d7873;
-    --hint-2: #7d7873;
-    --hint-3: #7d7873;
-    --hint-4: #7d7873;
-    --hint-5: #7d7873;
-    --hint-6: #7d7873;
-    --hint-7: #7d7873;
-    --hint-8: #8a857f;
-    --hint-9: #7d7873;
-    --hint-10: #6f6b66;
-    --placeholder: #a39e98;
-    --placeholder-2: #a39e98;
-    --placeholder-3: #a39e98;
-    --placeholder-4: #a39e98;
-    --info-value: #31302e;
-    --detail-copy: #615d59;
-    --detail-copy-2: #7d7873;
+    /* ---- Text (zinc ramp: ink / body / muted / hint) ---- */
+    --ink: #18181b;
+    --ink-2: #27272a;
+    --body: #52525b;
+    --body-2: #65656e;
+    --muted: #65656e;
+    --muted-2: #65656e;
+    --muted-3: #65656e;
+    --muted-4: #65656e;
+    --muted-5: #65656e;
+    --muted-6: #65656e;
+    --muted-7: #65656e;
+    --muted-8: #71717a;
+    --muted-9: #71717a;
+    --muted-10: #71717a;
+    --muted-11: #71717a;
+    --muted-12: #71717a;
+    --muted-13: #a1a1aa;
+    --muted-14: #52525b;
+    --muted-15: #18181b;
+    --hint: #71717a;
+    --hint-2: #71717a;
+    --hint-3: #71717a;
+    --hint-4: #71717a;
+    --hint-5: #71717a;
+    --hint-6: #71717a;
+    --hint-7: #71717a;
+    --hint-8: #a1a1aa;
+    --hint-9: #71717a;
+    --hint-10: #65656e;
+    --placeholder: #65656e;
+    --placeholder-2: #65656e;
+    --placeholder-3: #65656e;
+    --placeholder-4: #65656e;
+    --info-value: #18181b;
+    --detail-copy: #52525b;
+    --detail-copy-2: #65656e;
     --external-icon: #0075de;
 
     /* Legacy text aliases. */
-    --text-primary: #191918;
-    --text-secondary: #31302e;
-    --text-tertiary: #615d59;
-    --text-quaternary: #8e8983;
+    --text-primary: #18181b;
+    --text-secondary: #52525b;
+    --text-tertiary: #65656e;
+    --text-quaternary: #a1a1aa;
     --text-inverse: #ffffff;
 
-    /* ---- Borders (hairlines, never heavy frames) ---- */
-    --border-shell: #e6e6e6;
-    --border-section: #ededec;
-    --border-section-2: #ededec;
-    --border-section-3: #ededec;
-    --border-section-4: #ededec;
-    --border-panel: #e6e6e6;
-    --border-panel-2: #e6e6e6;
-    --border-panel-3: #e6e6e6;
-    --border-panel-4: #e6e6e6;
-    --border-sidebar: #e5e4e1;
-    --border-sidebar-2: #e5e4e1;
-    --border-nav-hover: #e5e4e1;
-    --border-drawer-inner: #e6e6e6;
-    --border-card: #e6e6e6;
-    --border-card-hover: #d8d7d4;
-    --border-card-selected: #9ec8f2;
-    --border-divider-hair: #ebeae7;
-    --border-input: #dddddd;
+    /* ---- Borders (neutral hairlines, never heavy frames) ---- */
+    --border-shell: #e4e4e9;
+    --border-section: #ececf0;
+    --border-section-2: #ececf0;
+    --border-section-3: #ececf0;
+    --border-section-4: #ececf0;
+    --border-panel: #e4e4e9;
+    --border-panel-2: #e4e4e9;
+    --border-panel-3: #e4e4e9;
+    --border-panel-4: #e4e4e9;
+    --border-sidebar: #e4e4e9;
+    --border-sidebar-2: #e4e4e9;
+    --border-nav-hover: #cfcfd6;
+    --border-drawer-inner: #e4e4e9;
+    --border-card: #e4e4e9;
+    --border-card-hover: #cfcfd6;
+    --border-card-selected: #0075de;
+    --border-divider-hair: #ececf0;
+    --border-input: #cfcfd6;
 
     /* Legacy border aliases. */
-    --border: #e6e6e6;
-    --border-strong: #d9d8d5;
-    --border-soft: #e9e8e6;
-    --border-tertiary: #efeeec;
+    --border: #e4e4e9;
+    --border-strong: #cfcfd6;
+    --border-soft: #efeff2;
+    --border-tertiary: #efeff2;
 
     /* ---- Accent (mapped from primary for legacy references) ---- */
     --accent: #0075de;
@@ -134,47 +135,51 @@
     --accent-soft-hover: #d6e8f9;
     --accent-fg: #ffffff;
 
-    /* Avatar tiles: Notion sticker palette (decoration only). */
-    --avatar-0-bg: #e8f4fd;
-    --avatar-0-fg: #0b6bcb;
-    --avatar-1-bg: #e6f6ea;
-    --avatar-1-fg: #15802d;
-    --avatar-2-bg: #fdf0e6;
-    --avatar-2-fg: #b84a00;
-    --avatar-3-bg: #f3ecfc;
-    --avatar-3-fg: #5b2d8a;
-    --avatar-4-bg: #ffeaf7;
-    --avatar-4-fg: #b82583;
-    --avatar-5-bg: #e4f5f4;
-    --avatar-5-fg: #1d7774;
+    /* Avatar tiles: cc-switch mode/chart palette (decoration only). */
+    --avatar-0-bg: #eaf3ff;
+    --avatar-0-fg: #0063c7;
+    --avatar-1-bg: #e7f6f4;
+    --avatar-1-fg: #06726b;
+    --avatar-2-bg: #f2ecfe;
+    --avatar-2-fg: #6d28d9;
+    --avatar-3-bg: #e0f2fe;
+    --avatar-3-fg: #0891b2;
+    --avatar-4-bg: #fce7f3;
+    --avatar-4-fg: #db2777;
+    --avatar-5-bg: #e8f4fd;
+    --avatar-5-fg: #0b6bcb;
 
-    /* ---- Semantic (status carried by the sticker palette) ---- */
-    --success: #1aae39;
-    --success-text: #15862c;
-    --success-tint: #e4f5e7;
-    --success-soft: #e4f5e7;
-    --warn: #dd5b00;
-    --warn-text: #a84500;
-    --warn-tint: #fdf2e9;
-    --warn-border: #f5d6bd;
-    --warning: #dd5b00;
-    --danger-text: #c4362f;
-    --danger: #d8413a;
-    --danger-hover: #bd342e;
-    --danger-soft: #fdebea;
-    --toggle-off: #d9d8d5;
+    /* ---- Semantic ---- */
+    --success: #16a34a;
+    --success-text: #007634;
+    --success-tint: #e8f7ee;
+    --success-soft: #e8f7ee;
+    --warn: #d97706;
+    --warn-text: #a64a00;
+    --warn-tint: #fef3c7;
+    --warn-border: #fde68a;
+    --warning: #d97706;
+    --danger-text: #b91c1c;
+    --danger: #dc2626;
+    --danger-hover: #b91c1c;
+    --danger-soft: #fee2e2;
+    --switch-off-disabled-icon: :/icons/switch-off-disabled.svg;
+    --switch-on-disabled-icon: :/icons/switch-on-disabled.svg;
+    --toggle-off-disabled: #c9c9cd;
+    --toggle-on-disabled: #8cc1f0;
+    --toggle-off: #888890;
 
-    --strength-weak: #d8413a;
-    --strength-medium: #dd5b00;
-    --strength-strong: #1aae39;
+    --strength-weak: #dc2626;
+    --strength-medium: #d97706;
+    --strength-strong: #16a34a;
 
-    --toast-bg: #2f2e2c;
+    --toast-bg: #18181b;
     --toast-fg: #ffffff;
 
     --focus-ring: #5aa2e8;
-    --shadow: rgba(15, 15, 15, 26);
-    --dialog-shadow: #1c1b1a;
-    --dialog-backdrop: rgba(15, 15, 15, 92);
+    --shadow: rgba(16, 24, 40, 26);
+    --dialog-shadow: #09090b;
+    --dialog-backdrop: rgba(9, 9, 11, 92);
 
     /* ---- Brand tiles (password-card icon square) ---- */
     --brand-google-bg: #f7f8fa;
@@ -192,15 +197,15 @@
     --brand-notion-bg: #ffffff;
     --brand-notion-fg: #171717;
 
-    /* ---- Radii (Notion rounded scale) ---- */
-    /* xs 4: inputs, chips | sm 5: menu items, list rows | md 8: buttons */
-    /* lg 10: avatar tiles | xl 12: cards | 2xl 16: large containers */
+    /* ---- Radii (cc-switch rounded scale) ---- */
+    /* xs 4: chips | sm 6: menu items, list rows | md 6: buttons */
+    /* lg 10: avatar tiles | xl 10: cards | 2xl 14: large containers */
     --radius-xs: 4px;
-    --radius-sm: 5px;
-    --radius-md: 8px;
+    --radius-sm: 6px;
+    --radius-md: 6px;
     --radius-lg: 10px;
-    --radius-xl: 12px;
-    --radius-2xl: 16px;
-    --radius-shell: 16px;
+    --radius-xl: 10px;
+    --radius-2xl: 14px;
+    --radius-shell: 14px;
     --radius-full: 9999px;
 }

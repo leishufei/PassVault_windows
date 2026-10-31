@@ -1,4 +1,6 @@
 #include <QApplication>
+#include <QDir>
+#include <QFile>
 #include <QFont>
 #include <QFontDatabase>
 #include <QSettings>
@@ -23,22 +25,28 @@ int main(int argc, char** argv) {
     QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope,
                         settings_dir.path());
 
-    static constexpr const char* kFontResources[] = {
-        ":/fonts/InterVariable.ttf",
-        ":/fonts/NotoSansSC-VariableFont_wght.ttf",
-        ":/fonts/DMMono-Regular.ttf",
-        ":/fonts/DMMono-Medium.ttf",
-    };
-    for (const char* path : kFontResources) {
-        if (QFontDatabase::addApplicationFont(QString::fromLatin1(path)) < 0) {
-            return 1;
+#ifdef Q_OS_WIN
+    if (app.platformName() == QStringLiteral("offscreen")) {
+        const QDir fonts(qEnvironmentVariable("WINDIR") + "/Fonts");
+        for (const char* name : {"SegUIVar.ttf", "segoeui.ttf", "seguisb.ttf",
+                                 "segoeuib.ttf", "msyh.ttc", "consola.ttf",
+                                 "consolab.ttf"}) {
+            const QString path = fonts.filePath(QString::fromLatin1(name));
+            if (QFile::exists(path) &&
+                QFontDatabase::addApplicationFont(path) < 0) {
+                return 1;
+            }
         }
     }
+#endif
     QFont app_font;
-    app_font.setFamilies({QStringLiteral("Inter Variable"),
-                          QStringLiteral("Noto Sans SC"),
+    app_font.setFamilies({QStringLiteral("Segoe UI Variable Text"),
+                          QStringLiteral("Segoe UI"),
                           QStringLiteral("Microsoft YaHei UI"),
-                          QStringLiteral("Segoe UI")});
+                          QStringLiteral("Microsoft YaHei"),
+                          QStringLiteral("Roboto"),
+                          QStringLiteral("Helvetica Neue"),
+                          QStringLiteral("Arial")});
     app_font.setPixelSize(13);
     app.setFont(app_font);
     app.setStyleSheet(

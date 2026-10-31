@@ -1,8 +1,8 @@
-/* PassVault reusable components (Notion design system). */
+/* PassVault reusable components (cc-switch design system). */
 
 QWidget {
     color: var(--text-primary);
-    font-family: "Inter Variable", "Noto Sans SC", "Microsoft YaHei UI", "Segoe UI";
+    font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "Roboto", "Helvetica Neue", "Arial", sans-serif;
     font-size: 13px;
 }
 
@@ -14,14 +14,14 @@ QToolTip {
     border-radius: 8px;
 }
 
-/* Utility & dialog buttons - Notion button-utility: white surface, 1px hairline, 8px radius. */
+/* Utility & dialog buttons - neutral button: card surface, 1px border, 6px radius. */
 QPushButton {
     background-color: var(--card);
     color: var(--text-primary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0 16px;
-    min-height: 36px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 0 14px;
+    min-height: 30px;
     font-size: 13px;
     font-weight: 500;
 }
@@ -39,6 +39,7 @@ QPushButton:disabled {
     border-color: var(--border);
 }
 QPushButton[accent="true"] {
+    font-weight: 600;
     background-color: var(--accent);
     color: var(--accent-fg);
     border-color: var(--accent);
@@ -87,12 +88,12 @@ QPushButton[flat="true"]:pressed {
     background-color: var(--bg-muted);
 }
 
-/* Icon-only tool buttons - square 32px, rounded 8px, ghost background. */
+/* Icon-only tool buttons - square 32px, rounded 6px, ghost background. */
 QToolButton {
     background: transparent;
     color: var(--text-secondary);
     border: 1px solid transparent;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 0;
     font-weight: 500;
 }
@@ -122,15 +123,15 @@ QToolButton[soft="true"]:hover {
     background: var(--accent-soft-hover);
 }
 
-/* Text inputs - Notion text-input: white surface, 1px #dddddd border, tight 4px radius. */
+/* Text inputs - input: card surface, 1px border-strong, 6px radius. */
 QLineEdit, QSpinBox, QDoubleSpinBox {
     background-color: var(--input-bg);
     color: var(--text-primary);
     border: 1px solid var(--border-input);
-    border-radius: 4px;
-    padding: 0 12px;
-    min-height: 36px;
-    font-size: 14px;
+    border-radius: 6px;
+    padding: 0 10px;
+    min-height: 30px;
+    font-size: 13px;
     selection-background-color: var(--accent);
     selection-color: var(--accent-fg);
 }
@@ -138,9 +139,9 @@ QPlainTextEdit, QTextEdit {
     background-color: var(--input-bg);
     color: var(--text-primary);
     border: 1px solid var(--border-input);
-    border-radius: 4px;
+    border-radius: 6px;
     padding: 8px 12px;
-    font-size: 14px;
+    font-size: 13px;
     selection-background-color: var(--accent);
     selection-color: var(--accent-fg);
 }
@@ -158,14 +159,14 @@ QLineEdit[error="true"] {
     background-color: var(--danger-soft);
 }
 
-/* Combo box - tight 4px input radius, 8px popup menu */
+/* Combo box - 6px input radius, 8px popup menu */
 QComboBox {
     background-color: var(--input-bg);
     color: var(--text-primary);
     border: 1px solid var(--border-input);
-    border-radius: 4px;
+    border-radius: 6px;
     padding: 0 30px 0 12px;
-    min-height: 36px;
+    min-height: 30px;
     font-size: 13px;
 }
 QComboBox:hover { border-color: var(--border-strong); }
@@ -175,39 +176,41 @@ QComboBox::down-arrow { image: url(:/icons/chevron-down.svg); width: 14px; heigh
 QComboBox QAbstractItemView {
     background-color: var(--bg-elevated);
     color: var(--text-primary);
+    font-size: 14px;
     border: 1px solid var(--border);
     border-radius: 8px;
     outline: 0;
     padding: 4px;
-    selection-background-color: var(--accent-soft);
-    selection-color: var(--accent);
+    selection-background-color: var(--bg-hover);
+    selection-color: var(--text-primary);
 }
 QComboBox QAbstractItemView::item {
     background-color: transparent;
     color: var(--text-primary);
-    padding: 8px 12px;
+    padding: 6px 12px;
     border: 0;
-    border-radius: 5px;
-    min-height: 24px;
+    border-radius: 6px;
+    min-height: 20px;
 }
 QComboBox QAbstractItemView::item:hover {
     background-color: var(--bg-hover);
     color: var(--text-primary);
 }
 QComboBox QAbstractItemView::item:selected {
-    background-color: var(--accent-soft);
-    color: var(--accent);
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
 }
 
 /* Check box / Radio */
 QCheckBox, QRadioButton { spacing: 8px; color: var(--text-primary); }
 QCheckBox::indicator, QRadioButton::indicator {
-    width: 16px; height: 16px;
+    width: 14px; height: 14px;
     background-color: var(--bg-elevated);
     border: 1px solid var(--border-strong);
     border-radius: 4px;
 }
 QRadioButton::indicator { border-radius: 8px; }
+
 QCheckBox::indicator:hover, QRadioButton::indicator:hover {
     border-color: var(--accent);
 }
@@ -217,11 +220,18 @@ QCheckBox::indicator:checked, QRadioButton::indicator:checked {
     image: url(:/icons/check.svg);
 }
 
+QRadioButton::indicator:checked {
+    width: 6px; height: 6px;
+    border: 5px solid var(--accent);
+    background: var(--card);
+    image: none;
+}
+
 /* Group box */
 QGroupBox {
     background-color: var(--bg-elevated);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 10px;
     margin-top: 12px;
     padding: 16px;
     color: var(--text-primary);
@@ -238,7 +248,7 @@ QGroupBox::title {
 QTabWidget::pane {
     background-color: var(--bg-elevated);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 10px;
     top: -1px;
 }
 QTabBar { qproperty-drawBase: 0; background: transparent; }
@@ -259,25 +269,25 @@ QTabBar::tab:selected {
 }
 QTabBar::tab:hover:!selected { color: var(--text-primary); }
 
-/* List / Tree / Table - rounded surface, hairline hover, accent-soft selection. */
+/* List / Tree / Table - rounded surface, hairline hover, neutral selection. */
 QListView, QTreeView, QTableView {
     background-color: transparent;
     color: var(--text-primary);
     border: none;
     outline: none;
-    selection-background-color: var(--accent-soft);
-    selection-color: var(--accent);
+    selection-background-color: var(--card-selected);
+    selection-color: var(--text-primary);
 }
 QListView::item, QTreeView::item {
     padding: 8px 12px;
-    border-radius: 5px;
+    border-radius: 6px;
 }
 QListView::item:hover, QTreeView::item:hover {
     background-color: var(--bg-hover);
 }
 QListView::item:selected, QTreeView::item:selected {
-    background-color: var(--accent-soft);
-    color: var(--accent);
+    background-color: var(--card-selected);
+    color: var(--text-primary);
 }
 QHeaderView::section {
     background-color: transparent;
@@ -291,13 +301,13 @@ QHeaderView::section {
 QScrollBar:vertical, QScrollBar:horizontal {
     background: transparent;
     border: none;
-    width: 10px;
-    height: 10px;
+    width: 6px;
+    height: 6px;
     margin: 0;
 }
 QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
     background: var(--border-strong);
-    border-radius: 5px;
+    border-radius: 3px;
     min-height: 30px;
     min-width: 30px;
 }
@@ -305,19 +315,20 @@ QScrollBar::handle:hover { background: var(--text-tertiary); }
 QScrollBar::add-line, QScrollBar::sub-line { height: 0; width: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 
-/* Menu - Notion popover: hairline border, 8px frame, 5px items */
+/* Menu - card surface, 1px border, 8px frame, 6px items. */
 QMenu {
     background-color: var(--bg-elevated);
     color: var(--text-primary);
+    font-size: 14px;
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 4px;
 }
 QMenu::item {
     padding: 6px 22px;
-    border-radius: 5px;
+    border-radius: 6px;
 }
-QMenu::item:selected { background-color: var(--accent-soft); color: var(--accent); }
+QMenu::item:selected { background-color: var(--bg-hover); color: var(--text-primary); }
 QMenu::separator { height: 1px; background: var(--border); margin: 4px 8px; }
 
 /* Progress bar */
@@ -387,15 +398,15 @@ QDialog { background-color: var(--bg-elevated); }
  * Used by EditorPanel / PreferencesPage / legacy dialogs.
  * ============================================================ */
 
-/* ---------- Badges (Notion badge-pill: eyebrow 12px / 600 / +0.125px) ---------- */
+/* ---------- Badges (badge pill: eyebrow 12px / 600 / +0.125px) ---------- */
 QLabel[variant="tag"] {
-    background-color: var(--primary-tint);
-    color: var(--primary);
+    background-color: transparent;
+    border: 1px solid var(--border-strong);
+    color: var(--text-secondary);
     border-radius: 10px;
     padding: 2px 8px;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.125px;
+    font-size: 11px;
+    font-weight: 500;
 }
 QLabel[variant="count"] {
     color: var(--text-tertiary);
@@ -408,9 +419,8 @@ QLabel[variant="status"] {
     color: var(--success-text);
     border-radius: var(--radius-sm);
     padding: 2px 8px;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.125px;
+    font-size: 11px;
+    font-weight: 500;
 }
 QLabel[variant="status"][tone="warn"] {
     background-color: var(--warn-tint);
@@ -426,7 +436,7 @@ QLabel[variant="kbd"] {
     border: 1px solid var(--border);
     border-radius: var(--radius-xs);
     padding: 1px 6px;
-    font-family: "DM Mono", "Inter Variable", "Noto Sans SC";
+    font-family: "Consolas", "Liberation Mono", "Menlo", monospace;
     font-size: 11px;
 }
 
@@ -518,15 +528,23 @@ QLabel[strength-label="true"] {
 }
 
 /* ---------- Toggle switch (QCheckBox indicator swaps SVG track) ---------- */
-QCheckBox[variant="switch"] { spacing: 8px; }
+QCheckBox[variant="switch"] {
+    spacing: 8px;
+    padding: 4px 3px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+}
+QCheckBox[variant="switch"][keyboardFocus="true"]:focus { border-color: var(--focus-ring); }
 QCheckBox[variant="switch"]::indicator {
-    width: 36px;
-    height: 20px;
+    width: 30px;
+    height: 18px;
     border: none;
-    background: transparent;
+    background: var(--toggle-off);
+    border-radius: 9px;
     image: url(:/icons/switch-off.svg);
 }
 QCheckBox[variant="switch"]::indicator:checked {
+    background: var(--primary);
     image: url(:/icons/switch-on.svg);
 }
 QCheckBox[variant="switch"]::indicator:hover,
@@ -535,14 +553,17 @@ QCheckBox[variant="switch"]::indicator:focus {
 }
 QCheckBox[variant="switch"]::indicator:checked:hover,
 QCheckBox[variant="switch"]::indicator:checked:focus {
+    background: var(--primary);
     image: url(:/icons/switch-on-active.svg);
 }
 QCheckBox[variant="switch"]:disabled { color: var(--text-quaternary); }
 QCheckBox[variant="switch"]::indicator:disabled {
-    image: url(:/icons/switch-off-disabled.svg);
+    background: var(--toggle-off-disabled);
+    image: url(var(--switch-off-disabled-icon));
 }
 QCheckBox[variant="switch"]::indicator:checked:disabled {
-    image: url(:/icons/switch-on-disabled.svg);
+    background: var(--toggle-on-disabled);
+    image: url(var(--switch-on-disabled-icon));
 }
 
 /* ---------- Avatar (rounded icon square, brand-color variants) ---------- */
@@ -557,10 +578,10 @@ QLabel[avatar="true"] {
 QLabel[avatar="true"][size="sm"] {
     border-radius: var(--radius-lg);
     font-size: 13px;
-    min-width: 36px;
-    max-width: 36px;
-    min-height: 36px;
-    max-height: 36px;
+    min-width: 32px;
+    max-width: 32px;
+    min-height: 32px;
+    max-height: 32px;
 }
 QLabel[avatar="true"][size="md"] {
     min-width: 48px;

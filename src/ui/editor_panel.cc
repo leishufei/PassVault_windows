@@ -168,13 +168,13 @@ QWidget* EditorPanel::BuildEditorPage() {
     cancel_button_ = new QPushButton(QStringLiteral("取消"), footer);
     cancel_button_->setObjectName(QStringLiteral("EditorCancelButton"));
     cancel_button_->setProperty("flat", true);
-    cancel_button_->setFixedHeight(36);
+    cancel_button_->setFixedHeight(32);
     connect(cancel_button_, &QPushButton::clicked, this,
             &EditorPanel::OnCancelClicked);
     save_button_ = new QPushButton(QStringLiteral("创建密码"), footer);
     save_button_->setObjectName(QStringLiteral("EditorSaveButton"));
     save_button_->setProperty("accent", true);
-    save_button_->setFixedHeight(36);
+    save_button_->setFixedHeight(32);
     connect(save_button_, &QPushButton::clicked, this,
             &EditorPanel::OnSaveClicked);
     footer_layout->addStretch(1);
@@ -238,7 +238,7 @@ QWidget* EditorPanel::BuildOverviewPage() {
     title_input_ = new QLineEdit(container);
     title_input_->setObjectName(QStringLiteral("EditorTitleInput"));
     title_input_->setPlaceholderText(QStringLiteral("必填"));
-    title_input_->setFixedHeight(36);
+    title_input_->setFixedHeight(32);
     auto* title_layout = add_field(QStringLiteral("标题"), title_input_);
     title_error_ = new QLabel(QStringLiteral("请输入标题。"),
                               title_input_->parentWidget());
@@ -249,7 +249,7 @@ QWidget* EditorPanel::BuildOverviewPage() {
 
     username_input_ = new QLineEdit(container);
     username_input_->setObjectName(QStringLiteral("EditorUsernameInput"));
-    username_input_->setFixedHeight(36);
+    username_input_->setFixedHeight(32);
     add_field(QStringLiteral("用户名"), username_input_);
 
     auto* password_group = new QWidget(container);
@@ -283,7 +283,7 @@ QWidget* EditorPanel::BuildOverviewPage() {
 
     password_field_ = new QWidget(password_group);
     password_field_->setObjectName(QStringLiteral("EditorPasswordField"));
-    password_field_->setFixedHeight(36);
+    password_field_->setFixedHeight(32);
     auto* password_row_layout = new QHBoxLayout(password_field_);
     password_row_layout->setContentsMargins(12, 0, 4, 0);
     password_row_layout->setSpacing(4);
@@ -353,7 +353,7 @@ QWidget* EditorPanel::BuildOverviewPage() {
     website_input_ = new QLineEdit(container);
     website_input_->setObjectName(QStringLiteral("EditorWebsiteInput"));
     website_input_->setPlaceholderText(QStringLiteral("https://..."));
-    website_input_->setFixedHeight(36);
+    website_input_->setFixedHeight(32);
     add_field(QStringLiteral("网址"), website_input_);
 
     category_combo_ = new QComboBox(container);
@@ -568,14 +568,14 @@ QWidget* EditorPanel::BuildGeneratorPage() {
     regenerate->setIcon(LoadEditorIcon(QStringLiteral("refresh-cw"),
                                       QStringLiteral("muted-3"), 14));
     regenerate->setIconSize(QSize(14, 14));
-    regenerate->setFixedHeight(36);
+    regenerate->setFixedHeight(32);
     connect(regenerate, &QPushButton::clicked, this,
             &EditorPanel::RegeneratePassword);
     footer_layout->addWidget(regenerate);
     auto* apply = new QPushButton(QStringLiteral("使用此密码"), footer);
     apply->setObjectName(QStringLiteral("EditorGeneratorApply"));
     apply->setProperty("accent", true);
-    apply->setFixedHeight(36);
+    apply->setFixedHeight(32);
     apply->setEnabled(!generator_preview_->text().isEmpty());
     connect(generator_preview_, &QLineEdit::textChanged, apply,
             [apply](const QString& password) {
@@ -765,9 +765,9 @@ void EditorPanel::RefreshCategoryPopup() {
         palette.setColor(group, QPalette::WindowText,
                          theme->Color(QStringLiteral("text-primary")));
         palette.setColor(group, QPalette::Highlight,
-                         theme->Color(QStringLiteral("accent-soft")));
+                         theme->Color(QStringLiteral("bg-hover")));
         palette.setColor(group, QPalette::HighlightedText,
-                         theme->Color(QStringLiteral("accent")));
+                         theme->Color(QStringLiteral("text-primary")));
     }
     for (auto* surface : {popup, static_cast<QWidget*>(view), view->viewport()}) {
         surface->setPalette(palette);
@@ -777,9 +777,11 @@ void EditorPanel::RefreshCategoryPopup() {
     popup->setStyleSheet(QStringLiteral(
         "#EditorCategoryPopup { background: %1; border: 1px solid %2; }"
         "#EditorCategoryPopupView, #EditorCategoryPopupViewport {"
-        " background: %1; color: %3; border: none; }")
+        " background: %1; color: %3; border: none;"
+        " selection-background-color: %4; selection-color: %3; }")
         .arg(background.name(), theme->ColorHex(QStringLiteral("border")),
-             theme->ColorHex(QStringLiteral("text-primary"))));
+             theme->ColorHex(QStringLiteral("text-primary")),
+             theme->ColorHex(QStringLiteral("bg-hover"))));
 }
 
 void EditorPanel::RefreshThemeAssets() {

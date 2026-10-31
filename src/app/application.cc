@@ -8,7 +8,6 @@
 #include <QDir>
 #include <QFileDialog>
 #include <QFont>
-#include <QFontDatabase>
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -97,24 +96,15 @@ class Application::Impl {
             resetting_ = false;
         }
         auto* theme = ui::ThemeManager::Instance();
-        static constexpr const char* kFontResources[] = {
-            ":/fonts/InterVariable.ttf",
-            ":/fonts/NotoSansSC-VariableFont_wght.ttf",
-            ":/fonts/DMMono-Regular.ttf",
-            ":/fonts/DMMono-Medium.ttf",
-        };
-        for (const char* path : kFontResources) {
-            if (QFontDatabase::addApplicationFont(
-                    QString::fromLatin1(path)) < 0) {
-                qWarning() << "failed to load font" << path;
-            }
-        }
         if (auto* q = qApp) {
             QFont app_font;
-            app_font.setFamilies({QStringLiteral("Inter Variable"),
-                                  QStringLiteral("Noto Sans SC"),
+            app_font.setFamilies({QStringLiteral("Segoe UI Variable Text"),
+                                  QStringLiteral("Segoe UI"),
                                   QStringLiteral("Microsoft YaHei UI"),
-                                  QStringLiteral("Segoe UI")});
+                                  QStringLiteral("Microsoft YaHei"),
+                                  QStringLiteral("Roboto"),
+                                  QStringLiteral("Helvetica Neue"),
+                                  QStringLiteral("Arial")});
             app_font.setPixelSize(13);
             q->setFont(app_font);
             q->setStyleSheet(theme->LoadStyleSheet());

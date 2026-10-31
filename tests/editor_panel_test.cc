@@ -162,10 +162,10 @@ TEST_F(EditorPanelTest, PasswordInputUsesBodyTypography) {
         panel.findChild<QLineEdit*>(QStringLiteral("EditorUsernameInput"));
     ASSERT_NE(username, nullptr);
     const QFontInfo username_font_info(username->font());
-    EXPECT_EQ(password_font_info.family(), QStringLiteral("DM Mono"));
-    EXPECT_EQ(username_font_info.family(), QStringLiteral("Inter Variable"));
-    EXPECT_EQ(password_font_info.pixelSize(), 14);
-    EXPECT_EQ(username_font_info.pixelSize(), 14);
+    EXPECT_EQ(password_font_info.family(), QStringLiteral("Consolas"));
+    EXPECT_EQ(username_font_info.family(), QFontInfo(QApplication::font()).family());
+    EXPECT_EQ(password_font_info.pixelSize(), 13);
+    EXPECT_EQ(username_font_info.pixelSize(), 13);
 }
 
 TEST_F(EditorPanelTest, PasswordTypographyBaselineFitsWithoutClipping) {
@@ -550,6 +550,11 @@ TEST_F(EditorPanelTest, CategoryPopupSurfacesAndKeyboardKeepModelState) {
             EXPECT_EQ(surface->palette().color(QPalette::Base), background);
             EXPECT_EQ(surface->palette().color(QPalette::Window), background);
         }
+        EXPECT_EQ(view->palette().color(QPalette::Highlight),
+                  passvault::ui::ThemeManager::Instance()->Color("bg-hover"));
+        EXPECT_EQ(view->palette().color(QPalette::HighlightedText),
+                  passvault::ui::ThemeManager::Instance()->Color(
+                      "text-primary"));
         EXPECT_EQ(combo->model(), model);
         EXPECT_EQ(combo->currentIndex(), 12);
         EXPECT_EQ(view->frameShape(), QFrame::NoFrame);

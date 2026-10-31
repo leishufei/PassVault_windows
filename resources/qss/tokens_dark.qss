@@ -1,8 +1,8 @@
 /* PassVault design tokens - dark theme. */
-/* Notion desktop dark: warm charcoal surfaces (#191919 / #202020 / #252525), */
-/* soft off-white ink, hairline #2f2f2f dividers, and the dark-mode Notion */
-/* blue (#2383e2) as the single structural accent. Sticker colours stay */
-/* decorative and only tint avatar tiles and status. */
+/* cc-switch design language: neutral near-black structure (#1c1c1e canvas, */
+/* #2e2e33 cards, zinc text ramp) with a single blue action color (#2383e2). */
+/* Blue is reserved for primary buttons, switches, focus rings, links and */
+/* action text and password card selection; navigation stays neutral gray. */
 
 * {
     /* ---- Brand / primary family ---- */
@@ -14,115 +14,115 @@
     --primary-accent-text: #6cb2f2;
     --primary-accent-alt: #6cb2f2;
     --primary-focus-border: #3d8fdc;
-    --primary-hover-surface: #2a2a2a;
-    --primary-hover-surface-2: #2a2a2a;
-    --primary-hover-surface-3: #2c2c2c;
-    --primary-hover-surface-4: #2a2a2a;
-    --primary-hover-surface-5: #2a2a2a;
-    --primary-hover-surface-6: #232323;
-    --primary-tab-active-bg: #1c2d3f;
+    --primary-hover-surface: #26262a;
+    --primary-hover-surface-2: #26262a;
+    --primary-hover-surface-3: #26262a;
+    --primary-hover-surface-4: #26262a;
+    --primary-hover-surface-5: #26262a;
+    --primary-hover-surface-6: #1f1f23;
+    --primary-tab-active-bg: #313136;
     --primary-strength-bar: #2383e2;
     --primary-strength-text: #6cb2f2;
-    --primary-icon-cloud: #4b9ae6;
-    --primary-icon-lock: #6cb2f2;
-    --primary-setting-icon: #6cb2f2;
+    --primary-icon-cloud: #ababb3;
+    --primary-icon-lock: #ababb3;
+    --primary-setting-icon: #ababb3;
     --link: #5aa7ee;
 
-    /* ---- Surfaces / backgrounds (warm charcoal tiers) ---- */
-    --canvas: #191919;
-    --shell: #202020;
-    --detail-bg: #1e1e1e;
-    --card: #202020;
-    --card-selected: #1c2d3f;
-    --card-hover: #262626;
-    --soft-bg: #232323;
-    --soft-bg-sync: #232323;
-    --soft-bg-sync-auth: #232323;
-    --soft-bg-select: #232323;
-    --input-bg: #252525;
+    /* ---- Surfaces / backgrounds (neutral near-black tiers) ---- */
+    --canvas: #1c1c1e;
+    --shell: #1c1c1e;
+    --detail-bg: #1c1c1e;
+    --card: #2e2e33;
+    --card-selected: #313136;
+    --card-hover: #26262a;
+    --soft-bg: #26262a;
+    --soft-bg-sync: #26262a;
+    --soft-bg-sync-auth: #26262a;
+    --soft-bg-select: #26262a;
+    --input-bg: #2e2e33;
 
     /* Legacy aliases. */
-    --bg-primary: #191919;
-    --bg-canvas: #191919;
-    --bg-elevated: #252525;
-    --bg-sidebar: #202020;
-    --bg-search: #252525;
-    --bg-hover: #2c2c2c;
-    --bg-muted: #2f2f2f;
-    --bg-secondary: #202020;
-    --bg-tertiary: #2f2f2f;
+    --bg-primary: #1c1c1e;
+    --bg-canvas: #1c1c1e;
+    --bg-elevated: #2e2e33;
+    --bg-sidebar: #161618;
+    --bg-search: #2e2e33;
+    --bg-hover: #26262a;
+    --bg-muted: #26262a;
+    --bg-secondary: #26262a;
+    --bg-tertiary: #313136;
 
-    /* ---- Text (warm off-white ramp) ---- */
-    --ink: #ebebea;
-    --ink-2: #d9d8d6;
-    --body: #c4c3c0;
-    --body-2: #b3b2af;
-    --muted: #9b9a97;
-    --muted-2: #9b9a97;
-    --muted-3: #9b9a97;
-    --muted-4: #9b9a97;
-    --muted-5: #9b9a97;
-    --muted-6: #9b9a97;
-    --muted-7: #9b9a97;
-    --muted-8: #8c8b88;
-    --muted-9: #8c8b88;
-    --muted-10: #8c8b88;
-    --muted-11: #8c8b88;
-    --muted-12: #8c8b88;
-    --muted-13: #6f6e6b;
-    --muted-14: #b3b2af;
-    --muted-15: #c4c3c0;
-    --hint: #858481;
-    --hint-2: #858481;
-    --hint-3: #858481;
-    --hint-4: #858481;
-    --hint-5: #858481;
-    --hint-6: #858481;
-    --hint-7: #858481;
-    --hint-8: #7d7c79;
-    --hint-9: #858481;
-    --hint-10: #8c8b88;
-    --placeholder: #5f5e5b;
-    --placeholder-2: #5f5e5b;
-    --placeholder-3: #5f5e5b;
-    --placeholder-4: #5f5e5b;
-    --info-value: #d9d8d6;
-    --detail-copy: #9b9a97;
-    --detail-copy-2: #858481;
+    /* ---- Text (zinc ramp) ---- */
+    --ink: #e4e4e7;
+    --ink-2: #d4d4d8;
+    --body: #ababb3;
+    --body-2: #9a9aa2;
+    --muted: #9a9aa2;
+    --muted-2: #9a9aa2;
+    --muted-3: #9a9aa2;
+    --muted-4: #9a9aa2;
+    --muted-5: #9a9aa2;
+    --muted-6: #9a9aa2;
+    --muted-7: #9a9aa2;
+    --muted-8: #9a9aa2;
+    --muted-9: #9a9aa2;
+    --muted-10: #9a9aa2;
+    --muted-11: #9a9aa2;
+    --muted-12: #9a9aa2;
+    --muted-13: #6f6f77;
+    --muted-14: #ababb3;
+    --muted-15: #e4e4e7;
+    --hint: #9a9aa2;
+    --hint-2: #9a9aa2;
+    --hint-3: #9a9aa2;
+    --hint-4: #9a9aa2;
+    --hint-5: #9a9aa2;
+    --hint-6: #9a9aa2;
+    --hint-7: #9a9aa2;
+    --hint-8: #6f6f77;
+    --hint-9: #9a9aa2;
+    --hint-10: #9a9aa2;
+    --placeholder: #9a9aa2;
+    --placeholder-2: #9a9aa2;
+    --placeholder-3: #9a9aa2;
+    --placeholder-4: #9a9aa2;
+    --info-value: #e4e4e7;
+    --detail-copy: #ababb3;
+    --detail-copy-2: #9a9aa2;
     --external-icon: #6cb2f2;
 
     /* Legacy text aliases. */
-    --text-primary: #ebebea;
-    --text-secondary: #c4c3c0;
-    --text-tertiary: #9b9a97;
-    --text-quaternary: #6f6e6b;
-    --text-inverse: #191919;
+    --text-primary: #e4e4e7;
+    --text-secondary: #ababb3;
+    --text-tertiary: #9a9aa2;
+    --text-quaternary: #6f6f77;
+    --text-inverse: #18181b;
 
-    /* ---- Borders (hairline charcoal dividers) ---- */
-    --border-shell: #2f2f2f;
-    --border-section: #2a2a2a;
-    --border-section-2: #2a2a2a;
-    --border-section-3: #2c2c2c;
-    --border-section-4: #2c2c2c;
-    --border-panel: #333333;
-    --border-panel-2: #2f2f2f;
-    --border-panel-3: #313131;
-    --border-panel-4: #313131;
-    --border-sidebar: #2a2a2a;
-    --border-sidebar-2: #2c2c2c;
-    --border-nav-hover: #343434;
-    --border-drawer-inner: #2c2c2c;
-    --border-card: #2a2a2a;
-    --border-card-hover: #353535;
-    --border-card-selected: #2a5a87;
-    --border-divider-hair: #2c2c2c;
-    --border-input: #3a3a3a;
+    /* ---- Borders (neutral charcoal dividers) ---- */
+    --border-shell: #3e3e45;
+    --border-section: #2c2c31;
+    --border-section-2: #2c2c31;
+    --border-section-3: #2c2c31;
+    --border-section-4: #2c2c31;
+    --border-panel: #3e3e45;
+    --border-panel-2: #3e3e45;
+    --border-panel-3: #3e3e45;
+    --border-panel-4: #3e3e45;
+    --border-sidebar: #3e3e45;
+    --border-sidebar-2: #3e3e45;
+    --border-nav-hover: #4a4a52;
+    --border-drawer-inner: #3e3e45;
+    --border-card: #3e3e45;
+    --border-card-hover: #4a4a52;
+    --border-card-selected: #2383e2;
+    --border-divider-hair: #2c2c31;
+    --border-input: #4a4a52;
 
     /* Legacy border aliases. */
-    --border: #2f2f2f;
-    --border-strong: #3d3d3d;
-    --border-soft: #2a2a2a;
-    --border-tertiary: #2a2a2a;
+    --border: #3e3e45;
+    --border-strong: #4a4a52;
+    --border-soft: #2c2c31;
+    --border-tertiary: #2c2c31;
 
     /* ---- Accent (mapped from primary for legacy references) ---- */
     --accent: #2383e2;
@@ -132,47 +132,51 @@
     --accent-soft-hover: #22384f;
     --accent-fg: #ffffff;
 
-    /* Avatar tiles: sticker palette on charcoal (decoration only). */
-    --avatar-0-bg: #1c2c3b;
-    --avatar-0-fg: #7fbdf2;
-    --avatar-1-bg: #1b2e20;
-    --avatar-1-fg: #6dd085;
-    --avatar-2-bg: #392617;
-    --avatar-2-fg: #f29a55;
-    --avatar-3-bg: #2c2338;
-    --avatar-3-fg: #d6b6f6;
-    --avatar-4-bg: #391f31;
-    --avatar-4-fg: #ff8fd6;
-    --avatar-5-bg: #182e2d;
-    --avatar-5-fg: #5cc6c1;
+    /* Avatar tiles: cc-switch mode/chart palette (decoration only). */
+    --avatar-0-bg: #222a34;
+    --avatar-0-fg: #8fb8e6;
+    --avatar-1-bg: #212b2c;
+    --avatar-1-fg: #7cc4ba;
+    --avatar-2-bg: #292734;
+    --avatar-2-fg: #b5a6e3;
+    --avatar-3-bg: #16303c;
+    --avatar-3-fg: #38bdf8;
+    --avatar-4-bg: #3a1f2e;
+    --avatar-4-fg: #f472b6;
+    --avatar-5-bg: #1c2c3b;
+    --avatar-5-fg: #7fbdf2;
 
     /* ---- Semantic ---- */
-    --success: #2fb34d;
-    --success-text: #5fd07a;
-    --success-tint: #1b2e20;
-    --success-soft: #1b2e20;
-    --warn: #e9752a;
-    --warn-text: #f0954a;
-    --warn-tint: #33251a;
-    --warn-border: #5a3d24;
-    --warning: #e9752a;
-    --danger-text: #f0706a;
-    --danger: #e5534b;
-    --danger-hover: #ec6a63;
-    --danger-soft: #3a2121;
-    --toggle-off: #474747;
+    --success: #4ade80;
+    --success-text: #4ade80;
+    --success-tint: #0f2b1a;
+    --success-soft: #0f2b1a;
+    --warn: #fbbf24;
+    --warn-text: #fcd34d;
+    --warn-tint: #33260a;
+    --warn-border: #4a3a12;
+    --warning: #fbbf24;
+    --danger-text: #fca5a5;
+    --danger: #f87171;
+    --danger-hover: #fca5a5;
+    --danger-soft: #3a1414;
+    --switch-off-disabled-icon: :/icons/switch-off-disabled-dark.svg;
+    --switch-on-disabled-icon: :/icons/switch-on-disabled-dark.svg;
+    --toggle-off-disabled: #4b4b52;
+    --toggle-on-disabled: #295482;
+    --toggle-off: #6f6f77;
 
-    --strength-weak: #e5534b;
-    --strength-medium: #e9752a;
-    --strength-strong: #2fb34d;
+    --strength-weak: #f87171;
+    --strength-medium: #fbbf24;
+    --strength-strong: #4ade80;
 
-    --toast-bg: #2f2f2f;
-    --toast-fg: #ebebea;
+    --toast-bg: #f4f4f5;
+    --toast-fg: #18181b;
 
     --focus-ring: #3d8fdc;
     --shadow: rgba(0, 0, 0, 140);
     --dialog-shadow: #000000;
-    --dialog-backdrop: rgba(0, 0, 0, 130);
+    --dialog-backdrop: rgba(0, 0, 0, 140);
 
     /* ---- Brand tiles (brand-fixed, identical across themes) ---- */
     --brand-google-bg: #f7f8fa;
@@ -192,11 +196,11 @@
 
     /* ---- Radii (unified with light theme) ---- */
     --radius-xs: 4px;
-    --radius-sm: 5px;
-    --radius-md: 8px;
+    --radius-sm: 6px;
+    --radius-md: 6px;
     --radius-lg: 10px;
-    --radius-xl: 12px;
-    --radius-2xl: 16px;
-    --radius-shell: 16px;
+    --radius-xl: 10px;
+    --radius-2xl: 14px;
+    --radius-shell: 14px;
     --radius-full: 9999px;
 }

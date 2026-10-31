@@ -107,6 +107,7 @@ qt_add_resources(passvault_tests "passvault_tests_resources"
     PREFIX "/"
     BASE   "${CMAKE_SOURCE_DIR}/resources"
     FILES  ${_test_qss_files} ${_test_icon_files} ${_test_font_files}
+           ${CMAKE_SOURCE_DIR}/resources/icons/passvault.png
 )
 
 target_include_directories(passvault_tests
