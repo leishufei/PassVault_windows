@@ -24,6 +24,8 @@ namespace {
 using passvault::ui::MasterPasswordDialog;
 using Mode = MasterPasswordDialog::Mode;
 
+constexpr int kSamplePasswordLength = 12;
+
 QLineEdit* Edit(MasterPasswordDialog& d, const char* name) {
     return d.findChild<QLineEdit*>(QString::fromLatin1(name));
 }
@@ -119,9 +121,9 @@ TEST(MasterPasswordDialogTest, PasswordInputsStartEmptyForEveryMode) {
     ExpectPasswordInputsEmpty(Mode::kChange);
 }
 
-TEST(MasterPasswordDialogTest, SetupAcceptsMatchingLongEnough) {
+TEST(MasterPasswordDialogTest, SetupAcceptsMatchingPasswords) {
     MasterPasswordDialog d(Mode::kSetup);
-    const QString input(MasterPasswordDialog::kMinPasswordLength,
+    const QString input(kSamplePasswordLength,
                         QLatin1Char('n'));
     Edit(d, "NewPasswordEdit")->setText(input);
     Edit(d, "ConfirmPasswordEdit")->setText(input);
@@ -133,9 +135,9 @@ TEST(MasterPasswordDialogTest, SetupAcceptsMatchingLongEnough) {
 
 TEST(MasterPasswordDialogTest, SetupRejectsMismatch) {
     MasterPasswordDialog d(Mode::kSetup);
-    const QString new_input(MasterPasswordDialog::kMinPasswordLength,
+    const QString new_input(kSamplePasswordLength,
                             QLatin1Char('n'));
-    const QString confirm_input(MasterPasswordDialog::kMinPasswordLength,
+    const QString confirm_input(kSamplePasswordLength,
                                 QLatin1Char('c'));
     Edit(d, "NewPasswordEdit")->setText(new_input);
     Edit(d, "ConfirmPasswordEdit")->setText(confirm_input);
@@ -145,16 +147,25 @@ TEST(MasterPasswordDialogTest, SetupRejectsMismatch) {
     EXPECT_FALSE(ErrorLabel(d)->isHidden());
 }
 
-TEST(MasterPasswordDialogTest, SetupRejectsTooShort) {
+TEST(MasterPasswordDialogTest, SetupRejectsEmptyPassword) {
     MasterPasswordDialog d(Mode::kSetup);
-    const QString input(MasterPasswordDialog::kMinPasswordLength - 1,
-                        QLatin1Char('n'));
-    Edit(d, "NewPasswordEdit")->setText(input);
-    Edit(d, "ConfirmPasswordEdit")->setText(input);
+    Edit(d, "NewPasswordEdit")->setText(QString());
+    Edit(d, "ConfirmPasswordEdit")->setText(QString());
     QSignalSpy accepted(&d, &QDialog::accepted);
     Button(d, "PrimaryButton")->click();
     EXPECT_EQ(accepted.count(), 0);
     EXPECT_FALSE(ErrorLabel(d)->isHidden());
+}
+
+TEST(MasterPasswordDialogTest, SetupAcceptsShortNonEmptyPassword) {
+    MasterPasswordDialog d(Mode::kSetup);
+    const QString input = QStringLiteral("abc");
+    Edit(d, "NewPasswordEdit")->setText(input);
+    Edit(d, "ConfirmPasswordEdit")->setText(input);
+    QSignalSpy accepted(&d, &QDialog::accepted);
+    Button(d, "PrimaryButton")->click();
+    EXPECT_EQ(accepted.count(), 1);
+    EXPECT_EQ(d.NewPassword(), input);
 }
 
 TEST(MasterPasswordDialogTest, HelloEntryIsRemovedInAllModes) {
@@ -181,7 +192,7 @@ TEST(MasterPasswordDialogTest, UnlockAcceptsExistingShortPassword) {
 TEST(MasterPasswordDialogTest, ChangeReturnsOldAndNew) {
     MasterPasswordDialog d(Mode::kChange);
     const QString old_input = QStringLiteral("existing");
-    const QString new_input(MasterPasswordDialog::kMinPasswordLength,
+    const QString new_input(kSamplePasswordLength,
                             QLatin1Char('n'));
     Edit(d, "OldPasswordEdit")->setText(old_input);
     Edit(d, "NewPasswordEdit")->setText(new_input);
@@ -195,9 +206,9 @@ TEST(MasterPasswordDialogTest, ChangeReturnsOldAndNew) {
 
 TEST(MasterPasswordDialogTest, ChangeRejectsMismatchedConfirm) {
     MasterPasswordDialog d(Mode::kChange);
-    const QString new_input(MasterPasswordDialog::kMinPasswordLength,
+    const QString new_input(kSamplePasswordLength,
                             QLatin1Char('n'));
-    const QString confirm_input(MasterPasswordDialog::kMinPasswordLength,
+    const QString confirm_input(kSamplePasswordLength,
                                 QLatin1Char('c'));
     Edit(d, "OldPasswordEdit")->setText(QStringLiteral("existing"));
     Edit(d, "NewPasswordEdit")->setText(new_input);
@@ -229,7 +240,7 @@ TEST(MasterPasswordDialogTest, ChangeRejectsEmptyNewPassword) {
 
 TEST(MasterPasswordDialogTest, ChangeRejectsSameAsOld) {
     MasterPasswordDialog d(Mode::kChange);
-    const QString input(MasterPasswordDialog::kMinPasswordLength,
+    const QString input(kSamplePasswordLength,
                         QLatin1Char('s'));
     Edit(d, "OldPasswordEdit")->setText(input);
     Edit(d, "NewPasswordEdit")->setText(input);
@@ -256,7 +267,7 @@ TEST(MasterPasswordDialogTest, EmptySubmissionFocusesFirstRequiredField) {
 
 TEST(MasterPasswordDialogTest, CorrectingMismatchClearsErrorAndAllowsRetry) {
     MasterPasswordDialog dialog(Mode::kChange);
-    const QString input(MasterPasswordDialog::kMinPasswordLength,
+    const QString input(kSamplePasswordLength,
                         QLatin1Char('n'));
     Edit(dialog, "OldPasswordEdit")->setText(QStringLiteral("existing"));
     Edit(dialog, "NewPasswordEdit")->setText(input);
@@ -277,7 +288,7 @@ TEST(MasterPasswordDialogTest, EnterSubmitsPrimaryActionForEveryMode) {
     for (const Mode mode : {Mode::kSetup, Mode::kUnlock, Mode::kChange}) {
         SCOPED_TRACE(static_cast<int>(mode));
         MasterPasswordDialog dialog(mode);
-        const QString input(MasterPasswordDialog::kMinPasswordLength,
+        const QString input(kSamplePasswordLength,
                             QLatin1Char('n'));
         if (auto* old_edit = Edit(dialog, "OldPasswordEdit")) {
             old_edit->setText(QStringLiteral("existing"));
@@ -436,7 +447,7 @@ TEST(MasterPasswordDialogTest, ThemeSwitchPreservesInputsPreviewAndError) {
     const auto previous_theme = theme->theme();
     theme->ApplyTheme(passvault::ui::Theme::kLight);
     const auto light_icon = close->icon().pixmap(16, 16).toImage();
-    const QString input(MasterPasswordDialog::kMinPasswordLength,
+    const QString input(kSamplePasswordLength,
                         QLatin1Char('n'));
     Edit(dialog, "OldPasswordEdit")->setText(QStringLiteral("existing"));
     Edit(dialog, "NewPasswordEdit")->setText(input);

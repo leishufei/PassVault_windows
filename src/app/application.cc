@@ -37,6 +37,7 @@
 #include "oauth/token_store.h"
 #include "session/auto_lock_timer.h"
 #include "session/session_manager.h"
+#include "storage/app_paths.h"
 #include "storage/category_dao.h"
 #include "storage/database.h"
 #include "storage/password_dao.h"
@@ -73,6 +74,7 @@ class Application::Impl {
           hello_(reset_.paths().DataFile("hello_unlock.dat")),
           provider_override_(provider_override) {
         reset_.set_io_check(std::move(reset_io_check));
+        MigrateLegacyPaths();
     }
 
     ~Impl() {
@@ -115,10 +117,25 @@ class Application::Impl {
     }
 
  private:
+    void MigrateLegacyPaths() {
+        if (reset_.paths().data_directory != storage::DefaultDataDirectory())
+            return;
+        storage::MoveFileIfMissing(
+            QDir(storage::LegacyAppDataDirectory())
+                .filePath(QStringLiteral("google_token.dat")),
+            QDir(reset_.paths().data_directory)
+                .filePath(QStringLiteral("google_token.dat")));
+        storage::MoveFileIfMissing(
+            QDir(storage::LegacyLocalAppDataDirectory())
+                .filePath(QStringLiteral("control/local-reset.json")),
+            QDir(reset_.paths().control_directory)
+                .filePath(QStringLiteral("local-reset.json")));
+    }
+
     bool InitializeRuntime() {
         runtime_context_ = std::make_unique<QObject>();
         initialization_failed_ = true;
-        if (!QDir().mkpath(QDir(reset_.paths().installation).filePath("data"))) return false;
+        if (!QDir().mkpath(reset_.paths().data_directory)) return false;
         try {
             database_ = storage::Database::Open(reset_.paths().DataFile("passvault.db"));
         } catch (const std::exception&) {
@@ -187,7 +204,7 @@ class Application::Impl {
                               session::SessionManager::Instance()->Lock();
                           });
 
-        if (token_store_->Exists() &&
+        if (master_manager_->IsInitialized() && token_store_->Exists() &&
             !password_change_->SaveBinding(master_password::CloudBinding::kBound)) {
             QMessageBox::critical(nullptr, QStringLiteral("启动失败"),
                                   QStringLiteral("无法保存云端绑定历史。"));
@@ -697,7 +714,7 @@ class Application::Impl {
                     QStringLiteral("将清除当前安装的本地保险库、此 Windows 用户共享的登录凭据和本应用设置。"
                         "未同步的新增、修改、删除及草稿会永久丢失；没有云备份将无法恢复。"
                         "云端备份保持不变，本次不会自动同步。恢复需要原账号及对应云备份密码。"
-                        "当前首次设置要求至少 12 位，旧短密码备份存在恢复限制；本次不提供云恢复入口。"
+                        "旧短密码备份存在恢复限制；本次不提供云恢复入口。"
                         "完成后将在当前进程返回首次设置。确定继续？"),
                     QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
                 if (answer == QMessageBox::Yes && !exit_requested_) {

@@ -1,4 +1,6 @@
 target_sources(passvault PRIVATE
+    app_paths.h
+    app_paths.cc
     database.h
     database.cc
     schema.h

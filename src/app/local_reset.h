@@ -11,6 +11,7 @@ namespace passvault::app {
 
 struct LocalResetPaths {
   QString installation;
+  QString data_directory;
   QString control_directory;
   QString token_file;
   static LocalResetPaths Default();

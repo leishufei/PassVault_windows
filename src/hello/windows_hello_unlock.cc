@@ -1,11 +1,12 @@
 #include "hello/windows_hello_unlock.h"
 
 #include <QByteArray>
-#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
+
+#include "storage/app_paths.h"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -82,8 +83,8 @@ WindowsHelloUnlock::WindowsHelloUnlock(QString storage_path)
     : storage_path_(std::move(storage_path)) {}
 
 QString WindowsHelloUnlock::DefaultStoragePath() {
-    return QCoreApplication::applicationDirPath() +
-           QStringLiteral("/data/hello_unlock.dat");
+    return QDir(storage::DefaultDataDirectory())
+        .filePath(QStringLiteral("hello_unlock.dat"));
 }
 
 bool WindowsHelloUnlock::IsAvailable() {

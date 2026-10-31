@@ -5,9 +5,9 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
-#include <QStandardPaths>
 
 #include "crypto/sha256.h"
+#include "storage/app_paths.h"
 #include "storage/file_status.h"
 
 #ifdef _WIN32
@@ -130,9 +130,8 @@ TokenStore::TokenStore() : file_path_(DefaultFilePath()) {}
 TokenStore::TokenStore(QString file_path) : file_path_(std::move(file_path)) {}
 
 QString TokenStore::DefaultFilePath() {
-    const QString app_data =
-        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    return app_data + QStringLiteral("/google_token.dat");
+    return QDir(storage::DefaultDataDirectory())
+        .filePath(QStringLiteral("google_token.dat"));
 }
 
 bool TokenStore::Exists() const { return QFile::exists(file_path_); }

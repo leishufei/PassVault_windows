@@ -1,6 +1,5 @@
 #include "master_password/master_password_store.h"
 
-#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -8,6 +7,8 @@
 #include <QJsonObject>
 #include <QSaveFile>
 #include <QtGlobal>
+
+#include "storage/app_paths.h"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -129,8 +130,8 @@ MasterPasswordStore::MasterPasswordStore(QString file_path)
     : file_path_(std::move(file_path)) {}
 
 QString MasterPasswordStore::DefaultFilePath() {
-    const QString base = QCoreApplication::applicationDirPath();
-    return base + QStringLiteral("/data/master.dat");
+    return QDir(storage::DefaultDataDirectory())
+        .filePath(QStringLiteral("master.dat"));
 }
 
 bool MasterPasswordStore::Exists() const {

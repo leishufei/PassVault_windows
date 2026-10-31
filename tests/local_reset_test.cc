@@ -78,7 +78,8 @@ QByteArray Read(const QString& path) {
 class LocalResetTest : public testing::Test {
  protected:
   LocalResetTest()
-      : paths_{dir_.path() + "/install", dir_.path() + "/control",
+      : paths_{dir_.path() + "/install", dir_.path() + "/data",
+               dir_.path() + "/control",
                dir_.path() + "/shared/google_token.dat"},
         reset_(paths_),
         settings_(dir_.path() + "/settings.ini", QSettings::IniFormat),
@@ -86,7 +87,8 @@ class LocalResetTest : public testing::Test {
         manager_(store_) {}
   void SetUp() override {
     ASSERT_TRUE(dir_.isValid());
-    ASSERT_TRUE(QDir().mkpath(paths_.installation + "/data"));
+    ASSERT_TRUE(QDir().mkpath(paths_.installation));
+    ASSERT_TRUE(QDir().mkpath(paths_.data_directory));
     auto initial = manager_.SetInitial("isolated-master-123");
     ASSERT_TRUE(initial);
     auto db = Database::Open(paths_.DataFile("passvault.db"));
@@ -276,7 +278,8 @@ TEST_F(LocalResetTest,
        OtherInstallationAndBadMarkersBlockWithoutTokenMutation) {
   ASSERT_TRUE(Begin());
   const auto other = dir_.path() + "/other-install";
-  LocalReset foreign({other, paths_.control_directory, paths_.token_file});
+  LocalReset foreign({other, other + "/data", paths_.control_directory,
+                      paths_.token_file});
   EXPECT_EQ(foreign.Inspect(), LocalReset::Intent::kOtherInstallation);
   passvault::oauth::TokenStore new_tokens(paths_.token_file);
   ASSERT_TRUE(new_tokens.SaveRefreshToken("new-isolated-demo"));
@@ -638,6 +641,7 @@ TEST_F(LocalResetTest, SettingsRealSyncErrorPreservesIntentForForwardRetry) {
 TEST_F(LocalResetTest, BadAndForeignStartupNeverOpenDatabaseOrReadCredentials) {
   ASSERT_TRUE(Begin());
   LocalResetPaths other{dir_.path() + "/other-install",
+                        dir_.path() + "/other-install/data",
                         paths_.control_directory, paths_.token_file};
   for (int mode = 0; mode != 2; ++mode) {
     if (mode == 1) Write(reset_.marker_path(), "corrupt");

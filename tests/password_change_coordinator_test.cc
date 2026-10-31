@@ -252,11 +252,11 @@ TEST_F(PasswordChangeTest, MigratesActiveTrashEmptyPasswordAndMarkerWithoutChang
     }
 }
 
-TEST_F(PasswordChangeTest, RejectsWrongOldShortNewMismatchedConfirmationAndUnchanged) {
+TEST_F(PasswordChangeTest, RejectsWrongOldEmptyNewMismatchedConfirmationAndUnchanged) {
     AddRows();
     EXPECT_EQ(coordinator_->Change("wrong", "replacement", "replacement", nullptr).outcome,
               Outcome::kUnchanged);
-    EXPECT_EQ(coordinator_->Change(QString::fromStdString(old_password_), "x", "x", nullptr).outcome,
+    EXPECT_EQ(coordinator_->Change(QString::fromStdString(old_password_), "", "", nullptr).outcome,
               Outcome::kUnchanged);
     EXPECT_EQ(coordinator_->Change(QString::fromStdString(old_password_), "replacement", "other", nullptr).outcome,
               Outcome::kUnchanged);

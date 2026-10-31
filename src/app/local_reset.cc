@@ -9,10 +9,10 @@
 #include <QJsonObject>
 #include <QSaveFile>
 #include <QSettings>
-#include <QStandardPaths>
 
 #include "master_password/password_change_coordinator.h"
 #include "oauth/token_store.h"
+#include "storage/app_paths.h"
 #include "storage/file_status.h"
 
 namespace passvault::app {
@@ -37,13 +37,13 @@ bool RemoveFile(const QString& path) {
 LocalResetPaths LocalResetPaths::Default() {
   return {
       QCoreApplication::applicationDirPath(),
-      QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
-          QStringLiteral("/control"),
+      storage::DefaultDataDirectory(),
+      QDir(storage::DefaultDataDirectory()).filePath(QStringLiteral("control")),
       oauth::TokenStore::DefaultFilePath()};
 }
 
 QString LocalResetPaths::DataFile(const QString& name) const {
-  return QDir(installation).filePath(QStringLiteral("data/") + name);
+  return QDir(data_directory).filePath(name);
 }
 
 UserInstanceLock::UserInstanceLock(const QString& directory)
@@ -71,17 +71,16 @@ QString LocalReset::Owner() const {
 
 bool LocalReset::ValidPaths() const {
   if (Owner().isEmpty() || !QDir::isAbsolutePath(paths_.installation) ||
+      !QDir::isAbsolutePath(paths_.data_directory) ||
       !QDir::isAbsolutePath(paths_.control_directory) ||
       !QDir::isAbsolutePath(paths_.token_file))
     return false;
-  const auto data = QDir(paths_.installation).filePath("data");
-  if (QFileInfo::exists(data)) {
-    QString expected =
-        QDir::cleanPath(Canonical(paths_.installation) + "/data");
+  if (QFileInfo::exists(paths_.data_directory)) {
+    QString expected = QDir::cleanPath(paths_.data_directory);
 #ifdef _WIN32
     expected = expected.toCaseFolded();
 #endif
-    if (Canonical(data) != expected) return false;
+    if (Canonical(paths_.data_directory) != expected) return false;
   }
   return true;
 }

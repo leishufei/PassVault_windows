@@ -26,6 +26,8 @@ using passvault::master_password::MasterPasswordManager;
 using passvault::master_password::MasterPasswordStore;
 using passvault::master_password::VerifyError;
 
+constexpr int kSamplePasswordLength = 12;
+
 class MasterPasswordManagerTest : public ::testing::Test {
  protected:
     void SetUp() override {
@@ -38,10 +40,8 @@ class MasterPasswordManagerTest : public ::testing::Test {
     QTemporaryDir dir_;
     std::unique_ptr<MasterPasswordStore> store_;
     std::unique_ptr<MasterPasswordManager> manager_;
-    const std::string initial_ = std::string(
-        passvault::master_password::kMinNewPasswordLength, 'i');
-    const std::string replacement_ = std::string(
-        passvault::master_password::kMinNewPasswordLength, 'r');
+    const std::string initial_ = std::string(kSamplePasswordLength, 'i');
+    const std::string replacement_ = std::string(kSamplePasswordLength, 'r');
 };
 
 }  // namespace
@@ -62,11 +62,13 @@ TEST_F(MasterPasswordManagerTest, SetInitialReturnsSessionKeyAndPassword) {
     EXPECT_EQ(std::memcmp(pwd, initial_.data(), initial_.size()), 0);
 }
 
-TEST_F(MasterPasswordManagerTest, SetInitialRejectsPasswordBelowMinimum) {
-    const std::string input(
-        passvault::master_password::kMinNewPasswordLength - 1, 'i');
-    EXPECT_FALSE(manager_->SetInitial(input).has_value());
+TEST_F(MasterPasswordManagerTest, SetInitialRejectsEmptyPassword) {
+    EXPECT_FALSE(manager_->SetInitial("").has_value());
     EXPECT_EQ(manager_->last_error(), VerifyError::kPasswordTooShort);
+}
+
+TEST_F(MasterPasswordManagerTest, SetInitialAcceptsShortNonEmptyPassword) {
+    EXPECT_TRUE(manager_->SetInitial("abc").has_value());
 }
 
 TEST_F(MasterPasswordManagerTest, SetInitialRejectsWhenAlreadyExists) {

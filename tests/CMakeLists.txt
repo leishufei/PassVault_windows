@@ -4,6 +4,7 @@ find_package(Qt6 6.5 COMPONENTS Core Gui Network Test Widgets Svg REQUIRED)
 add_executable(passvault_tests
     test_main.cc
     local_reset_test.cc
+    app_paths_test.cc
     "${CMAKE_SOURCE_DIR}/src/app/local_reset.cc"
     "${CMAKE_SOURCE_DIR}/src/app/application.cc"
     smoke_test.cc
@@ -57,6 +58,7 @@ add_executable(passvault_tests
     "${CMAKE_SOURCE_DIR}/src/sync/google_drive_provider.cc"
     "${CMAKE_SOURCE_DIR}/src/sync/sync_manager.cc"
     "${CMAKE_SOURCE_DIR}/src/sync/sync_scheduler.cc"
+    "${CMAKE_SOURCE_DIR}/src/storage/app_paths.cc"
     "${CMAKE_SOURCE_DIR}/src/storage/database.cc"
     "${CMAKE_SOURCE_DIR}/src/storage/schema.cc"
     "${CMAKE_SOURCE_DIR}/src/storage/statement.cc"

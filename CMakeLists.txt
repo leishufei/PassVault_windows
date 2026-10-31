@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(PassVault
-    VERSION 1.0.0
+    VERSION 1.0
     DESCRIPTION "Windows desktop companion for PassVault Android"
     LANGUAGES CXX
 )
