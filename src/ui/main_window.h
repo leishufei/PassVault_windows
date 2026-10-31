@@ -116,6 +116,7 @@ class MainWindow : public QMainWindow {
     void RefreshPasswordList();
     void RefreshThemeAssets();
     void RefreshSyncButton();
+    bool MatchesSearch(const model::PasswordEntry& entry) const;
     QString CategoryName(std::int64_t category_id) const;
     void PopulateCategoryMenu(QMenu* menu,
                               const std::vector<std::int64_t>& ids);

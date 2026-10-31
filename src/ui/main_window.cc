@@ -85,6 +85,7 @@ constexpr int kSidebarBreakpoint = 1024;
 constexpr int kSidebarCountRole = Qt::UserRole + 1;
 constexpr int kSidebarSystemRole = Qt::UserRole + 2;
 constexpr int kSidebarIconRole = Qt::UserRole + 3;
+constexpr int kShowZeroCountRole = Qt::UserRole + 5;
 
 void SetCardFavorite(QWidget* card, bool favorite) {
     if (auto* button = card->findChild<QToolButton*>(
@@ -116,6 +117,32 @@ class PasswordList final : public QListWidget {
 
  private:
     bool selection_only_gesture_ = false;
+};
+
+constexpr int kSearchGroupRole = Qt::UserRole + 4;
+
+class PasswordItemDelegate final : public QStyledItemDelegate {
+ public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    void paint(QPainter* painter, const QStyleOptionViewItem& option,
+               const QModelIndex& index) const override {
+        if (!index.data(kSearchGroupRole).toBool()) {
+            QStyledItemDelegate::paint(painter, option, index);
+            return;
+        }
+        painter->save();
+        auto* theme = ThemeManager::Instance();
+        painter->fillRect(option.rect, theme->Color(QStringLiteral("bg-canvas")));
+        QFont font = option.font;
+        font.setPixelSize(13);
+        font.setWeight(QFont::DemiBold);
+        painter->setFont(font);
+        painter->setPen(theme->Color(QStringLiteral("text-secondary")));
+        painter->drawText(option.rect.adjusted(4, 0, -4, 0),
+                          Qt::AlignLeft | Qt::AlignVCenter,
+                          index.data(Qt::DisplayRole).toString());
+        painter->restore();
+    }
 };
 
 class PasswordCard final : public QFrame {
@@ -165,7 +192,7 @@ class SidebarItemDelegate final : public QStyledItemDelegate {
         QRect text_rect = content.adjusted(kSectionIconSize + 12, 0, 0, 0);
         bool has_count = false;
         const int count = index.data(kSidebarCountRole).toInt(&has_count);
-        if (has_count && count > 0) {
+        if (has_count && (count > 0 || index.data(kShowZeroCountRole).toBool())) {
             QFont count_font = option.font;
             count_font.setPixelSize(11);
             count_font.setWeight(QFont::Medium);
@@ -765,7 +792,7 @@ QWidget* MainWindow::BuildPasswordListColumn() {
     connect(password_list_, &QListWidget::customContextMenuRequested, this,
             [this](const QPoint& pos) {
                 auto* item = password_list_->itemAt(pos);
-                if (!item) return;
+                if (!item || !(item->flags() & Qt::ItemIsSelectable)) return;
                 if (!item->isSelected()) {
                     QSignalBlocker blocker(password_list_);
                     password_list_->setCurrentItem(item);
@@ -812,6 +839,7 @@ QWidget* MainWindow::BuildPasswordListColumn() {
     password_list_->installEventFilter(this);
     password_list_->setSpacing(6);
     password_list_->setUniformItemSizes(true);
+    password_list_->setItemDelegate(new PasswordItemDelegate(password_list_));
     password_list_->viewport()->installEventFilter(this);
     connect(password_list_, &QListWidget::itemSelectionChanged, this,
             &MainWindow::OnPasswordSelectionChanged);
@@ -968,18 +996,21 @@ void MainWindow::RefreshSectionList() {
     };
     if (deps_.password_dao) {
         const auto all = deps_.password_dao->ListActive();
+        int match_count = 0;
         int fav_count = 0;
         int uncat_count = 0;
         for (const auto& e : all) {
+            if (!MatchesSearch(e)) continue;
+            ++match_count;
             if (e.is_favorite) ++fav_count;
             if (e.category_id == 0) ++uncat_count;
         }
         int trash_count = 0;
         for (const auto& e : deps_.password_dao->ListIncludingDeleted()) {
-            if (e.is_deleted) ++trash_count;
+            if (e.is_deleted && MatchesSearch(e)) ++trash_count;
         }
         const int counts[] = {
-            static_cast<int>(all.size()),
+            match_count,
             fav_count,
             uncat_count,
             trash_count,
@@ -990,6 +1021,7 @@ void MainWindow::RefreshSectionList() {
             item->setData(Qt::UserRole,
                           QVariant::fromValue<qint64>(defs[i].id));
             item->setData(kSidebarCountRole, counts[i]);
+            item->setData(kShowZeroCountRole, !search_text_.isEmpty());
             item->setData(kSidebarSystemRole, true);
             item->setData(kSidebarIconRole, defs[i].icon);
             item->setData(Qt::AccessibleDescriptionRole,
@@ -1027,7 +1059,7 @@ void MainWindow::RefreshCategoryList() {
     QHash<std::int64_t, int> counts;
     if (deps_.password_dao) {
         for (const auto& entry : deps_.password_dao->ListActive()) {
-            ++counts[entry.category_id];
+            if (MatchesSearch(entry)) ++counts[entry.category_id];
         }
     }
     for (const auto& c : categories_) {
@@ -1038,6 +1070,7 @@ void MainWindow::RefreshCategoryList() {
         item->setFlags(item->flags() & ~Qt::ItemIsDropEnabled);
         item->setData(Qt::UserRole, QVariant::fromValue<qint64>(c.id));
         item->setData(kSidebarCountRole, counts.value(c.id));
+        item->setData(kShowZeroCountRole, !search_text_.isEmpty());
         item->setData(kSidebarSystemRole, false);
         item->setData(kSidebarIconRole, QStringLiteral("folder"));
         item->setData(Qt::AccessibleDescriptionRole,
@@ -1086,6 +1119,14 @@ void MainWindow::OnCategorySelectionChanged() {
     showing_detail_ = false;
     if (width() < kSidebarBreakpoint) compact_sidebar_expanded_ = false;
     UpdateResponsiveLayout();
+}
+
+bool MainWindow::MatchesSearch(const model::PasswordEntry& entry) const {
+    return search_text_.isEmpty() ||
+           entry.title.contains(search_text_, Qt::CaseInsensitive) ||
+           entry.username.contains(search_text_, Qt::CaseInsensitive) ||
+           entry.website.contains(search_text_, Qt::CaseInsensitive) ||
+           entry.notes.contains(search_text_, Qt::CaseInsensitive);
 }
 
 QString MainWindow::CategoryName(std::int64_t category_id) const {
@@ -1161,6 +1202,8 @@ void MainWindow::ChangeCategories(const std::vector<std::int64_t>& ids,
 
 void MainWindow::OnSearchChanged(const QString& text) {
     search_text_ = text.trimmed();
+    RefreshSectionList();
+    RefreshCategoryList();
     RefreshPasswordList();
     showing_detail_ = false;
     UpdateResponsiveLayout();
@@ -1309,8 +1352,6 @@ void MainWindow::RefreshPasswordList() {
                 rows.push_back(std::move(entry));
             }
         }
-    } else if (!search_text_.isEmpty()) {
-        rows = deps_.password_dao->Search(search_text_);
     } else if (selected_category_ == kSectionAll) {
         rows = deps_.password_dao->ListActive();
     } else if (selected_category_ == kSectionFavorites) {
@@ -1322,6 +1363,10 @@ void MainWindow::RefreshPasswordList() {
     } else {
         rows = deps_.password_dao->ListByCategory(selected_category_);
     }
+
+    rows.erase(std::remove_if(rows.begin(), rows.end(), [this](const auto& entry) {
+        return !MatchesSearch(entry);
+    }), rows.end());
 
     std::stable_sort(rows.begin(), rows.end(),
                      [this](const model::PasswordEntry& lhs,
@@ -1339,9 +1384,28 @@ void MainWindow::RefreshPasswordList() {
                          return sort_ascending_ ? left < right : left > right;
                      });
 
+    if (!search_text_.isEmpty()) {
+        std::stable_sort(rows.begin(), rows.end(), [this](const auto& lhs,
+                                                         const auto& rhs) {
+            const int comparison = QString::localeAwareCompare(
+                CategoryName(lhs.category_id), CategoryName(rhs.category_id));
+            return comparison == 0 ? lhs.category_id < rhs.category_id
+                                   : comparison < 0;
+        });
+    }
     current_entries_ = std::move(rows);
 
+    password_list_->setUniformItemSizes(search_text_.isEmpty());
+    std::optional<std::int64_t> group;
     for (const auto& e : current_entries_) {
+        if (!search_text_.isEmpty() && group != e.category_id) {
+            group = e.category_id;
+            auto* heading = new QListWidgetItem(CategoryName(e.category_id),
+                                                 password_list_);
+            heading->setData(kSearchGroupRole, true);
+            heading->setFlags(Qt::NoItemFlags);
+            heading->setSizeHint(QSize(0, 28));
+        }
         auto* item = new QListWidgetItem(password_list_);
         item->setData(Qt::UserRole, QVariant::fromValue<qint64>(e.id));
         QWidget* card = CreatePasswordCard(e);

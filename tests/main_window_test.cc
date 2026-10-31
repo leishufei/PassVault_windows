@@ -480,7 +480,7 @@ TEST_F(MainWindowTest, SearchIncludesNotesAndShowsSearchEmptyState) {
     window_->Reload();
 
     search()->setText(QStringLiteral("stage-two-unique-note"));
-    EXPECT_EQ(passwords()->count(), 1);
+    EXPECT_EQ(passwords()->count(), 2);
     auto* title = window_->findChild<QLabel*>(QStringLiteral("ListTitle"));
     ASSERT_NE(title, nullptr);
     EXPECT_EQ(title->text(), QStringLiteral("搜索结果"));
@@ -516,9 +516,50 @@ TEST_F(MainWindowTest, ListUsesUpdatedTimeAndRelativeLabel) {
 
 TEST_F(MainWindowTest, SearchFiltersAndClears) {
     search()->setText(QStringLiteral("git"));
-    EXPECT_EQ(passwords()->count(), 2);
+    EXPECT_EQ(passwords()->count(), 3);
     search()->setText(QString());
     EXPECT_EQ(passwords()->count(), 3);
+}
+
+TEST_F(MainWindowTest, SearchGroupsMatchesAndRefreshesCategoryCounts) {
+    Seed(QStringLiteral("Git Work"), QStringLiteral("worker"), false,
+         work_category_id_, 4000);
+    window_->Reload();
+    search()->setText(QStringLiteral("git"));
+    EXPECT_EQ(listCount()->text(), QStringLiteral("3 项"));
+    EXPECT_EQ(passwords()->count(), 5);
+    const QString capture_dir = qEnvironmentVariable("PASSVAULT_UI_CAPTURE_DIR");
+    if (!capture_dir.isEmpty()) {
+        window_->resize(1280, 800);
+        window_->show();
+        QApplication::processEvents();
+        EXPECT_TRUE(window_->grab().save(capture_dir + "/search-groups.png"));
+    }
+    int headings = 0;
+    for (int i = 0; i < passwords()->count(); ++i) {
+        auto* item = passwords()->item(i);
+        if (item->data(Qt::UserRole + 4).toBool()) {
+            ++headings;
+            EXPECT_FALSE(item->flags() & Qt::ItemIsSelectable);
+        }
+    }
+    EXPECT_EQ(headings, 2);
+    EXPECT_EQ(categories()->item(0)->data(kSidebarCountRole).toInt(), 1);
+    EXPECT_EQ(sections()->item(0)->data(kSidebarCountRole).toInt(), 3);
+    categories()->setCurrentRow(0);
+    EXPECT_EQ(listCount()->text(), QStringLiteral("1 项"));
+    EXPECT_EQ(passwords()->count(), 2);
+    EXPECT_EQ(password_dao_->FindById(
+        passwords()->item(1)->data(Qt::UserRole).toLongLong())->category_id,
+        work_category_id_);
+    sections()->setCurrentRow(1);
+    EXPECT_EQ(listCount()->text(), QStringLiteral("1 项"));
+    search()->setText(QStringLiteral("Work"));
+    EXPECT_EQ(listCount()->text(), QStringLiteral("0 项"));
+    EXPECT_EQ(categories()->item(0)->data(kSidebarCountRole).toInt(), 2);
+    search()->clear();
+    EXPECT_EQ(categories()->item(0)->data(kSidebarCountRole).toInt(), 2);
+    EXPECT_EQ(sections()->item(0)->data(kSidebarCountRole).toInt(), 4);
 }
 
 TEST_F(MainWindowTest, DetailCategoryChangePreservesCiphertextAndSupportsUncategorized) {
@@ -692,7 +733,7 @@ TEST_F(MainWindowTest, SearchEscapeAndBlankClicksKeepTheFilter) {
     window_->show();
     QApplication::processEvents();
     search()->setText(QStringLiteral("Git"));
-    passwords()->setCurrentRow(0);
+    passwords()->setCurrentRow(1);
     ASSERT_TRUE(detail()->HasEntry());
     search()->setFocus();
     QAction global_escape(window_.get());
@@ -707,7 +748,7 @@ TEST_F(MainWindowTest, SearchEscapeAndBlankClicksKeepTheFilter) {
     EXPECT_TRUE(workspace->hasFocus());
     EXPECT_TRUE(detail()->HasEntry());
     EXPECT_EQ(search()->text(), QStringLiteral("Git"));
-    EXPECT_EQ(passwords()->count(), 2);
+    EXPECT_EQ(passwords()->count(), 3);
 
     search()->setFocus();
     QTest::mouseClick(passwords()->viewport(), Qt::LeftButton, Qt::NoModifier,
@@ -715,7 +756,7 @@ TEST_F(MainWindowTest, SearchEscapeAndBlankClicksKeepTheFilter) {
     EXPECT_TRUE(workspace->hasFocus());
     EXPECT_FALSE(detail()->HasEntry());
     EXPECT_EQ(search()->text(), QStringLiteral("Git"));
-    EXPECT_EQ(passwords()->count(), 2);
+    EXPECT_EQ(passwords()->count(), 3);
 
     search()->setText(QStringLiteral("no-matching-entry"));
     search()->setFocus();
@@ -1525,15 +1566,15 @@ TEST_F(MainWindowTest, TrashSearchStaysDeletedAndRestorePreservesCiphertext) {
     sections()->setCurrentRow(3);
     window_->Reload();
     search()->setText(QStringLiteral("Git"));
-    ASSERT_EQ(passwords()->count(), 1);
-    EXPECT_EQ(passwords()->item(0)->data(Qt::UserRole).toLongLong(), original.id);
+    ASSERT_EQ(passwords()->count(), 2);
+    EXPECT_EQ(passwords()->item(1)->data(Qt::UserRole).toLongLong(), original.id);
     auto* restore = window_->findChild<QPushButton*>("RestoreSelectedButton");
     auto* remove = window_->findChild<QPushButton*>("PermanentlyDeleteButton");
     ASSERT_NE(restore, nullptr);
     ASSERT_NE(remove, nullptr);
     EXPECT_FALSE(restore->isEnabled());
     EXPECT_FALSE(remove->isEnabled());
-    passwords()->setCurrentRow(0);
+    passwords()->setCurrentRow(1);
     EXPECT_TRUE(restore->isEnabled());
     EXPECT_TRUE(remove->isEnabled());
     ASSERT_TRUE(detail()->HasEntry());
@@ -1564,7 +1605,7 @@ TEST_F(MainWindowTest, FilteredEmptyTrashConfirmsAllAndCancelPreservesContent) {
     sections()->setCurrentRow(3);
     window_->Reload();
     search()->setText(QStringLiteral("GitHub"));
-    ASSERT_EQ(passwords()->count(), 1);
+    ASSERT_EQ(passwords()->count(), 2);
     auto* clear = window_->findChild<QPushButton*>("EmptyTrashButton");
     ASSERT_NE(clear, nullptr);
     ASSERT_TRUE(clear->isEnabled());
@@ -1593,7 +1634,7 @@ TEST_F(MainWindowTest, EmptyTrashKeepsEntriesAddedWhileConfirmationIsOpen) {
     sections()->setCurrentRow(3);
     window_->Reload();
     search()->setText(QStringLiteral("GitHub"));
-    ASSERT_EQ(passwords()->count(), 1);
+    ASSERT_EQ(passwords()->count(), 2);
     auto* clear = window_->findChild<QPushButton*>("EmptyTrashButton");
     ASSERT_NE(clear, nullptr);
     QTimer::singleShot(0, [this]() {
@@ -1620,7 +1661,7 @@ TEST_F(MainWindowTest, EmptyTrashKeepsEntriesAddedWhileConfirmationIsOpen) {
             [&entry](const auto& marker) { return marker.uuid == entry.uuid; }));
     }
     EXPECT_EQ(passwords()->count(), 0);
-    EXPECT_EQ(sections()->item(3)->data(kSidebarCountRole).toInt(), 1);
+    EXPECT_EQ(sections()->item(3)->data(kSidebarCountRole).toInt(), 0);
     EXPECT_TRUE(clear->isEnabled());
 }
 
