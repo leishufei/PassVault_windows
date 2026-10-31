@@ -405,7 +405,7 @@ TEST_F(EditorPanelTest, EmbeddedGeneratorMatchesFigmaFlow) {
               panel.findChild<QWidget*>(QStringLiteral("EditorPage")));
 }
 
-TEST_F(EditorPanelTest, FieldsFollowFigmaOrder) {
+TEST_F(EditorPanelTest, CategoryIsFirstField) {
     auto* body = panel_.findChild<QWidget*>(QStringLiteral("EditorBody"));
     ASSERT_NE(body, nullptr);
 
@@ -418,8 +418,8 @@ TEST_F(EditorPanelTest, FieldsFollowFigmaOrder) {
     EXPECT_LT(layout_index(titleInput()), layout_index(usernameInput()));
     EXPECT_LT(layout_index(usernameInput()), layout_index(passwordInput()));
     EXPECT_LT(layout_index(passwordInput()), layout_index(websiteInput()));
-    EXPECT_LT(layout_index(websiteInput()), layout_index(categoryCombo()));
-    EXPECT_LT(layout_index(categoryCombo()), layout_index(notesInput()));
+    EXPECT_LT(layout_index(categoryCombo()), layout_index(titleInput()));
+    EXPECT_LT(layout_index(websiteInput()), layout_index(notesInput()));
 }
 
 TEST_F(EditorPanelTest, PreviewToggleSwitchesEchoMode) {

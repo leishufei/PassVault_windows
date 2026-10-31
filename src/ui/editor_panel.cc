@@ -35,7 +35,6 @@ namespace passvault::ui {
 
 namespace {
 
-constexpr int kPanelWidth = 400;
 constexpr int kAnimationMs = 220;
 
 QIcon LoadEditorIcon(const QString& name, const QString& color_token, int size) {
@@ -235,6 +234,16 @@ QWidget* EditorPanel::BuildOverviewPage() {
         return field_layout;
     };
 
+    category_combo_ = new QComboBox(container);
+    category_combo_->setObjectName(QStringLiteral("EditorCategoryCombo"));
+    category_combo_->setFixedHeight(32);
+    // Use the styled delegate so the popup follows the application's QSS.
+    category_combo_->setItemDelegate(
+        new QStyledItemDelegate(category_combo_));
+    category_combo_->view()->setTextElideMode(Qt::ElideRight);
+    RefreshCategoryPopup();
+    add_field(QStringLiteral("分类"), category_combo_);
+
     title_input_ = new QLineEdit(container);
     title_input_->setObjectName(QStringLiteral("EditorTitleInput"));
     title_input_->setPlaceholderText(QStringLiteral("必填"));
@@ -355,16 +364,6 @@ QWidget* EditorPanel::BuildOverviewPage() {
     website_input_->setPlaceholderText(QStringLiteral("https://..."));
     website_input_->setFixedHeight(32);
     add_field(QStringLiteral("网址"), website_input_);
-
-    category_combo_ = new QComboBox(container);
-    category_combo_->setObjectName(QStringLiteral("EditorCategoryCombo"));
-    category_combo_->setFixedHeight(36);
-    // Use the styled delegate so the popup follows the application's QSS.
-    category_combo_->setItemDelegate(
-        new QStyledItemDelegate(category_combo_));
-    category_combo_->view()->setTextElideMode(Qt::ElideRight);
-    RefreshCategoryPopup();
-    add_field(QStringLiteral("分类"), category_combo_);
 
     notes_input_ = new QTextEdit(container);
     notes_input_->setObjectName(QStringLiteral("EditorNotesInput"));
@@ -646,7 +645,6 @@ void EditorPanel::OpenForEdit(const DecryptedEntry& entry) {
     setFocus();
     AnimateIn();
     is_open_ = true;
-    if (title_input_) title_input_->setFocus();
 }
 
 void EditorPanel::Close() {
@@ -948,15 +946,20 @@ bool EditorPanel::eventFilter(QObject* watched, QEvent* event) {
     return QFrame::eventFilter(watched, event);
 }
 
+void EditorPanel::SetPanelWidth(int width) {
+    panel_width_ = qMax(1, width);
+    UpdatePositionFromParent();
+}
+
 void EditorPanel::UpdatePositionFromParent() {
     auto* p = parentWidget();
     if (!p) return;
     const int h = p->height();
-    const int x_open = p->width() - kPanelWidth;
+    const int x_open = p->width() - panel_width_;
     if (is_open_ || isVisible()) {
-        setGeometry(x_open, 0, kPanelWidth, h);
+        setGeometry(x_open, 0, panel_width_, h);
     } else {
-        setGeometry(p->width(), 0, kPanelWidth, h);
+        setGeometry(p->width(), 0, panel_width_, h);
     }
 }
 
@@ -964,13 +967,13 @@ void EditorPanel::AnimateIn() {
     auto* p = parentWidget();
     if (!p) return;
     const int h = p->height();
-    const int x_open = p->width() - kPanelWidth;
+    const int x_open = p->width() - panel_width_;
     anim_->stop();
     // Drop any finished->hide() handler left over from a previous AnimateOut,
     // otherwise the completing open animation would hide the panel (flash).
     disconnect(anim_, &QPropertyAnimation::finished, this, nullptr);
-    anim_->setStartValue(QRect(p->width(), 0, kPanelWidth, h));
-    anim_->setEndValue(QRect(x_open, 0, kPanelWidth, h));
+    anim_->setStartValue(QRect(p->width(), 0, panel_width_, h));
+    anim_->setEndValue(QRect(x_open, 0, panel_width_, h));
     anim_->start();
 }
 
@@ -981,10 +984,10 @@ void EditorPanel::AnimateOut() {
         return;
     }
     const int h = p->height();
-    const int x_open = p->width() - kPanelWidth;
+    const int x_open = p->width() - panel_width_;
     anim_->stop();
-    anim_->setStartValue(QRect(x_open, 0, kPanelWidth, h));
-    anim_->setEndValue(QRect(p->width(), 0, kPanelWidth, h));
+    anim_->setStartValue(QRect(x_open, 0, panel_width_, h));
+    anim_->setEndValue(QRect(p->width(), 0, panel_width_, h));
     disconnect(anim_, &QPropertyAnimation::finished, this, nullptr);
     connect(anim_, &QPropertyAnimation::finished, this, [this]() { hide(); });
     anim_->start();

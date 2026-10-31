@@ -187,6 +187,14 @@ QWidget* DetailPanel::BuildContentPage() {
     });
     action_layout->addWidget(header_edit_);
 
+    category_button_ = MakeIconButton(QStringLiteral("folder"),
+                                      QStringLiteral("更改分类"));
+    category_button_->setObjectName(QStringLiteral("DetailCategoryButton"));
+    connect(category_button_, &QToolButton::clicked, this, [this]() {
+        if (entry_ && !entry_->is_deleted) emit CategoryChangeRequested(entry_->id);
+    });
+    action_layout->addWidget(category_button_);
+
     header_favorite_ = new QToolButton(actions);
     header_favorite_->setObjectName(QStringLiteral("DetailHeaderButton"));
     header_favorite_->setCheckable(true);
@@ -326,6 +334,11 @@ QWidget* DetailPanel::BuildContentPage() {
     website_value_->setObjectName(QStringLiteral("DetailFieldValueLink"));
     website_row_ =
         build_row(QStringLiteral("网址"), website_value_, {&website_open_});
+    website_value_->setTextFormat(Qt::RichText);
+    website_value_->setTextInteractionFlags(Qt::LinksAccessibleByMouse | Qt::LinksAccessibleByKeyboard);
+    connect(website_value_, &QLabel::linkActivated, this, [this](const QString&) {
+        if (entry_) emit OpenWebsiteRequested(entry_->id);
+    });
 
     notes_divider_ = MakeDivider();
     info_layout->addWidget(notes_divider_);
@@ -444,7 +457,10 @@ void DetailPanel::RefreshView() {
     UpdatePasswordDisplay();
 
     const bool has_website = !e.website.isEmpty();
-    website_value_->setText(e.website);
+    website_value_->setText(e.website.isEmpty() ? QString() :
+        QStringLiteral("<a href=\"website\" style=\"color:%1;text-decoration:none\">%2</a>")
+            .arg(ThemeManager::Instance()->ColorHex(QStringLiteral("primary")),
+                 e.website.toHtmlEscaped()));
     website_open_->setEnabled(has_website);
     if (website_row_) website_row_->show();
     if (website_divider_) website_divider_->show();
@@ -454,27 +470,34 @@ void DetailPanel::RefreshView() {
     notes_value_->setText(e.notes);
     if (notes_row_) notes_row_->show();
     if (notes_divider_) notes_divider_->show();
-    for (auto* label : {username_value_, website_value_, notes_value_}) {
+    website_value_->setAccessibleName(e.website);
+    for (auto* label : {username_value_, notes_value_}) {
         label->setAccessibleName(label->text());
     }
     header_edit_->setEnabled(e.is_deleted || password_plain_.has_value());
-    header_edit_->setFixedSize(
-        e.is_deleted ? QSize(52, kHeaderActionSize)
-                     : QSize(kHeaderActionSize, kHeaderActionSize));
-    header_edit_->setText(e.is_deleted ? QStringLiteral("还原") : QString());
-    header_edit_->setIcon(e.is_deleted ? QIcon() : IconLoader::Load(
-        QStringLiteral("pencil"),
+    header_edit_->setFixedSize(kHeaderActionSize, kHeaderActionSize);
+    header_edit_->setText(QString());
+    header_edit_->setIcon(IconLoader::Load(
+        e.is_deleted ? QStringLiteral("rotate-ccw") : QStringLiteral("pencil"),
+        ThemeManager::Instance()->Color(QStringLiteral("text-secondary")),
+        kIconSize));
+    category_button_->hide();
+    category_button_->setEnabled(!e.is_deleted);
+    category_button_->setIcon(IconLoader::Load(
+        QStringLiteral("folder"),
         ThemeManager::Instance()->Color(QStringLiteral("text-secondary")),
         kIconSize));
     header_edit_->setToolTip(e.is_deleted ? QStringLiteral("还原")
                                           : QStringLiteral("编辑"));
     header_edit_->setAccessibleName(e.is_deleted ? QStringLiteral("还原")
                                                 : QStringLiteral("编辑"));
+    header_edit_->hide();
+    header_delete_->hide();
     header_delete_->setEnabled(true);
     header_delete_->setToolTip(e.is_deleted ? QStringLiteral("永久删除")
                                            : QStringLiteral("删除密码"));
     header_delete_->setAccessibleName(header_delete_->toolTip());
-    header_favorite_->setVisible(!e.is_deleted);
+    header_favorite_->hide();
     header_favorite_->setEnabled(!e.is_deleted);
 }
 

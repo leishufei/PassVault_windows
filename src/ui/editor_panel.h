@@ -38,6 +38,7 @@ class EditorPanel : public QFrame {
     void SetCategories(QList<model::Category> categories);
     void OpenForCreate();
     void OpenForEdit(const DecryptedEntry& entry);
+    void SetPanelWidth(int width);
     void Close();
     void ClearSensitiveState();
     void SetDefaultPasswordVisible(bool visible);
@@ -82,6 +83,7 @@ class EditorPanel : public QFrame {
     void ApplyPasswordVisibility(bool visible);
     void RefreshCategoryPopup();
 
+    int panel_width_ = 400;
     Mode mode_ = Mode::kCreate;
     QList<model::Category> categories_;
     DecryptedEntry entry_;

@@ -41,6 +41,7 @@ class DetailPanel : public QFrame {
     void CloseRequested();
     void EditRequested(std::int64_t entry_id);
     void RestoreRequested(std::int64_t entry_id);
+    void CategoryChangeRequested(std::int64_t entry_id);
     void DeleteRequested(std::int64_t entry_id);
     void CopyPasswordRequested(std::int64_t entry_id);
     void CopyUsernameRequested(std::int64_t entry_id);
@@ -71,6 +72,7 @@ class DetailPanel : public QFrame {
     QPushButton* header_edit_ = nullptr;
     QToolButton* header_delete_ = nullptr;
     QToolButton* header_close_ = nullptr;
+    QToolButton* category_button_ = nullptr;
 
     QWidget* risky_banner_ = nullptr;
     QLabel* risky_icon_ = nullptr;

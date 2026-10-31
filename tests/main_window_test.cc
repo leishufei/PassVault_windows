@@ -414,10 +414,10 @@ TEST_F(MainWindowTest, PasswordCardsUseTargetDensityAndListStateLayer) {
     ASSERT_NE(card, nullptr);
     ASSERT_NE(fav_card, nullptr);
     EXPECT_FALSE(card->testAttribute(Qt::WA_TransparentForMouseEvents));
-    EXPECT_EQ(card->findChild<QToolButton*>("PasswordCardDeleteButton"), nullptr);
+    EXPECT_NE(card->findChild<QToolButton*>("PasswordCardDeleteButton"), nullptr);
     EXPECT_EQ(card->findChild<QLabel*>("PasswordCardStar"), nullptr);
-    EXPECT_NE(fav_card->findChild<QLabel*>("PasswordCardStar"), nullptr);
-    EXPECT_EQ(fav_card->findChild<QToolButton*>("PasswordCardDeleteButton"),
+    EXPECT_EQ(fav_card->findChild<QLabel*>("PasswordCardStar"), nullptr);
+    EXPECT_NE(fav_card->findChild<QToolButton*>("PasswordCardDeleteButton"),
               nullptr);
     const QString stylesheet =
         passvault::ui::ThemeManager::Instance()->LoadStyleSheet();
@@ -519,6 +519,100 @@ TEST_F(MainWindowTest, SearchFiltersAndClears) {
     EXPECT_EQ(passwords()->count(), 2);
     search()->setText(QString());
     EXPECT_EQ(passwords()->count(), 3);
+}
+
+TEST_F(MainWindowTest, DetailCategoryChangePreservesCiphertextAndSupportsUncategorized) {
+    passvault::sync::GoogleDriveProvider provider([] { return QString(); });
+    passvault::sync::SyncManager manager(password_dao_.get(), category_dao_.get(), nullptr);
+    manager.set_provider(&provider);
+    passvault::sync::SyncScheduler scheduler(&manager);
+    MainWindow::Deps deps;
+    deps.password_dao = password_dao_.get();
+    deps.category_dao = category_dao_.get();
+    deps.session_key = &session_key_.value();
+    deps.sync_scheduler = &scheduler;
+    window_ = std::make_unique<MainWindow>(deps);
+    QSignalSpy scheduled(&scheduler, &passvault::sync::SyncScheduler::SyncScheduled);
+    window_->show();
+    passwords()->setCurrentRow(0);
+    const auto before = password_dao_->FindById(detail()->entry_id());
+    ASSERT_TRUE(before);
+    const auto choose = [this](std::int64_t target) {
+        QTimer::singleShot(0, [this, target]() {
+            auto* menu = window_->findChild<QMenu*>("ChangeCategoryMenu");
+            ASSERT_NE(menu, nullptr);
+            for (auto* action : menu->actions()) {
+                if (action->data().toLongLong() == target) {
+                    action->trigger();
+                    menu->close();
+                    return;
+                }
+            }
+            menu->close();
+            FAIL() << "Category action missing";
+        });
+        detail()->findChild<QToolButton*>("DetailCategoryButton")->click();
+    };
+    choose(work_category_id_);
+    EXPECT_EQ(scheduled.count(), 1);
+    const auto moved = password_dao_->FindById(before->id);
+    ASSERT_TRUE(moved);
+    EXPECT_EQ(moved->category_id, work_category_id_);
+    EXPECT_GT(moved->updated_at, before->updated_at);
+    EXPECT_EQ(moved->encrypted_password, before->encrypted_password);
+    EXPECT_EQ(moved->password_iv, before->password_iv);
+    EXPECT_EQ(moved->created_at, before->created_at);
+    EXPECT_TRUE(detail()->findChild<QLabel*>("DetailTag")->text().contains("Work"));
+    choose(work_category_id_);
+    EXPECT_EQ(scheduled.count(), 1);
+    EXPECT_EQ(password_dao_->FindById(before->id)->updated_at, moved->updated_at);
+    categories()->setCurrentRow(0);
+    passwords()->setCurrentRow(0);
+    ASSERT_EQ(detail()->entry_id(), before->id);
+    choose(0);
+    EXPECT_EQ(password_dao_->FindById(before->id)->category_id, 0);
+    EXPECT_FALSE(detail()->HasEntry());
+    EXPECT_EQ(listCount()->text(), QStringLiteral("1 项"));
+}
+
+TEST_F(MainWindowTest, ContextCategoryChangeIsAtomicForMultipleRecords) {
+    window_->show();
+    passwords()->setCurrentRow(0);
+    passwords()->item(1)->setSelected(true);
+    ASSERT_TRUE(db_->Execute(
+        "CREATE TRIGGER fail_category BEFORE UPDATE ON password_entries "
+        "WHEN OLD.title = 'GitLab' BEGIN SELECT RAISE(ABORT, 'test'); END"));
+    const auto move_selected = [this]() {
+        QTimer::singleShot(0, [this]() {
+            auto* menu = window_->findChild<QMenu*>("PasswordContextMenu");
+            ASSERT_NE(menu, nullptr);
+            auto* categories_menu = menu->findChild<QMenu*>("ChangeCategoryMenu");
+            ASSERT_NE(categories_menu, nullptr);
+            for (auto* action : categories_menu->actions()) {
+                if (action->data().toLongLong() == work_category_id_) {
+                    action->trigger();
+                    menu->close();
+                    return;
+                }
+            }
+            menu->close();
+            FAIL() << "Category action missing";
+        });
+        const auto rect = passwords()->visualItemRect(passwords()->item(0));
+        passwords()->customContextMenuRequested(rect.center());
+    };
+    move_selected();
+    EXPECT_EQ(password_dao_->ListByCategory(0).size(), 2u);
+    ASSERT_TRUE(db_->Execute("DROP TRIGGER fail_category"));
+    move_selected();
+    EXPECT_EQ(password_dao_->ListByCategory(0).size(), 0u);
+    EXPECT_EQ(password_dao_->ListByCategory(work_category_id_).size(), 3u);
+}
+
+TEST_F(MainWindowTest, PasswordCardAndTimeDoNotExposeTimestampTooltips) {
+    auto* card = passwords()->itemWidget(passwords()->item(0));
+    EXPECT_TRUE(card->toolTip().isEmpty());
+    EXPECT_TRUE(card->findChild<QLabel*>("PasswordCardTime")->toolTip().isEmpty());
 }
 
 TEST_F(MainWindowTest, EmptyUsernameStaysBlankInTheListAndDetail) {
@@ -847,7 +941,7 @@ TEST_F(MainWindowTest, FavoriteToggleFromDetailPersists) {
     ASSERT_NE(favorite, nullptr);
     window_->show();
     QApplication::processEvents();
-    EXPECT_TRUE(favorite->isVisible());
+    EXPECT_TRUE(favorite->isHidden());
     favorite->click();
 
     EXPECT_EQ(password_dao_->FindById(id)->is_favorite, !before);
@@ -1312,16 +1406,60 @@ TEST_F(MainWindowTest, RowDeleteOnlyTrashesItsOwnRecord) {
     const auto id = passwords()->item(2)->data(Qt::UserRole).toLongLong();
     auto* card = passwords()->itemWidget(passwords()->item(2));
     ASSERT_NE(card, nullptr);
-    EXPECT_EQ(card->findChild<QToolButton*>("PasswordCardDeleteButton"), nullptr);
+    EXPECT_NE(card->findChild<QToolButton*>("PasswordCardDeleteButton"), nullptr);
     QTimer::singleShot(0, []() {
         auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
         ASSERT_NE(message, nullptr);
         message->button(QMessageBox::Yes)->click();
     });
-    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnDeleteRequested",
-                                          Q_ARG(std::int64_t, id)));
+    card->findChild<QToolButton*>("PasswordCardDeleteButton")->click();
     EXPECT_TRUE(password_dao_->FindById(id)->is_deleted);
     EXPECT_EQ(password_dao_->ListActive().size(), 2u);
+}
+
+TEST_F(MainWindowTest, ContextMenuOrdersActionsAndOmitsFavoriteForFavorites) {
+    window_->show();
+    QApplication::processEvents();
+    for (int row : {0, 1}) {
+        auto* item = passwords()->item(row);
+        const auto id = item->data(Qt::UserRole).toLongLong();
+        const auto entry = password_dao_->FindById(id);
+        ASSERT_TRUE(entry.has_value());
+        QTimer::singleShot(0, [this, entry]() {
+            auto* menu = window_->findChild<QMenu*>("PasswordContextMenu");
+            ASSERT_NE(menu, nullptr);
+            QStringList texts;
+            for (auto* action : menu->actions()) texts << action->text();
+            QStringList expected{QStringLiteral("编辑"), QStringLiteral("分类")};
+            if (!entry->is_favorite) expected << QStringLiteral("收藏");
+            expected << QStringLiteral("移入回收站");
+            EXPECT_EQ(texts, expected);
+            if (!entry->is_favorite) menu->actions()[2]->trigger();
+            menu->close();
+        });
+        const auto rect = passwords()->visualItemRect(item);
+        passwords()->customContextMenuRequested(rect.center());
+        EXPECT_TRUE(password_dao_->FindById(id)->is_favorite);
+    }
+}
+
+TEST_F(MainWindowTest, EditorWidthMatchesDetailOnCreateEditAndResize) {
+    window_->show();
+    for (int width : {1200, 1500, 900}) {
+        window_->resize(width, 800);
+        QApplication::processEvents();
+        ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnNewPassword"));
+        QTest::qWait(250);
+        EXPECT_EQ(editor()->width(), detail()->width());
+        editor()->Close();
+        QTest::qWait(250);
+        QMetaObject::invokeMethod(window_.get(), "OnEditRequested",
+                                  Q_ARG(std::int64_t, password_dao_->ListActive().front().id));
+        QTest::qWait(250);
+        EXPECT_EQ(editor()->width(), detail()->width());
+        editor()->Close();
+        QTest::qWait(250);
+    }
 }
 
 TEST_F(MainWindowTest, ContextMenuDeletesTheExistingMultipleSelection) {
@@ -1332,13 +1470,13 @@ TEST_F(MainWindowTest, ContextMenuDeletesTheExistingMultipleSelection) {
     QTimer::singleShot(0, [this]() {
         auto* menu = window_->findChild<QMenu*>("PasswordContextMenu");
         ASSERT_NE(menu, nullptr);
-        ASSERT_EQ(menu->actions().size(), 1);
+        EXPECT_EQ(menu->actions().size(), 3);
         QTimer::singleShot(0, []() {
             auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
             ASSERT_NE(message, nullptr);
             message->button(QMessageBox::Yes)->click();
         });
-        menu->actions().front()->trigger();
+        menu->actions().back()->trigger();
         menu->close();
     });
     const auto rect = passwords()->visualItemRect(passwords()->item(1));
@@ -1609,7 +1747,7 @@ TEST_F(MainWindowTest, MigrationBlocksWritesClearsEditorAndDefersExit) {
     EXPECT_FALSE(detail()->HasEntry());
     EXPECT_FALSE(newButton()->isEnabled());
     EXPECT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnEditorSaveRequested"));
-    QMetaObject::invokeMethod(window_.get(), "OnNewPassword");
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnNewPassword"));
     QMetaObject::invokeMethod(window_.get(), "OnFavoriteToggleRequested",
         Q_ARG(std::int64_t, before->front().id), Q_ARG(bool, true));
     EXPECT_FALSE(window_->close());
@@ -1779,6 +1917,77 @@ TEST_F(MainWindowTest, PasswordPreferencePersistsAndOverridesOpenPanels) {
     toggle->setChecked(false);
 }
 
+TEST_F(MainWindowTest, CategoryInlineRenameCommitsAndRejectsEmptyName) {
+    window_->show();
+    QApplication::processEvents();
+    auto* item = categories()->item(0);
+    ASSERT_TRUE(item->flags() & Qt::ItemIsEditable);
+    categories()->editItem(item);
+    QApplication::processEvents();
+    auto* input = categories()->findChild<QLineEdit*>();
+    ASSERT_NE(input, nullptr);
+    input->setText(QStringLiteral("Renamed"));
+    QTest::keyClick(input, Qt::Key_Return);
+    QTest::qWait(20);
+    EXPECT_EQ(category_dao_->FindById(work_category_id_)->name, QStringLiteral("Renamed"));
+    categories()->item(0)->setText(QString());
+    QTest::qWait(20);
+    EXPECT_EQ(category_dao_->FindById(work_category_id_)->name, QStringLiteral("Renamed"));
+    EXPECT_EQ(categories()->item(0)->text(), QStringLiteral("Renamed"));
+}
+
+TEST_F(MainWindowTest, DoubleClickOpensEditorAndBrandIsVisible) {
+    window_->show();
+    QApplication::processEvents();
+    const auto capture = qEnvironmentVariable("PASSVAULT_UI_CAPTURE_DIR");
+    if (!capture.isEmpty()) window_->grab().save(capture + "/workspace.png");
+    auto* item = passwords()->item(0);
+    passwords()->itemDoubleClicked(item);
+    EXPECT_TRUE(editor()->IsOpen());
+    EXPECT_FALSE(editor()->findChild<QLineEdit*>("EditorTitleInput")->hasFocus());
+    EXPECT_EQ(editor()->Result().entry.id, item->data(Qt::UserRole).toLongLong());
+    EXPECT_EQ(window_->windowTitle(), QStringLiteral("PassVault · 密码保险库"));
+    auto* brand = window_->findChild<QLabel*>("SidebarBrandName");
+    ASSERT_NE(brand, nullptr);
+    EXPECT_TRUE(brand->isVisible());
+}
+
+TEST_F(MainWindowTest, PersistentCardActionsTargetTheirOwnRecord) {
+    window_->show();
+    QApplication::processEvents();
+    passwords()->setCurrentRow(0);
+    const auto selected_id = detail()->entry_id();
+    auto* card = passwords()->itemWidget(passwords()->item(1));
+    const auto id = passwords()->item(1)->data(Qt::UserRole).toLongLong();
+    auto* favorite = card->findChild<QToolButton*>("PasswordCardFavoriteButton");
+    ASSERT_NE(favorite, nullptr);
+    const auto favorite_icon = IconPixels(favorite->icon());
+    favorite->click();
+    EXPECT_NE(IconPixels(favorite->icon()), favorite_icon);
+    EXPECT_FALSE(password_dao_->FindById(id)->is_favorite);
+    favorite->click();
+    EXPECT_TRUE(password_dao_->FindById(id)->is_favorite);
+    EXPECT_EQ(detail()->entry_id(), selected_id);
+    card->findChild<QToolButton*>("PasswordCardEditButton")->click();
+    EXPECT_TRUE(editor()->IsOpen());
+    EXPECT_EQ(editor()->Result().entry.id, id);
+    editor()->Close();
+    QTest::qWait(250);
+    QTimer::singleShot(0, [this]() {
+        auto* menu = window_->findChild<QMenu*>("ChangeCategoryMenu");
+        ASSERT_NE(menu, nullptr);
+        for (auto* action : menu->actions()) {
+            if (action->data().toLongLong() == work_category_id_) {
+                action->trigger();
+                break;
+            }
+        }
+        menu->close();
+    });
+    card->findChild<QToolButton*>("PasswordCardCategoryButton")->click();
+    EXPECT_EQ(password_dao_->FindById(id)->category_id, work_category_id_);
+}
+
 TEST_F(MainWindowTest, CardActionsReachableAndTimeThreshold) {
     auto entry = password_dao_->ListActive().front();
     entry.title = QString(180, QChar('T'));
@@ -1790,28 +1999,38 @@ TEST_F(MainWindowTest, CardActionsReachableAndTimeThreshold) {
     QApplication::processEvents();
     auto* card = passwords()->itemWidget(passwords()->item(0));
     auto* time = card->findChild<QLabel*>("PasswordCardTime");
-    auto* star = card->findChild<QLabel*>("PasswordCardStar");
+    auto* first_action = card->findChild<QToolButton*>("PasswordCardEditButton");
     auto* remove = card->findChild<QToolButton*>("PasswordCardDeleteButton");
     ASSERT_NE(time, nullptr);
-    ASSERT_NE(star, nullptr);
-    EXPECT_EQ(remove, nullptr);
+    ASSERT_NE(first_action, nullptr);
+    ASSERT_NE(remove, nullptr);
     for (int width : {480, 360, 359, 300}) {
         card->resize(width, 64);
         QApplication::processEvents();
-        EXPECT_EQ(time->isHidden(), width < 360);
-        EXPECT_EQ(star->size(), QSize(20, 20));
-        EXPECT_LE(star->geometry().right(), card->width());
-        EXPECT_FALSE(time->toolTip().isEmpty());
-        EXPECT_EQ(time->toolTip(), time->accessibleName());
+        EXPECT_EQ(time->isHidden(), width < 480);
+        QToolButton* previous = nullptr;
+        for (const auto* name : {"PasswordCardEditButton", "PasswordCardCategoryButton",
+                                 "PasswordCardFavoriteButton", "PasswordCardDeleteButton"}) {
+            auto* button = card->findChild<QToolButton*>(name);
+            ASSERT_NE(button, nullptr);
+            EXPECT_TRUE(button->isVisible());
+            EXPECT_LE(button->geometry().right(), card->width());
+            if (previous) {
+                EXPECT_LT(previous->geometry().right(), button->geometry().left());
+            }
+            previous = button;
+        }
+        EXPECT_TRUE(time->toolTip().isEmpty());
+        EXPECT_FALSE(time->accessibleName().isEmpty());
         auto* title = card->findChild<QLabel*>("PasswordCardTitle");
         auto* username = card->findChild<QLabel*>("PasswordCardMeta");
         EXPECT_LE(title->geometry().right(),
-                  (width >= 360 ? time : star)->geometry().left());
+                  (width >= 480 ? static_cast<QWidget*>(time) : first_action)->geometry().left());
         EXPECT_LE(username->geometry().right(),
-                  (width >= 360 ? time : star)->geometry().left());
-        if (width >= 360) {
+                  (width >= 480 ? static_cast<QWidget*>(time) : first_action)->geometry().left());
+        if (width >= 480) {
             EXPECT_EQ(time->width(), 80);
-            EXPECT_LE(time->geometry().right(), star->geometry().left());
+            EXPECT_LE(time->geometry().right(), first_action->geometry().left());
         }
     }
 }
@@ -1874,7 +2093,11 @@ TEST_F(MainWindowTest, TrashDetailRestoreTargetsDisplayedEntryAndOtherRestoreKee
     const auto other = list->item(1)->data(Qt::UserRole).toLongLong();
     EXPECT_EQ(other_card->findChild<QLabel*>("PasswordCardStar"), nullptr);
     auto* restore = other_card->findChild<QToolButton*>("PasswordCardRestoreButton");
-    EXPECT_GE(restore->width(), 48);
+    auto* trash_time = other_card->findChild<QLabel*>("PasswordCardTime");
+    ASSERT_NE(trash_time, nullptr);
+    EXPECT_TRUE(trash_time->isHidden());
+    EXPECT_EQ(restore->width(), 32);
+    EXPECT_FALSE(restore->icon().isNull());
     EXPECT_GE(restore->height(), 32);
     restore->click();
     EXPECT_EQ(detail()->entry_id(), displayed);
@@ -2072,7 +2295,7 @@ TEST_F(MainWindowTest, FavoriteUpdatesInPlaceAndFailurePreservesListPosition) {
         ASSERT_TRUE(saved);
         EXPECT_EQ(saved->is_favorite, expected);
         EXPECT_EQ(favorite->isChecked(), expected);
-        EXPECT_EQ(card->findChild<QLabel*>("PasswordCardStar") != nullptr, expected);
+        EXPECT_EQ(card->findChild<QLabel*>("PasswordCardStar"), nullptr);
         EXPECT_EQ(sections()->item(1)->data(kSidebarCountRole).toInt(),
                   favorites + (expected ? 1 : 0));
     }
@@ -2090,21 +2313,13 @@ TEST_F(MainWindowTest, FavoriteUpdatesInPlaceAndFailurePreservesListPosition) {
     EXPECT_EQ(sections()->item(1)->data(kSidebarCountRole).toInt(), favorites);
 }
 
-TEST_F(MainWindowTest, UnfavoriteKeepsCurrentFavoriteRowUntilNavigation) {
+TEST_F(MainWindowTest, UnfavoriteImmediatelyRemovesRowFromFavorites) {
     sections()->setCurrentRow(1);
     ASSERT_EQ(passwords()->count(), 1);
-    passwords()->setCurrentRow(0);
-    auto* item = passwords()->item(0);
-    const auto id = item->data(Qt::UserRole).toLongLong();
-    QPointer<QWidget> card = passwords()->itemWidget(item);
-    detail()->findChild<QToolButton*>("DetailHeaderButton")->click();
+    const auto id = passwords()->item(0)->data(Qt::UserRole).toLongLong();
+    auto* card = passwords()->itemWidget(passwords()->item(0));
+    card->findChild<QToolButton*>("PasswordCardFavoriteButton")->click();
     EXPECT_FALSE(password_dao_->FindById(id)->is_favorite);
-    ASSERT_EQ(passwords()->count(), 1);
-    EXPECT_EQ(passwords()->item(0), item);
-    EXPECT_EQ(passwords()->itemWidget(item), card.data());
-    EXPECT_EQ(detail()->entry_id(), id);
-    EXPECT_EQ(sections()->item(1)->data(kSidebarCountRole).toInt(), 0);
-    sections()->setCurrentRow(0);
-    sections()->setCurrentRow(1);
     EXPECT_EQ(passwords()->count(), 0);
+    EXPECT_EQ(sections()->item(1)->data(kSidebarCountRole).toInt(), 0);
 }

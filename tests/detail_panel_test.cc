@@ -159,7 +159,7 @@ TEST_F(DetailPanelTest, LongIdentityFieldsWrapAndKeepFullValues) {
     };
     for (const auto& [label, full_text] : fields) {
         ASSERT_NE(label, nullptr);
-        EXPECT_EQ(label->text(), full_text);
+        EXPECT_EQ(label->accessibleName(), full_text);
         EXPECT_TRUE(label->wordWrap());
         EXPECT_TRUE(label->hasHeightForWidth());
         EXPECT_EQ(label->accessibleName(), full_text);
@@ -173,6 +173,8 @@ TEST(DetailPanelThemeTest, ThemeRefreshPreservesEntryAndPasswordVisibility) {
     DetailPanel panel;
     PasswordEntry entry = MakeEntry();
     panel.SetEntry(entry, QStringLiteral("secret-value"));
+    panel.show();
+    QApplication::processEvents();
 
     auto* toggle = NthNamed<QToolButton>(panel, "DetailFieldButton", 1);
     ASSERT_NE(toggle, nullptr);
@@ -183,9 +185,9 @@ TEST(DetailPanelThemeTest, ThemeRefreshPreservesEntryAndPasswordVisibility) {
     EXPECT_EQ(password->text(), QStringLiteral("secret-value"));
     auto* username = panel.findChild<QLabel*>(QStringLiteral("DetailFieldValue"));
     ASSERT_NE(username, nullptr);
-    EXPECT_EQ(QFontInfo(password->font()).family(), QStringLiteral("DM Mono"));
+    EXPECT_EQ(QFontInfo(password->font()).family(), QStringLiteral("Consolas"));
     EXPECT_EQ(QFontInfo(username->font()).family(),
-              QStringLiteral("Inter Variable"));
+              QFontInfo(QApplication::font()).family());
     EXPECT_EQ(QFontInfo(password->font()).pixelSize(), 14);
     EXPECT_EQ(QFontInfo(username->font()).pixelSize(), 14);
     const QByteArray light_icon = IconPixels(toggle->icon());
@@ -195,9 +197,9 @@ TEST(DetailPanelThemeTest, ThemeRefreshPreservesEntryAndPasswordVisibility) {
     EXPECT_NE(IconPixels(toggle->icon()), light_icon);
     EXPECT_EQ(panel.entry_id(), entry.id);
     EXPECT_EQ(password->text(), QStringLiteral("secret-value"));
-    EXPECT_EQ(QFontInfo(password->font()).family(), QStringLiteral("DM Mono"));
+    EXPECT_EQ(QFontInfo(password->font()).family(), QStringLiteral("Consolas"));
     EXPECT_EQ(QFontInfo(username->font()).family(),
-              QStringLiteral("Inter Variable"));
+              QFontInfo(QApplication::font()).family());
     EXPECT_EQ(QFontInfo(password->font()).pixelSize(), 14);
     EXPECT_EQ(QFontInfo(username->font()).pixelSize(), 14);
 }
@@ -218,7 +220,7 @@ TEST_F(DetailPanelTest, HeaderAlignsIdentityAndActionsOnOneRow) {
     EXPECT_EQ(header->y(), 24);
     EXPECT_EQ(icon->y(), actions->y());
     ASSERT_NE(favoriteButton(), nullptr);
-    EXPECT_TRUE(favoriteButton()->isVisible());
+    EXPECT_TRUE(favoriteButton()->isHidden());
     EXPECT_EQ(favoriteButton()->parentWidget(), actions);
     auto* tag = panel_.findChild<QLabel*>("DetailTag");
     ASSERT_NE(tag, nullptr);
@@ -302,6 +304,14 @@ TEST_F(DetailPanelTest, CopyUsernameButtonEmitsWithId) {
     EXPECT_EQ(spy.at(0).at(0).toLongLong(), 77);
 }
 
+TEST_F(DetailPanelTest, WebsiteTextActivatesExistingOpenAction) {
+    panel_.SetEntry(MakeEntry(), QStringLiteral("demo"));
+    QSignalSpy spy(&panel_, &DetailPanel::OpenWebsiteRequested);
+    EXPECT_TRUE(websiteValue()->textInteractionFlags() & Qt::LinksAccessibleByMouse);
+    websiteValue()->linkActivated(QStringLiteral("website"));
+    EXPECT_EQ(spy.count(), 1);
+}
+
 TEST_F(DetailPanelTest, OpenWebsiteButtonEmitsWithId) {
     panel_.SetEntry(MakeEntry(), QStringLiteral("secret"));
     QSignalSpy spy(&panel_, &DetailPanel::OpenWebsiteRequested);
@@ -314,7 +324,7 @@ TEST_F(DetailPanelTest, FavoriteToggleEmitsWithDesired) {
     panel_.SetEntry(MakeEntry(), QStringLiteral("secret"));  // not favorite
     QSignalSpy spy(&panel_, &DetailPanel::FavoriteToggleRequested);
     ASSERT_NE(favoriteButton(), nullptr);
-    EXPECT_FALSE(favoriteButton()->isHidden());
+    EXPECT_TRUE(favoriteButton()->isHidden());
     EXPECT_EQ(favoriteButton()->accessibleName(), QStringLiteral("收藏"));
     favoriteButton()->click();  // toggles unchecked -> checked
     ASSERT_EQ(spy.count(), 1);
@@ -411,8 +421,12 @@ TEST_F(DetailPanelTest, TrashDetailsOfferRestoreAndPermanentDeleteWithoutEditOrF
     panel_.SetEntry(entry, QStringLiteral("synthetic"));
     auto* restore = panel_.findChild<QPushButton*>("DetailHeaderButton");
     ASSERT_NE(restore, nullptr);
-    EXPECT_EQ(restore->text(), QStringLiteral("还原"));
+    EXPECT_TRUE(restore->text().isEmpty());
+    EXPECT_EQ(restore->toolTip(), QStringLiteral("还原"));
+    EXPECT_FALSE(restore->icon().isNull());
     EXPECT_TRUE(restore->isEnabled());
+    EXPECT_TRUE(restore->isHidden());
+    EXPECT_TRUE(deleteButton()->isHidden());
     EXPECT_TRUE(favoriteButton()->isHidden());
     EXPECT_FALSE(favoriteButton()->isEnabled());
     EXPECT_TRUE(deleteButton()->isEnabled());

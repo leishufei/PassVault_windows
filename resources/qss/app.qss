@@ -1402,6 +1402,17 @@ QTabWidget#ImportPreviewTabs QTabBar::tab:selected {
     border-bottom: 2px solid var(--text-primary);
     font-weight: 600;
 }
+
+QToolButton[passwordCardAction="true"] {
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 0;
+}
+QToolButton[passwordCardAction="true"]:hover {
+    background-color: var(--bg-hover);
+}
+
 #SidebarBrandName {
     color: var(--text-primary);
     font-size: 21px;

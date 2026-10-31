@@ -41,6 +41,7 @@
 #include <QWidget>
 
 #include <algorithm>
+#include <exception>
 #include <limits>
 
 #include "crypto/crypto_service.h"
@@ -86,25 +87,14 @@ constexpr int kSidebarSystemRole = Qt::UserRole + 2;
 constexpr int kSidebarIconRole = Qt::UserRole + 3;
 
 void SetCardFavorite(QWidget* card, bool favorite) {
-    auto* star = card->findChild<QLabel*>(QStringLiteral("PasswordCardStar"));
-    if (!favorite) {
-        delete star;
-        return;
+    if (auto* button = card->findChild<QToolButton*>(
+            QStringLiteral("PasswordCardFavoriteButton"))) {
+        button->setToolTip(favorite ? QStringLiteral("取消收藏") : QStringLiteral("收藏"));
+        button->setAccessibleName(button->toolTip());
+        button->setIcon(IconLoader::Load(
+            QStringLiteral("star"), ThemeManager::Instance()->Color(
+                favorite ? QStringLiteral("primary") : QStringLiteral("text-secondary")), 16));
     }
-    if (star) return;
-    auto* layout = card->findChild<QHBoxLayout*>(
-        QStringLiteral("PasswordCardMetaLayout"));
-    star = new QLabel(card);
-    star->setObjectName(QStringLiteral("PasswordCardStar"));
-    star->setPixmap(IconLoader::Load(
-        QStringLiteral("star"),
-        ThemeManager::Instance()->Color(QStringLiteral("warning")), 14)
-                        .pixmap(14, 14));
-    star->setFixedSize(20, 20);
-    star->setAlignment(Qt::AlignCenter);
-    star->setAttribute(Qt::WA_TransparentForMouseEvents);
-    layout->addWidget(star);
-    star->show();
 }
 
 class PasswordList final : public QListWidget {
@@ -133,7 +123,8 @@ class PasswordCard final : public QFrame {
     void resizeEvent(QResizeEvent* event) override {
         QFrame::resizeEvent(event);
         if (auto* time = findChild<QLabel*>(QStringLiteral("PasswordCardTime"))) {
-            time->setVisible(width() >= 360);
+            time->setVisible(!property("trash").toBool() && width() >= (findChild<QToolButton*>(
+                QStringLiteral("PasswordCardEditButton")) ? 480 : 360));
         }
     }
 };
@@ -451,6 +442,17 @@ QWidget* MainWindow::BuildSidebar() {
     categories_list_->setDefaultDropAction(Qt::MoveAction);
     categories_list_->setDragDropOverwriteMode(false);
     categories_list_->setContextMenuPolicy(Qt::CustomContextMenu);
+    categories_list_->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
+    connect(categories_list_, &QListWidget::itemChanged, this, [this](QListWidgetItem* item) {
+        if (suppress_selection_ || !item) return;
+        const auto id = item->data(Qt::UserRole).toLongLong();
+        const auto name = item->text();
+        if (name == CategoryName(id)) return;
+        QTimer::singleShot(0, this, [this, id, name]() {
+            UpdateCategoryName(id, name);
+            Reload();
+        });
+    });
     connect(categories_list_, &QListWidget::customContextMenuRequested, this,
             [this](const QPoint& position) {
                 auto* item = categories_list_->itemAt(position);
@@ -776,11 +778,36 @@ QWidget* MainWindow::BuildPasswordListColumn() {
                     connect(restore, &QAction::triggered, this,
                             &MainWindow::OnRestoreSelected);
                 }
+                if (selected_category_ != kSectionTrash) {
+                    const auto ids = SelectedPasswordIds();
+                    const auto id = item->data(Qt::UserRole).toLongLong();
+                    auto* edit = menu.addAction(QStringLiteral("编辑"));
+                    edit->setEnabled(ids.size() == 1);
+                    connect(edit, &QAction::triggered, this,
+                            [this, id]() { OnEditRequested(id); });
+                    PopulateCategoryMenu(menu.addMenu(QStringLiteral("分类")), ids);
+                    const auto entry = deps_.password_dao->FindById(id);
+                    if (entry && !entry->is_favorite) {
+                        auto* favorite = menu.addAction(QStringLiteral("收藏"));
+                        connect(favorite, &QAction::triggered, this, [this, ids]() {
+                            for (const auto selected_id : ids) {
+                                OnFavoriteToggleRequested(selected_id, true);
+                            }
+                        });
+                    }
+                }
                 auto* remove = menu.addAction(selected_category_ == kSectionTrash
                     ? QStringLiteral("永久删除") : QStringLiteral("移入回收站"));
                 connect(remove, &QAction::triggered, this,
                         &MainWindow::OnDeleteSelected);
                 menu.exec(password_list_->viewport()->mapToGlobal(pos));
+            });
+    connect(password_list_, &QListWidget::itemDoubleClicked, this,
+            [this](QListWidgetItem* item) {
+                if (selected_category_ != kSectionTrash && item &&
+                    (item->flags() & Qt::ItemIsSelectable)) {
+                    OnEditRequested(item->data(Qt::UserRole).toLongLong());
+                }
             });
     password_list_->installEventFilter(this);
     password_list_->setSpacing(6);
@@ -812,6 +839,8 @@ QWidget* MainWindow::BuildDetailColumn() {
     connect(close_detail, &QAction::triggered, this, &MainWindow::ShowListPane);
     connect(detail_panel_, &DetailPanel::EditRequested, this,
             &MainWindow::OnEditRequested);
+    connect(detail_panel_, &DetailPanel::CategoryChangeRequested, this,
+            &MainWindow::OnCategoryChangeRequested);
     connect(detail_panel_, &DetailPanel::RestoreRequested, this,
             [this](std::int64_t id) { RestoreEntries({id}); });
     connect(detail_panel_, &DetailPanel::DeleteRequested, this,
@@ -899,18 +928,23 @@ void MainWindow::RefreshThemeAssets() {
         for (int i = 0; i < password_list_->count(); ++i) {
             auto* item = password_list_->item(i);
             auto* card = password_list_->itemWidget(item);
-            auto* star = card ? card->findChild<QLabel*>(
-                                    QStringLiteral("PasswordCardStar"))
-                              : nullptr;
             const auto entry = FindEntry(
                 item->data(Qt::UserRole).toLongLong());
-            if (!star || !entry.has_value()) continue;
-            const QColor star_color = entry->is_favorite
-                ? theme->Color(QStringLiteral("warning"))
-                : theme->Color(QStringLiteral("text-quaternary"));
-            star->setPixmap(
-                IconLoader::Load(QStringLiteral("star"), star_color, 14)
-                    .pixmap(14, 14));
+            if (card && entry && !entry->is_deleted) {
+                for (const auto& action : {
+                         qMakePair("PasswordCardEditButton", "pencil"),
+                         qMakePair("PasswordCardCategoryButton", "folder"),
+                         qMakePair("PasswordCardDeleteButton", "trash-2")}) {
+                    if (auto* button = card->findChild<QToolButton*>(
+                            QString::fromLatin1(action.first))) {
+                        button->setIcon(icon(QString::fromLatin1(action.second),
+                            QString::fromLatin1(action.second) == QStringLiteral("trash-2")
+                                ? QStringLiteral("danger") : QStringLiteral("text-secondary"), 16));
+                    }
+                }
+                SetCardFavorite(card, entry->is_favorite);
+            }
+
         }
     }
 }
@@ -999,6 +1033,7 @@ void MainWindow::RefreshCategoryList() {
     for (const auto& c : categories_) {
         if (c.is_deleted) continue;
         auto* item = new QListWidgetItem(categories_list_);
+        item->setFlags(item->flags() | Qt::ItemIsEditable);
         item->setText(c.name);
         item->setFlags(item->flags() & ~Qt::ItemIsDropEnabled);
         item->setData(Qt::UserRole, QVariant::fromValue<qint64>(c.id));
@@ -1053,6 +1088,77 @@ void MainWindow::OnCategorySelectionChanged() {
     UpdateResponsiveLayout();
 }
 
+QString MainWindow::CategoryName(std::int64_t category_id) const {
+    for (const auto& category : categories_) {
+        if (category.id == category_id) return category.name;
+    }
+    return QStringLiteral("未分类");
+}
+
+void MainWindow::PopulateCategoryMenu(
+    QMenu* menu, const std::vector<std::int64_t>& ids) {
+    menu->setObjectName(QStringLiteral("ChangeCategoryMenu"));
+    const auto add = [this, menu, &ids](std::int64_t id, const QString& name) {
+        auto* action = menu->addAction(name);
+        action->setData(QVariant::fromValue<qint64>(id));
+        action->setEnabled(!migration_active_ && !reset_confirmation_active_);
+        connect(action, &QAction::triggered, this,
+                [this, ids, id]() { ChangeCategories(ids, id); });
+    };
+    add(0, QStringLiteral("未分类"));
+    for (const auto& category : categories_) {
+        if (!category.is_deleted) add(category.id, category.name);
+    }
+}
+
+void MainWindow::OnCategoryChangeRequested(std::int64_t entry_id) {
+    if (migration_active_ || reset_confirmation_active_) return;
+    QMenu menu(this);
+    PopulateCategoryMenu(&menu, {entry_id});
+    auto* button = detail_panel_->findChild<QToolButton*>(
+        QStringLiteral("DetailCategoryButton"));
+    menu.exec(button->mapToGlobal(QPoint(0, button->height())));
+}
+
+void MainWindow::ChangeCategories(const std::vector<std::int64_t>& ids,
+                                  std::int64_t category_id) {
+    if (migration_active_ || reset_confirmation_active_ || !deps_.session_key ||
+        !deps_.password_dao || !deps_.category_dao) return;
+    if (category_id != 0) {
+        const auto target = deps_.category_dao->FindById(category_id);
+        if (!target || target->is_deleted) return;
+    }
+    bool changed = false;
+    try {
+        storage::Transaction transaction(deps_.password_dao->database());
+        for (const auto id : ids) {
+            const auto entry = deps_.password_dao->FindById(id);
+            if (!entry || entry->is_deleted) return;
+            if (entry->category_id == category_id) continue;
+            if (entry->updated_at == std::numeric_limits<std::int64_t>::max()) return;
+            const auto timestamp = std::max(entry->updated_at + 1,
+                                            QDateTime::currentMSecsSinceEpoch());
+            if (!deps_.password_dao->UpdateCategoryOf(id, category_id, timestamp)) {
+                Toast::Show(this, QStringLiteral("更改分类失败"), Toast::Level::kError);
+                return;
+            }
+            changed = true;
+        }
+        if (!transaction.Commit()) return;
+    } catch (const std::exception&) {
+        Toast::Show(this, QStringLiteral("更改分类失败"), Toast::Level::kError);
+        return;
+    }
+    if (!changed) return;
+    if (deps_.sync_scheduler) deps_.sync_scheduler->MarkDirty();
+    Reload();
+    if (detail_panel_->HasEntry() && !FindEntry(detail_panel_->entry_id())) {
+        detail_panel_->ClearEntry();
+        showing_detail_ = false;
+        UpdateResponsiveLayout();
+    }
+}
+
 void MainWindow::OnSearchChanged(const QString& text) {
     search_text_ = text.trimmed();
     RefreshPasswordList();
@@ -1064,6 +1170,7 @@ QWidget* MainWindow::CreatePasswordCard(const model::PasswordEntry& entry) {
     auto* card = new PasswordCard();
     card->setObjectName(QStringLiteral("PasswordCard"));
     card->setFrameShape(QFrame::NoFrame);
+    card->setProperty("trash", entry.is_deleted);
     auto* row = new QHBoxLayout(card);
     row->setContentsMargins(16, 10, 16, 10);
     row->setSpacing(12);
@@ -1093,28 +1200,71 @@ QWidget* MainWindow::CreatePasswordCard(const model::PasswordEntry& entry) {
     auto* right_col = new QHBoxLayout();
     right_col->setObjectName(QStringLiteral("PasswordCardMetaLayout"));
     right_col->setContentsMargins(0, 0, 0, 0);
-    right_col->setSpacing(8);
+    right_col->setSpacing(4);
     right_col->setAlignment(Qt::AlignVCenter);
     auto* time = new QLabel(RelativeTimeShort(entry.ContentUpdatedAt()), card);
     time->setObjectName(QStringLiteral("PasswordCardTime"));
     time->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     time->setFixedWidth(80);
+    time->setVisible(!entry.is_deleted);
     const QString full_time =
         QDateTime::fromMSecsSinceEpoch(entry.ContentUpdatedAt())
         .toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
-    time->setToolTip(full_time);
     time->setAccessibleName(full_time);
-    card->setToolTip(full_time);
     card->setAccessibleDescription(full_time);
     right_col->addWidget(time);
 
+    if (!entry.is_deleted) {
+        const auto add_action = [this, card, right_col](const QString& name,
+                                                       const QString& tooltip,
+                                                       const QString& icon) {
+            auto* button = new QToolButton(card);
+            button->setObjectName(name);
+            button->setProperty("passwordCardAction", true);
+            button->setToolTip(tooltip);
+            button->setAccessibleName(tooltip);
+            button->setFixedSize(28, 28);
+            button->setCursor(Qt::PointingHandCursor);
+            button->setIcon(IconLoader::Load(icon, ThemeManager::Instance()->Color(
+                icon == QStringLiteral("trash-2") ? QStringLiteral("danger")
+                                                 : QStringLiteral("text-secondary")), 16));
+            button->setIconSize(QSize(16, 16));
+            right_col->addWidget(button);
+            return button;
+        };
+        auto* edit = add_action(QStringLiteral("PasswordCardEditButton"),
+                                QStringLiteral("编辑"), QStringLiteral("pencil"));
+        connect(edit, &QToolButton::clicked, this,
+                [this, id = entry.id]() { OnEditRequested(id); });
+        auto* category = add_action(QStringLiteral("PasswordCardCategoryButton"),
+                                    QStringLiteral("分类"), QStringLiteral("folder"));
+        connect(category, &QToolButton::clicked, this, [this, category, id = entry.id]() {
+            QMenu menu(this);
+            PopulateCategoryMenu(&menu, {id});
+            menu.exec(category->mapToGlobal(QPoint(0, category->height())));
+        });
+        auto* favorite = add_action(QStringLiteral("PasswordCardFavoriteButton"),
+                                    QStringLiteral("收藏"), QStringLiteral("star"));
+        connect(favorite, &QToolButton::clicked, this, [this, id = entry.id]() {
+            const auto current = deps_.password_dao->FindById(id);
+            if (current) OnFavoriteToggleRequested(id, !current->is_favorite);
+        });
+        auto* remove = add_action(QStringLiteral("PasswordCardDeleteButton"),
+                                  QStringLiteral("删除"), QStringLiteral("trash-2"));
+        connect(remove, &QToolButton::clicked, this,
+                [this, id = entry.id]() { OnDeleteRequested(id); });
+    }
     if (entry.is_deleted) {
         auto* restore = new QToolButton(card);
-        restore->setText(QStringLiteral("还原"));
+        restore->setToolTip(QStringLiteral("还原"));
+        restore->setIcon(IconLoader::Load(
+            QStringLiteral("rotate-ccw"),
+            ThemeManager::Instance()->Color(QStringLiteral("text-secondary")), 16));
+        restore->setIconSize(QSize(16, 16));
         restore->setObjectName(QStringLiteral("PasswordCardRestoreButton"));
         restore->setAccessibleName(QStringLiteral("还原"));
         restore->setCursor(Qt::PointingHandCursor);
-        restore->setFixedSize(52, 32);
+        restore->setFixedSize(32, 32);
         connect(restore, &QToolButton::clicked, this,
                 [this, id = entry.id]() { RestoreEntries({id}); });
         right_col->addWidget(restore);
@@ -1378,6 +1528,7 @@ void MainWindow::ShowPasswordCreate() {
     for (const auto& c : categories_) cats.append(c);
     editor_panel_->SetCategories(std::move(cats));
     editor_entry_id_ = -1;
+    editor_panel_->SetPanelWidth(detail_panel_->width());
     editor_panel_->OpenForCreate();
 }
 
@@ -1390,28 +1541,37 @@ void MainWindow::OnRenameCategory(std::int64_t category_id) {
     const QString name = QInputDialog::getText(
         this, QStringLiteral("重命名分类"), QStringLiteral("分类名称"),
         QLineEdit::Normal, category->name, &accepted).trimmed();
-    if (!accepted || reset_confirmation_active_ || migration_active_ || !deps_.session_key || name == category->name) return;
+    if (accepted && UpdateCategoryName(category_id, name)) Reload();
+}
+
+bool MainWindow::UpdateCategoryName(std::int64_t category_id, const QString& value) {
+    if (reset_confirmation_active_ || migration_active_ ||
+        !deps_.session_key || !deps_.category_dao) return false;
+    auto category = deps_.category_dao->FindById(category_id);
+    if (!category || category->is_deleted) return false;
+    const auto name = value.trimmed();
+    if (name == category->name) return false;
     if (name.isEmpty()) {
         Toast::Show(this, QStringLiteral("分类名称不能为空"),
                     Toast::Level::kWarning);
-        return;
+        return false;
     }
     for (const auto& existing : categories_) {
         if (existing.id != category_id &&
             existing.name.compare(name, Qt::CaseInsensitive) == 0) {
             Toast::Show(this, QStringLiteral("分类已存在"),
                         Toast::Level::kWarning);
-            return;
+            return false;
         }
     }
     category->name = name;
     category->updated_at = QDateTime::currentMSecsSinceEpoch();
     if (!deps_.category_dao->Update(*category)) {
         Toast::Show(this, QStringLiteral("分类更新失败"), Toast::Level::kError);
-        return;
+        return false;
     }
     if (deps_.sync_scheduler) deps_.sync_scheduler->MarkDirty();
-    Reload();
+    return true;
 }
 
 void MainWindow::OnDeleteCategory(std::int64_t category_id) {
@@ -1494,6 +1654,7 @@ void MainWindow::OpenEditDialog(std::int64_t entry_id) {
     }
     EditorPanel::DecryptedEntry decrypted{*found, *password};
     editor_entry_id_ = entry_id;
+    editor_panel_->SetPanelWidth(detail_panel_->width());
     editor_panel_->OpenForEdit(decrypted);
 }
 
@@ -1755,6 +1916,7 @@ void MainWindow::OnFavoriteToggleRequested(std::int64_t entry_id, bool desired) 
         break;
     }
     if (deps_.sync_scheduler) deps_.sync_scheduler->MarkDirty();
+    if (selected_category_ == kSectionFavorites) Reload();
 }
 
 void MainWindow::OnSyncClicked() {
@@ -1921,6 +2083,7 @@ void MainWindow::UpdateResponsiveLayout() {
         search_container_->setMinimumWidth(140);
         search_container_->setMaximumWidth(kSearchMaxWidth);
     }
+    if (editor_panel_) editor_panel_->SetPanelWidth(detail_panel_->width());
 }
 
 void MainWindow::ShowListPane() {

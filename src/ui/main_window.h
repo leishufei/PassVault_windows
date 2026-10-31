@@ -18,6 +18,7 @@ class QLabel;
 class QLineEdit;
 class QListWidget;
 class QListWidgetItem;
+class QMenu;
 class QPushButton;
 class QResizeEvent;
 class QStackedWidget;
@@ -102,17 +103,24 @@ class MainWindow : public QMainWindow {
     void OnFavoriteToggleRequested(std::int64_t entry_id, bool desired);
     void OnEditorSaveRequested();
     void OnEditorCancelRequested();
+    void OnCategoryChangeRequested(std::int64_t entry_id);
 
  private:
     QWidget* BuildSidebar();
     QWidget* BuildWorkspaceHeader();
     QWidget* BuildPasswordListColumn();
     QWidget* BuildDetailColumn();
+    bool UpdateCategoryName(std::int64_t category_id, const QString& value);
     void RefreshSectionList();
     void RefreshCategoryList();
     void RefreshPasswordList();
     void RefreshThemeAssets();
     void RefreshSyncButton();
+    QString CategoryName(std::int64_t category_id) const;
+    void PopulateCategoryMenu(QMenu* menu,
+                              const std::vector<std::int64_t>& ids);
+    void ChangeCategories(const std::vector<std::int64_t>& ids,
+                           std::int64_t category_id);
     void UpdateResponsiveLayout();
     void ShowListPane();
     void DeleteEntries(const std::vector<std::int64_t>& ids);
