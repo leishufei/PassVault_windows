@@ -725,6 +725,7 @@ void PreferencesPage::ApplySyncState(SyncUiState state,
     const bool retry = state == SyncUiState::kConnectionError ||
                        state == SyncUiState::kMissingEmail;
     if (account_retry_button_) account_retry_button_->setVisible(retry);
+    if (drive_disconnect_button_) drive_disconnect_button_->setVisible(!retry);
     if (auto* title = findChild<QLabel*>(QStringLiteral("SyncAccountTitle"))) {
         QString text = QStringLiteral("已连接");
         if (state == SyncUiState::kConnecting) text = QStringLiteral("正在连接");

@@ -865,6 +865,7 @@ TEST_F(PreferencesPageTest, AccountConnectionStatesClearOldEmailAndOfferRetry) {
     EXPECT_TRUE(retry->isHidden());
     page_.SetSyncState(PreferencesPage::SyncUiState::kConnectionError, QString());
     EXPECT_FALSE(retry->isHidden());
+    EXPECT_TRUE(driveDisconnect()->isHidden());
     EXPECT_FALSE(syncNow()->isEnabled());
     QSignalSpy requested(&page_, &PreferencesPage::RetryAccountRequested);
     retry->click();
