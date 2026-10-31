@@ -219,7 +219,8 @@ void MasterPasswordDialog::BuildUi() {
                               : QStringLiteral("主密码"),
         mode_ == Mode::kUnlock
             ? QStringLiteral("输入主密码")
-            : QStringLiteral("至少 %1 个字符").arg(kMinPasswordLength));
+            : mode_ == Mode::kChange ? QStringLiteral("输入新主密码")
+                                    : QStringLiteral("至少 %1 个字符").arg(kMinPasswordLength));
     if (needs_confirm) {
         confirm_edit_ = add_field(
             QStringLiteral("ConfirmPasswordEdit"),
@@ -323,7 +324,7 @@ void MasterPasswordDialog::OnAccept() {
         new_edit_->setFocus();
         return;
     }
-    if (mode_ != Mode::kUnlock && new_pwd.size() < kMinPasswordLength) {
+    if (mode_ == Mode::kSetup && new_pwd.size() < kMinPasswordLength) {
         SetErrorText(QStringLiteral("主密码至少 %1 位。").arg(kMinPasswordLength));
         new_edit_->setFocus();
         return;

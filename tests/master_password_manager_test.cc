@@ -104,15 +104,24 @@ TEST_F(MasterPasswordManagerTest, HashMatchesAndroidFormat) {
     EXPECT_EQ(record->password_hash, expected);
 }
 
-TEST_F(MasterPasswordManagerTest, ChangeRejectsBelowMinimum) {
+TEST_F(MasterPasswordManagerTest, ChangeRejectsEmptyPassword) {
     ASSERT_TRUE(manager_->SetInitial(initial_).has_value());
-    const std::string input(
-        passvault::master_password::kMinNewPasswordLength - 1, 'r');
+    const std::string input;
     QByteArray candidate;
     const auto result = manager_->BuildChange(
         QString::fromStdString(initial_), QString::fromStdString(input), &candidate);
     EXPECT_FALSE(result.success);
     EXPECT_EQ(result.error, ChangeError::kPasswordTooShort);
+    EXPECT_TRUE(manager_->VerifyLocal(initial_).has_value());
+}
+
+TEST_F(MasterPasswordManagerTest, ChangeAcceptsShortPasswordWithoutReplacingOldRecord) {
+    ASSERT_TRUE(manager_->SetInitial(initial_).has_value());
+    QByteArray candidate;
+    const auto result = manager_->BuildChange(
+        QString::fromStdString(initial_), QStringLiteral("x"), &candidate);
+    EXPECT_TRUE(result.success);
+    EXPECT_FALSE(candidate.isEmpty());
     EXPECT_TRUE(manager_->VerifyLocal(initial_).has_value());
 }
 

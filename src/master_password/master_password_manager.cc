@@ -143,10 +143,10 @@ ChangeResult MasterPasswordManager::BuildChange(
                 QStringLiteral("新主密码不能与当前主密码相同。"), std::nullopt};
     }
     auto bytes = new_password.toUtf8();
-    if (!MeetsNewPasswordPolicy(ViewOf(bytes))) {
+    if (bytes.isEmpty()) {
         bytes.fill('\0');
         return {false, ChangeError::kPasswordTooShort,
-                QStringLiteral("主密码至少 %1 位。").arg(kMinNewPasswordLength),
+                QStringLiteral("请输入新主密码。"),
                 std::nullopt};
     }
     MasterRecord record{HashHex(ViewOf(bytes)), MakeSalt()};

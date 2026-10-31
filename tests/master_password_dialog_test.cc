@@ -208,13 +208,19 @@ TEST(MasterPasswordDialogTest, ChangeRejectsMismatchedConfirm) {
     EXPECT_FALSE(ErrorLabel(d)->isHidden());
 }
 
-TEST(MasterPasswordDialogTest, ChangeRejectsNewPasswordBelowMinimum) {
+TEST(MasterPasswordDialogTest, ChangeAcceptsShortNewPassword) {
     MasterPasswordDialog d(Mode::kChange);
-    const QString input(MasterPasswordDialog::kMinPasswordLength - 1,
-                        QLatin1Char('n'));
     Edit(d, "OldPasswordEdit")->setText(QStringLiteral("existing"));
-    Edit(d, "NewPasswordEdit")->setText(input);
-    Edit(d, "ConfirmPasswordEdit")->setText(input);
+    Edit(d, "NewPasswordEdit")->setText(QStringLiteral("x"));
+    Edit(d, "ConfirmPasswordEdit")->setText(QStringLiteral("x"));
+    QSignalSpy accepted(&d, &QDialog::accepted);
+    Button(d, "PrimaryButton")->click();
+    EXPECT_EQ(accepted.count(), 1);
+}
+
+TEST(MasterPasswordDialogTest, ChangeRejectsEmptyNewPassword) {
+    MasterPasswordDialog d(Mode::kChange);
+    Edit(d, "OldPasswordEdit")->setText(QStringLiteral("existing"));
     QSignalSpy accepted(&d, &QDialog::accepted);
     Button(d, "PrimaryButton")->click();
     EXPECT_EQ(accepted.count(), 0);
