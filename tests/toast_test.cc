@@ -27,6 +27,12 @@ TEST(ToastTest, ShowDisplaysTextForInfoLevel) {
     auto* label = toast->findChild<QLabel*>(QStringLiteral("ToastText"));
     ASSERT_NE(label, nullptr);
     EXPECT_EQ(label->text(), QStringLiteral("hello"));
+    const auto capture = qEnvironmentVariable("PASSVAULT_UI_CAPTURE_DIR");
+    if (!capture.isEmpty()) {
+        parent.show();
+        QTest::qWait(200);
+        parent.grab().save(capture + "/toast.png");
+    }
 }
 
 TEST(ToastTest, LevelSelectsObjectName) {

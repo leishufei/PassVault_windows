@@ -437,14 +437,6 @@ QWidget* EditorPanel::BuildGeneratorPage() {
     body_layout->setContentsMargins(0, 0, 0, 0);
     body_layout->setSpacing(0);
 
-    auto* body_title = new QLabel(QStringLiteral("创建高强度密码"), body);
-    body_title->setObjectName(QStringLiteral("EditorGeneratorTitle"));
-    body_layout->addWidget(body_title);
-    auto* description = new QLabel(
-        QStringLiteral("为每个账号使用唯一密码，降低泄露风险。"), body);
-    description->setObjectName(QStringLiteral("EditorGeneratorDescription"));
-    body_layout->addWidget(description);
-
     auto* preview_card = new QFrame(body);
     preview_card->setObjectName(QStringLiteral("EditorGeneratorPreviewCard"));
     auto* preview_layout = new QHBoxLayout(preview_card);

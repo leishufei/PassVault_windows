@@ -7,15 +7,17 @@ QWidget {
 }
 
 QToolTip {
-    background-color: var(--bg-elevated);
     color: var(--text-primary);
-    border: 1px solid var(--border);
+    background-color: var(--bg-canvas);
+    border: 1px solid var(--border-panel);
+    border-radius: 6px;
     padding: 6px 10px;
-    border-radius: 8px;
+    font-size: 12px;
 }
 
 /* Utility & dialog buttons - neutral button: card surface, 1px border, 6px radius. */
 QPushButton {
+    outline: none;
     background-color: var(--card);
     color: var(--text-primary);
     border: 1px solid var(--border-strong);
@@ -90,6 +92,7 @@ QPushButton[flat="true"]:pressed {
 
 /* Icon-only tool buttons - square 32px, rounded 6px, ghost background. */
 QToolButton {
+    outline: none;
     background: transparent;
     color: var(--text-secondary);
     border: 1px solid transparent;
@@ -161,6 +164,7 @@ QLineEdit[error="true"] {
 
 /* Combo box - 6px input radius, 8px popup menu */
 QComboBox {
+    outline: none;
     background-color: var(--input-bg);
     color: var(--text-primary);
     border: 1px solid var(--border-input);
@@ -170,7 +174,7 @@ QComboBox {
     font-size: 13px;
 }
 QComboBox:hover { border-color: var(--border-strong); }
-QComboBox:focus { border-color: var(--focus-ring); }
+QComboBox[keyboardFocus="true"]:focus { border-color: var(--focus-ring); }
 QComboBox::drop-down { width: 26px; border: none; }
 QComboBox::down-arrow { image: url(:/icons/chevron-down.svg); width: 14px; height: 14px; }
 QComboBox QAbstractItemView {
@@ -599,4 +603,24 @@ QLabel[avatar="true"][brand="notion"] {
     background-color: var(--brand-notion-bg);
     color: var(--brand-notion-fg);
     border: 1px solid var(--border-section);
+}
+
+QPushButton[keyboardFocus="true"]:focus, QToolButton[keyboardFocus="true"]:focus {
+    border-color: var(--focus-ring);
+}
+
+QMessageBox {
+    background-color: var(--bg-canvas);
+    border: 1px solid var(--border-panel);
+    border-radius: 14px;
+}
+QMessageBox QLabel {
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 13px;
+    padding: 12px;
+}
+QMessageBox QPushButton {
+    min-width: 64px;
+    margin: 8px 4px;
 }

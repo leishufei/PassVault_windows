@@ -4,12 +4,17 @@
 #include <QCheckBox>
 #include <QImage>
 #include <QLabel>
+#include <QMessageBox>
+#include <QInputDialog>
+#include <QFrame>
+#include <QDir>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QSettings>
 #include <QTest>
 #include <QToolButton>
+#include <QToolTip>
 
 #include "ui/master_password_dialog.h"
 #include "ui/theme_manager.h"
@@ -37,6 +42,75 @@ void ExpectPasswordInputsEmpty(Mode mode) {
         EXPECT_TRUE(edit->text().isEmpty());
         EXPECT_EQ(edit->echoMode(), QLineEdit::Password);
     }
+}
+
+TEST(MasterPasswordDialogTest, CompactFormAndMousePreviewKeepInputFocus) {
+    MasterPasswordDialog d(Mode::kUnlock);
+    d.show();
+    QApplication::processEvents();
+    auto* input = Edit(d, "NewPasswordEdit");
+    EXPECT_LE(input->width(), 330);
+    auto* preview = d.findChild<QCheckBox*>("PreviewCheckbox");
+    ASSERT_NE(preview, nullptr);
+    input->setFocus();
+    QTest::mouseClick(preview, Qt::LeftButton, Qt::NoModifier,
+                      QPoint(8, preview->height() / 2));
+    EXPECT_EQ(input->echoMode(), QLineEdit::Normal);
+    EXPECT_FALSE(preview->hasFocus());
+    const auto capture = qEnvironmentVariable("PASSVAULT_UI_CAPTURE_DIR");
+    if (!capture.isEmpty()) d.grab().save(capture + "/unlock.png");
+}
+
+TEST(MasterPasswordDialogTest, ConfirmationUsesRoundedThemeAndLocalizedButtons) {
+    QMessageBox box(QMessageBox::Question, QStringLiteral("删除确认"),
+                    QStringLiteral("确定将该密码移至回收站吗？"),
+                    QMessageBox::Yes | QMessageBox::No);
+    box.setDefaultButton(QMessageBox::No);
+    box.show();
+    QApplication::processEvents();
+    EXPECT_TRUE(box.windowFlags() & Qt::FramelessWindowHint);
+    EXPECT_FALSE(box.mask().contains(QPoint(0, 0)));
+    EXPECT_EQ(box.button(QMessageBox::Yes)->text(), QStringLiteral("确认"));
+    EXPECT_EQ(box.button(QMessageBox::No)->text(), QStringLiteral("取消"));
+    EXPECT_EQ(box.defaultButton(), box.button(QMessageBox::No));
+    EXPECT_EQ(box.grab().toImage().pixelColor(10, 10).alpha(), 255);
+    const auto capture = qEnvironmentVariable("PASSVAULT_UI_CAPTURE_DIR");
+    if (!capture.isEmpty()) box.grab().save(capture + "/confirmation.png");
+    box.close();
+}
+
+TEST(MasterPasswordDialogTest, CategoryPromptUsesSameRoundedDialogSurface) {
+    QInputDialog dialog;
+    dialog.setWindowTitle(QStringLiteral("新增分类"));
+    dialog.setLabelText(QStringLiteral("分类名称"));
+    dialog.show();
+    QApplication::processEvents();
+    EXPECT_TRUE(dialog.windowFlags() & Qt::FramelessWindowHint);
+    EXPECT_FALSE(dialog.mask().contains(QPoint(0, 0)));
+    auto* surface = dialog.findChild<QFrame*>("ConfirmationSurface");
+    ASSERT_NE(surface, nullptr);
+    const auto capture = qEnvironmentVariable("PASSVAULT_UI_CAPTURE_DIR");
+    if (!capture.isEmpty()) dialog.grab().save(capture + "/category-prompt.png");
+}
+
+TEST(MasterPasswordDialogTest, TooltipUsesThemeSurface) {
+    QWidget owner;
+    owner.resize(300, 150);
+    owner.show();
+    QApplication::processEvents();
+    QToolTip::showText(owner.mapToGlobal(QPoint(30, 30)), QStringLiteral("编辑密码"), &owner);
+    QApplication::processEvents();
+    bool found = false;
+    for (auto* widget : QApplication::topLevelWidgets()) {
+        if (widget->inherits("QTipLabel") && widget->isVisible()) {
+            found = true;
+            EXPECT_FALSE(widget->mask().contains(QPoint(0, 0)));
+            const auto capture = qEnvironmentVariable("PASSVAULT_UI_CAPTURE_DIR");
+            if (!capture.isEmpty()) widget->grab().save(capture + "/tooltip.png");
+        }
+    }
+    QToolTip::hideText();
+    if (!found) GTEST_SKIP() << "No visible native tooltip in this test environment";
 }
 
 TEST(MasterPasswordDialogTest, PasswordInputsStartEmptyForEveryMode) {

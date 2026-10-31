@@ -171,7 +171,7 @@ void MasterPasswordDialog::BuildUi() {
     auto* body = new QWidget(card);
     body->setObjectName(QStringLiteral("MasterPasswordBody"));
     auto* body_layout = new QVBoxLayout(body);
-    body_layout->setContentsMargins(24, 20, 24, 20);
+    body_layout->setContentsMargins(56, 20, 56, 20);
     body_layout->setSpacing(16);
 
     subtitle_ = new QLabel(SubtitleFor(mode_), body);
@@ -231,6 +231,7 @@ void MasterPasswordDialog::BuildUi() {
 
     preview_ = new QCheckBox(QStringLiteral("显示密码"), body);
     preview_->setObjectName(QStringLiteral("PreviewCheckbox"));
+    preview_->setFocusPolicy(Qt::TabFocus);
     connect(preview_, &QCheckBox::toggled, this,
             &MasterPasswordDialog::OnTogglePreview);
     body_layout->addWidget(preview_);

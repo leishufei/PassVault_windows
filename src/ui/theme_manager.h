@@ -31,6 +31,9 @@ class ThemeManager : public QObject {
  signals:
     void ThemeChanged(Theme effective_theme);
 
+ protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
  private:
     ThemeManager();
     ~ThemeManager() override;

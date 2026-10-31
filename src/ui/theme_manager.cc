@@ -1,12 +1,27 @@
 #include "ui/theme_manager.h"
 
 #include <QApplication>
+#include <QAbstractButton>
+#include <QComboBox>
+#include <QEvent>
 #include <QFile>
+#include <QFrame>
+#include <QFocusEvent>
 #include <QGuiApplication>
 #include <QHash>
+#include <QMenu>
+#include <QMessageBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFileDialog>
+#include <QCheckBox>
+#include <QPainterPath>
+#include <QRegion>
+#include <QPushButton>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QStyleHints>
+#include <QStyle>
 #include <QTextStream>
 
 #include "ui/icon_loader.h"
@@ -87,6 +102,7 @@ ThemeManager* ThemeManager::Instance() {
 }
 
 ThemeManager::ThemeManager() {
+    if (qApp) qApp->installEventFilter(this);
     QSettings settings;
     theme_ = ThemeFromString(
         settings.value(kSettingsKey, QStringLiteral("system")).toString());
@@ -101,6 +117,93 @@ ThemeManager::ThemeManager() {
 }
 
 ThemeManager::~ThemeManager() = default;
+
+bool ThemeManager::eventFilter(QObject* watched, QEvent* event) {
+    auto* widget = qobject_cast<QWidget*>(watched);
+    if (!widget) return QObject::eventFilter(watched, event);
+    const bool dialog = qobject_cast<QDialog*>(widget) &&
+        !qobject_cast<QFileDialog*>(widget) &&
+        widget->objectName() != QStringLiteral("MasterPasswordDialog");
+    const bool popup = qobject_cast<QMenu*>(widget) || widget->windowType() == Qt::ToolTip;
+    if (event->type() == QEvent::Polish) {
+        if (qobject_cast<QCheckBox*>(widget)) widget->setFocusPolicy(Qt::TabFocus);
+        if (dialog || popup) {
+            widget->setWindowFlag(Qt::FramelessWindowHint);
+            widget->setWindowFlag(Qt::NoDropShadowWindowHint);
+            widget->setAttribute(Qt::WA_TranslucentBackground);
+        }
+        if (dialog) {
+            widget->setContentsMargins(16, 12, 16, 12);
+            if (!widget->findChild<QFrame*>(QStringLiteral("ConfirmationSurface"))) {
+                auto* surface = new QFrame(widget);
+                surface->setObjectName(QStringLiteral("ConfirmationSurface"));
+                surface->setAttribute(Qt::WA_TransparentForMouseEvents);
+                surface->show();
+                surface->lower();
+            }
+            if (auto* message = qobject_cast<QMessageBox*>(widget)) {
+                message->setOption(QMessageBox::Option::DontUseNativeDialog);
+                message->setIcon(QMessageBox::NoIcon);
+                message->setMinimumWidth(360);
+                message->setMinimumHeight(150);
+                if (auto* button = message->button(QMessageBox::Yes)) {
+                    button->setText(QStringLiteral("确认"));
+                    button->setProperty("accent", true);
+                }
+                if (auto* button = message->button(QMessageBox::No)) {
+                    button->setText(QStringLiteral("取消"));
+                }
+            }
+            for (auto* buttons : widget->findChildren<QDialogButtonBox*>()) {
+                if (auto* button = buttons->button(QDialogButtonBox::Ok)) {
+                    button->setText(QStringLiteral("确认"));
+                    button->setProperty("accent", true);
+                }
+                if (auto* button = buttons->button(QDialogButtonBox::Cancel)) {
+                    button->setText(QStringLiteral("取消"));
+                }
+            }
+        }
+    }
+    if ((dialog || popup) && (event->type() == QEvent::Show ||
+                              event->type() == QEvent::Resize)) {
+        const int radius = dialog ? 14 : 6;
+        QPainterPath outline;
+        outline.addRoundedRect(QRectF(widget->rect()), radius, radius);
+        widget->setMask(QRegion(outline.toFillPolygon().toPolygon()));
+        if (dialog) {
+            if (auto* surface = widget->findChild<QFrame*>(QStringLiteral("ConfirmationSurface"))) {
+                surface->setGeometry(widget->rect());
+                surface->setStyleSheet(QStringLiteral(
+                    "QFrame#ConfirmationSurface { background-color: %1; border: 1px solid %2; border-radius: 14px; }")
+                    .arg(ColorHex(QStringLiteral("bg-canvas")), ColorHex(QStringLiteral("border-panel"))));
+                surface->lower();
+            }
+        }
+    }
+    if (event->type() == QEvent::MouseButtonPress && qobject_cast<QCheckBox*>(widget)) {
+        widget->clearFocus();
+    }
+    if (qobject_cast<QAbstractButton*>(widget) || qobject_cast<QComboBox*>(widget)) {
+        bool keyboard = false;
+        if (event->type() == QEvent::FocusIn) {
+            const auto reason = static_cast<QFocusEvent*>(event)->reason();
+            keyboard = reason == Qt::TabFocusReason ||
+                       reason == Qt::BacktabFocusReason ||
+                       reason == Qt::ShortcutFocusReason;
+        } else if (event->type() != QEvent::MouseButtonPress &&
+                   event->type() != QEvent::FocusOut) {
+            return QObject::eventFilter(watched, event);
+        }
+        if (widget->property("keyboardFocus").toBool() != keyboard) {
+            widget->setProperty("keyboardFocus", keyboard);
+            widget->style()->unpolish(widget);
+            widget->style()->polish(widget);
+            widget->update();
+        }
+    }
+    return QObject::eventFilter(watched, event);
+}
 
 void ThemeManager::ApplyTheme(Theme theme) {
     if (applying_theme_) return;

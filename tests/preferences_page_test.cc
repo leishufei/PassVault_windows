@@ -13,6 +13,7 @@
 #include <QFrame>
 #include <QImage>
 #include <QLabel>
+#include <QMenu>
 #include <QPainter>
 #include <QPushButton>
 #include <QScrollArea>
@@ -155,6 +156,16 @@ class PreferencesPageTest : public ::testing::Test {
     }
 };
 
+TEST_F(PreferencesPageTest, MouseSwitchClickDoesNotKeepFocusOutline) {
+    page_.show();
+    auto* toggle = page_.findChild<QCheckBox*>("DefaultShowPasswords");
+    ASSERT_NE(toggle, nullptr);
+    QApplication::processEvents();
+    QTest::mouseClick(toggle, Qt::LeftButton, Qt::NoModifier, QPoint(8, toggle->height() / 2));
+    EXPECT_FALSE(toggle->hasFocus());
+    EXPECT_FALSE(toggle->property("keyboardFocus").toBool());
+}
+
 TEST_F(PreferencesPageTest, TabsHavePaddingAndDoNotOverlap) {
     ThemeGuard guard;
     passvault::ui::ThemeManager::Instance()->ApplyTheme(passvault::ui::Theme::kLight);
@@ -176,6 +187,45 @@ TEST_F(PreferencesPageTest, TabsHavePaddingAndDoNotOverlap) {
             EXPECT_LT(bar->tabRect(i - 1).right(), rect.left());
         }
     }
+}
+
+TEST_F(PreferencesPageTest, MouseFocusDoesNotLeaveKeyboardOutline) {
+    page_.resize(1200, 800);
+    page_.show();
+    QApplication::processEvents();
+    auto* button = page_.findChild<QPushButton*>("ImportButton");
+    ASSERT_NE(button, nullptr);
+    QTest::mouseClick(button, Qt::LeftButton);
+    EXPECT_FALSE(button->property("keyboardFocus").toBool());
+    button->clearFocus();
+    button->setFocus(Qt::TabFocusReason);
+    QApplication::processEvents();
+    EXPECT_TRUE(button->property("keyboardFocus").toBool());
+    QTest::mouseClick(button, Qt::LeftButton);
+    EXPECT_FALSE(button->property("keyboardFocus").toBool());
+    const QString capture_dir = qEnvironmentVariable("PASSVAULT_UI_CAPTURE_DIR");
+    if (!capture_dir.isEmpty()) {
+        EXPECT_TRUE(page_.grab().save(
+            QDir(capture_dir).filePath("settings-mouse-focus.png")));
+    }
+}
+
+TEST_F(PreferencesPageTest, MenusHaveTransparentFramelessCorners) {
+    QMenu menu;
+    menu.addAction(QStringLiteral("Action"));
+    menu.ensurePolished();
+    menu.popup(QPoint(100, 100));
+    QApplication::processEvents();
+    const QImage rendered = menu.grab().toImage();
+    EXPECT_EQ(rendered.pixelColor(0, 0).alpha(), 0);
+    const QString capture_dir = qEnvironmentVariable("PASSVAULT_UI_CAPTURE_DIR");
+    if (!capture_dir.isEmpty()) {
+        EXPECT_TRUE(rendered.save(QDir(capture_dir).filePath("menu.png")));
+    }
+    menu.close();
+    EXPECT_TRUE(menu.testAttribute(Qt::WA_TranslucentBackground));
+    EXPECT_TRUE(menu.windowFlags().testFlag(Qt::FramelessWindowHint));
+    EXPECT_TRUE(menu.windowFlags().testFlag(Qt::NoDropShadowWindowHint));
 }
 
 TEST_F(PreferencesPageTest, SyncMarkUsesNeutralForeground) {
