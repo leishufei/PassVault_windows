@@ -230,7 +230,7 @@ QMainWindow, #WorkspaceRoot {
 #ListTitleRow { background: transparent; }
 #ListTitle {
     color: var(--text-primary);
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 600;
     letter-spacing: -0.2px;
 }
@@ -432,7 +432,7 @@ QMainWindow, #WorkspaceRoot {
 }
 #DetailTitle {
     color: var(--text-primary);
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 600;
     letter-spacing: -0.3px;
 }
@@ -517,20 +517,20 @@ QMainWindow, #WorkspaceRoot {
 #DetailCategoryValue {
     color: var(--text-primary);
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 400;
     background: transparent;
 }
 #DetailFieldValueMono {
     color: var(--text-primary);
     font-family: "Consolas", "Liberation Mono", "Menlo", monospace;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 400;
     background: transparent;
 }
 #DetailFieldValueLink {
     color: var(--link);
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 400;
     background: transparent;
 }
 
@@ -563,7 +563,6 @@ QMainWindow, #WorkspaceRoot {
 }
 #DetailStampValue {
     color: var(--text-secondary);
-    font-family: "Consolas", "Liberation Mono", "Menlo", monospace;
     font-size: 12px;
     background: transparent;
 }
@@ -634,7 +633,7 @@ QMainWindow, #WorkspaceRoot {
 /* ---------- Legacy dialog headings ---------- */
 #DialogTitle {
     color: var(--text-primary);
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 600;
     letter-spacing: -0.3px;
 }
@@ -739,7 +738,6 @@ QMainWindow, #WorkspaceRoot {
     padding: 0 18px;
     border-radius: var(--radius-md);
     font-size: 13px;
-    font-weight: 500;
 }
 #EditorFooter QPushButton[flat="true"],
 #EditorGeneratorFooter QPushButton[flat="true"] {
@@ -1047,7 +1045,7 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
 #SettingRowTitle {
     color: var(--text-primary);
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 400;
     background: transparent;
 }
 #SettingRowDesc {
@@ -1069,9 +1067,9 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
 
 #SettingSectionHeader { background: transparent; }
 #SettingSectionTitle {
-    color: var(--text-secondary);
-    font-size: 13px;
-    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 400;
     background: transparent;
 }
 
@@ -1079,7 +1077,7 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
 #SecurityPageTitle {
     color: var(--text-primary);
     font-size: 15px;
-    font-weight: 600;
+    font-weight: 400;
     background: transparent;
 }
 #SecurityPageDescription {
@@ -1135,7 +1133,7 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
 #SyncHeadingTitle {
     color: var(--text-primary);
     font-size: 15px;
-    font-weight: 600;
+    font-weight: 400;
     background: transparent;
 }
 #SyncHeadingDesc,
@@ -1171,7 +1169,7 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
 #SyncAccountTitle {
     color: var(--text-primary);
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 400;
     background: transparent;
 }
 #SyncLastTitle {
@@ -1186,9 +1184,8 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
 }
 #SyncLastValue {
     color: var(--text-primary);
-    font-family: "Consolas", "Liberation Mono", "Menlo", monospace;
     font-size: 12px;
-    font-weight: 500;
+    font-weight: 400;
     background: transparent;
 }
 #SyncStateText {
@@ -1219,7 +1216,6 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
     min-height: 30px;
     max-height: 30px;
     font-size: 13px;
-    font-weight: 500;
 }
 
 #HelloToggle {
@@ -1314,21 +1310,12 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
 
 /* ---------- Legacy dialogs (Phase 6) ---------- */
 
-#GeneratorDialog,
-#OAuthWizardDialog,
-#ImportPreviewDialog {
-    background-color: var(--shell);
+#OAuthWizardDialog #DialogTitle {
+    font-size: 16px;
 }
-
-#OAuthDescriptionCard {
-    background-color: var(--soft-bg);
-    border: 1px solid var(--border-section);
-    border-radius: var(--radius-xl);
-    padding: 14px 16px;
-}
-#OAuthDescriptionCard QLabel {
+#OAuthWizardDialog #DialogSubtitle {
     background: transparent;
-    color: var(--body);
+    color: var(--text-secondary);
     font-size: 13px;
 }
 #OAuthStatus {

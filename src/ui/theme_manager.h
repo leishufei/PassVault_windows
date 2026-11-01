@@ -17,6 +17,8 @@ class ThemeManager : public QObject {
 
  public:
     static ThemeManager* Instance();
+    static void ConfigurePlatform();
+    static void InitializeTypography();
 
     Theme theme() const { return theme_; }
     Theme effective_theme() const { return effective_theme_; }

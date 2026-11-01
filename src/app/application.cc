@@ -7,7 +7,6 @@
 #include <QDebug>
 #include <QDir>
 #include <QFileDialog>
-#include <QFont>
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -99,16 +98,6 @@ class Application::Impl {
         }
         auto* theme = ui::ThemeManager::Instance();
         if (auto* q = qApp) {
-            QFont app_font;
-            app_font.setFamilies({QStringLiteral("Segoe UI Variable Text"),
-                                  QStringLiteral("Segoe UI"),
-                                  QStringLiteral("Microsoft YaHei UI"),
-                                  QStringLiteral("Microsoft YaHei"),
-                                  QStringLiteral("Roboto"),
-                                  QStringLiteral("Helvetica Neue"),
-                                  QStringLiteral("Arial")});
-            app_font.setPixelSize(13);
-            q->setFont(app_font);
             q->setStyleSheet(theme->LoadStyleSheet());
         }
 

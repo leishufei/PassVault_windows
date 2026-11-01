@@ -3,6 +3,9 @@
 #include <memory>
 
 #include <QTemporaryDir>
+#include <QApplication>
+#include <QFontInfo>
+#include <QImage>
 #include <QString>
 #include <QDialog>
 #include <QLabel>
@@ -12,6 +15,7 @@
 #include "oauth/google_oauth_client.h"
 #include "oauth/token_store.h"
 #include "ui/oauth_wizard_dialog.h"
+#include "ui/theme_manager.h"
 
 namespace {
 
@@ -66,6 +70,31 @@ TEST_F(OAuthWizardDialogTest, IdleStateShowsStartAndCancel) {
     EXPECT_FALSE(cancel->isHidden());
     QSignalSpy spy(dialog_.get(), &OAuthWizardDialog::ConnectedSuccessfully);
     EXPECT_EQ(spy.count(), 0);
+}
+
+TEST_F(OAuthWizardDialogTest, DescriptionUsesSharedTypographyAndTransparentCorners) {
+    auto* theme = passvault::ui::ThemeManager::Instance();
+    const auto previous = theme->theme();
+    for (auto value : {passvault::ui::Theme::kLight,
+                       passvault::ui::Theme::kDark}) {
+        theme->ApplyTheme(value);
+        dialog_->show();
+        QApplication::processEvents();
+        auto* description = dialog_->findChild<QLabel*>("DialogSubtitle");
+        ASSERT_NE(description, nullptr);
+        EXPECT_EQ(QFontInfo(description->font()).family(),
+                  QFontInfo(QApplication::font()).family());
+        EXPECT_EQ(QFontInfo(description->font()).pixelSize(), 13);
+        EXPECT_EQ(dialog_->grab().toImage().pixelColor(0, 0).alpha(), 0);
+        EXPECT_EQ(dialog_->grab().toImage().pixelColor(dialog_->width() / 2, 12),
+                  theme->Color(QStringLiteral("bg-canvas")));
+        const QString capture = qEnvironmentVariable("PASSVAULT_UI_CAPTURE_DIR");
+        if (!capture.isEmpty()) {
+            dialog_->grab().save(capture + (value == passvault::ui::Theme::kLight
+                                               ? "/oauth-light.png" : "/oauth-dark.png"));
+        }
+    }
+    theme->ApplyTheme(previous);
 }
 
 TEST_F(OAuthWizardDialogTest, StartEntersWaitingState) {

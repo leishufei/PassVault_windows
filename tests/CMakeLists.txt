@@ -38,6 +38,7 @@ add_executable(passvault_tests
     clipboard_manager_test.cc
     generator_dialog_test.cc
     preferences_page_test.cc
+    ui_typography_test.cc
     oauth_wizard_dialog_test.cc
     master_password_dialog_test.cc
     editor_panel_test.cc
@@ -132,7 +133,7 @@ target_link_libraries(passvault_tests
 )
 
 if(WIN32)
-    target_link_libraries(passvault_tests PRIVATE bcrypt crypt32)
+    target_link_libraries(passvault_tests PRIVATE bcrypt crypt32 dwmapi)
 endif()
 
 # Qt Test is only linked by the test target, so the application deployment

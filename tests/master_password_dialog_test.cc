@@ -75,7 +75,17 @@ TEST(MasterPasswordDialogTest, ConfirmationUsesRoundedThemeAndLocalizedButtons) 
     EXPECT_EQ(box.button(QMessageBox::Yes)->text(), QStringLiteral("确认"));
     EXPECT_EQ(box.button(QMessageBox::No)->text(), QStringLiteral("取消"));
     EXPECT_EQ(box.defaultButton(), box.button(QMessageBox::No));
-    EXPECT_EQ(box.grab().toImage().pixelColor(10, 10).alpha(), 255);
+    const QImage image = box.grab().toImage();
+    EXPECT_EQ(image.pixelColor(10, 10).alpha(), 255);
+    EXPECT_EQ(image.pixelColor(0, 0).alpha(), 0);
+    bool has_translucent_edge = false;
+    for (int y = 0; y < 14; ++y) {
+        for (int x = 0; x < 14; ++x) {
+            const int alpha = image.pixelColor(x, y).alpha();
+            has_translucent_edge |= alpha > 0 && alpha < 255;
+        }
+    }
+    EXPECT_TRUE(has_translucent_edge);
     const auto capture = qEnvironmentVariable("PASSVAULT_UI_CAPTURE_DIR");
     if (!capture.isEmpty()) box.grab().save(capture + "/confirmation.png");
     box.close();
@@ -91,6 +101,7 @@ TEST(MasterPasswordDialogTest, CategoryPromptUsesSameRoundedDialogSurface) {
     EXPECT_FALSE(dialog.mask().contains(QPoint(0, 0)));
     auto* surface = dialog.findChild<QFrame*>("ConfirmationSurface");
     ASSERT_NE(surface, nullptr);
+    EXPECT_EQ(dialog.grab().toImage().pixelColor(0, 0).alpha(), 0);
     const auto capture = qEnvironmentVariable("PASSVAULT_UI_CAPTURE_DIR");
     if (!capture.isEmpty()) dialog.grab().save(capture + "/category-prompt.png");
 }

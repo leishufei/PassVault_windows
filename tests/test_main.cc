@@ -1,8 +1,4 @@
 #include <QApplication>
-#include <QDir>
-#include <QFile>
-#include <QFont>
-#include <QFontDatabase>
 #include <QSettings>
 #include <QTemporaryDir>
 
@@ -14,6 +10,7 @@ int main(int argc, char** argv) {
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) {
         qputenv("QT_QPA_PLATFORM", "offscreen");
     }
+    passvault::ui::ThemeManager::ConfigurePlatform();
     QApplication app(argc, argv);
     QTemporaryDir settings_dir;
     if (!settings_dir.isValid()) return 1;
@@ -25,30 +22,7 @@ int main(int argc, char** argv) {
     QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope,
                         settings_dir.path());
 
-#ifdef Q_OS_WIN
-    if (app.platformName() == QStringLiteral("offscreen")) {
-        const QDir fonts(qEnvironmentVariable("WINDIR") + "/Fonts");
-        for (const char* name : {"SegUIVar.ttf", "segoeui.ttf", "seguisb.ttf",
-                                 "segoeuib.ttf", "msyh.ttc", "consola.ttf",
-                                 "consolab.ttf"}) {
-            const QString path = fonts.filePath(QString::fromLatin1(name));
-            if (QFile::exists(path) &&
-                QFontDatabase::addApplicationFont(path) < 0) {
-                return 1;
-            }
-        }
-    }
-#endif
-    QFont app_font;
-    app_font.setFamilies({QStringLiteral("Segoe UI Variable Text"),
-                          QStringLiteral("Segoe UI"),
-                          QStringLiteral("Microsoft YaHei UI"),
-                          QStringLiteral("Microsoft YaHei"),
-                          QStringLiteral("Roboto"),
-                          QStringLiteral("Helvetica Neue"),
-                          QStringLiteral("Arial")});
-    app_font.setPixelSize(13);
-    app.setFont(app_font);
+    passvault::ui::ThemeManager::InitializeTypography();
     app.setStyleSheet(
         passvault::ui::ThemeManager::Instance()->LoadStyleSheet());
 

@@ -7,6 +7,9 @@
 #include <QFile>
 #include <QFrame>
 #include <QFocusEvent>
+#include <QFont>
+#include <QFontDatabase>
+#include <QDir>
 #include <QGuiApplication>
 #include <QHash>
 #include <QMenu>
@@ -15,16 +18,21 @@
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QCheckBox>
-#include <QPainterPath>
-#include <QRegion>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QStyleHints>
 #include <QStyle>
+#include <QStringList>
 #include <QTextStream>
+#include <QWindow>
 
 #include "ui/icon_loader.h"
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <dwmapi.h>
+#endif
 
 namespace passvault::ui {
 
@@ -101,7 +109,40 @@ ThemeManager* ThemeManager::Instance() {
     return instance;
 }
 
+void ThemeManager::InitializeTypography() {
+#ifdef Q_OS_WIN
+    static const bool registered = []() {
+        const QDir fonts(qEnvironmentVariable("WINDIR") + "/Fonts");
+        for (const char* name : {"SegUIVar.ttf", "segoeui.ttf", "seguisb.ttf",
+                                 "segoeuib.ttf", "msyh.ttc", "msyhbd.ttc", "consola.ttf",
+                                 "consolab.ttf"}) {
+            const QString path = fonts.filePath(QString::fromLatin1(name));
+            if (QFile::exists(path)) QFontDatabase::addApplicationFont(path);
+        }
+        return true;
+    }();
+    Q_UNUSED(registered);
+#endif
+    QFont font;
+    font.setFamilies({QStringLiteral("Segoe UI"),
+                      QStringLiteral("Microsoft YaHei UI"),
+                      QStringLiteral("Microsoft YaHei")});
+    font.setPixelSize(13);
+    font.setWeight(QFont::Normal);
+    QApplication::setFont(font);
+}
+
+void ThemeManager::ConfigurePlatform() {
+#ifdef Q_OS_WIN
+    const QByteArray platform = qgetenv("QT_QPA_PLATFORM");
+    if (platform.isEmpty() || platform == "windows") {
+        qputenv("QT_QPA_PLATFORM", "windows:fontengine=freetype");
+    }
+#endif
+}
+
 ThemeManager::ThemeManager() {
+    InitializeTypography();
     if (qApp) qApp->installEventFilter(this);
     QSettings settings;
     theme_ = ThemeFromString(
@@ -121,18 +162,34 @@ ThemeManager::~ThemeManager() = default;
 bool ThemeManager::eventFilter(QObject* watched, QEvent* event) {
     auto* widget = qobject_cast<QWidget*>(watched);
     if (!widget) return QObject::eventFilter(watched, event);
-    const bool dialog = qobject_cast<QDialog*>(widget) &&
-        !qobject_cast<QFileDialog*>(widget) &&
+    if (event->type() == QEvent::DynamicPropertyChange &&
+        qobject_cast<QAbstractButton*>(widget) &&
+        static_cast<QDynamicPropertyChangeEvent*>(event)->propertyName() == "accent") {
+        widget->style()->unpolish(widget);
+        widget->style()->polish(widget);
+        widget->update();
+    }
+    const bool themed_dialog = qobject_cast<QDialog*>(widget) &&
+        !qobject_cast<QFileDialog*>(widget);
+    const bool dialog = themed_dialog &&
         widget->objectName() != QStringLiteral("MasterPasswordDialog");
     const bool popup = qobject_cast<QMenu*>(widget) || widget->windowType() == Qt::ToolTip;
     if (event->type() == QEvent::Polish) {
         if (qobject_cast<QCheckBox*>(widget)) widget->setFocusPolicy(Qt::TabFocus);
-        if (dialog || popup) {
-            widget->setWindowFlag(Qt::FramelessWindowHint);
-            widget->setWindowFlag(Qt::NoDropShadowWindowHint);
+        if (themed_dialog || popup) {
+            auto* window = widget->windowHandle();
+            const bool recreate = window &&
+                !widget->testAttribute(Qt::WA_TranslucentBackground);
+            // Polish may run after native creation, when alpha cannot be added.
+            if (recreate) window->destroy();
             widget->setAttribute(Qt::WA_TranslucentBackground);
+            widget->setWindowFlags(widget->windowFlags() |
+                                   Qt::FramelessWindowHint |
+                                   Qt::NoDropShadowWindowHint);
+            if (recreate) window->create();
         }
         if (dialog) {
+            widget->setProperty("themedDialog", true);
             widget->setContentsMargins(16, 12, 16, 12);
             if (!widget->findChild<QFrame*>(QStringLiteral("ConfirmationSurface"))) {
                 auto* surface = new QFrame(widget);
@@ -154,29 +211,39 @@ bool ThemeManager::eventFilter(QObject* watched, QEvent* event) {
                     button->setText(QStringLiteral("取消"));
                 }
             }
-            for (auto* buttons : widget->findChildren<QDialogButtonBox*>()) {
-                if (auto* button = buttons->button(QDialogButtonBox::Ok)) {
-                    button->setText(QStringLiteral("确认"));
-                    button->setProperty("accent", true);
-                }
-                if (auto* button = buttons->button(QDialogButtonBox::Cancel)) {
-                    button->setText(QStringLiteral("取消"));
-                }
+        }
+    }
+    if (dialog && (event->type() == QEvent::Polish ||
+                   event->type() == QEvent::Show)) {
+        for (auto* buttons : widget->findChildren<QDialogButtonBox*>()) {
+            if (auto* button = buttons->button(QDialogButtonBox::Ok)) {
+                button->setText(QStringLiteral("确认"));
+                button->setProperty("accent", true);
+            }
+            if (auto* button = buttons->button(QDialogButtonBox::Cancel)) {
+                button->setText(QStringLiteral("取消"));
             }
         }
     }
-    if ((dialog || popup) && (event->type() == QEvent::Show ||
+    if ((themed_dialog || popup) && (event->type() == QEvent::Show ||
                               event->type() == QEvent::Resize)) {
-        const int radius = dialog ? 14 : 6;
-        QPainterPath outline;
-        outline.addRoundedRect(QRectF(widget->rect()), radius, radius);
-        widget->setMask(QRegion(outline.toFillPolygon().toPolygon()));
+        widget->clearMask();
+#ifdef Q_OS_WIN
+        if (event->type() == QEvent::Show &&
+            QGuiApplication::platformName() == QStringLiteral("windows")) {
+            const HWND handle = reinterpret_cast<HWND>(widget->winId());
+            const DWMNCRENDERINGPOLICY policy = DWMNCRP_DISABLED;
+            DwmSetWindowAttribute(handle, DWMWA_NCRENDERING_POLICY,
+                                  &policy, sizeof(policy));
+            constexpr DWORD kBorderColorAttribute = 34;
+            constexpr COLORREF kNoBorder = 0xfffffffe;
+            DwmSetWindowAttribute(handle, kBorderColorAttribute,
+                                  &kNoBorder, sizeof(kNoBorder));
+        }
+#endif
         if (dialog) {
             if (auto* surface = widget->findChild<QFrame*>(QStringLiteral("ConfirmationSurface"))) {
                 surface->setGeometry(widget->rect());
-                surface->setStyleSheet(QStringLiteral(
-                    "QFrame#ConfirmationSurface { background-color: %1; border: 1px solid %2; border-radius: 14px; }")
-                    .arg(ColorHex(QStringLiteral("bg-canvas")), ColorHex(QStringLiteral("border-panel"))));
                 surface->lower();
             }
         }
@@ -244,7 +311,12 @@ QString ThemeManager::LoadStyleSheet() const {
     const QString tokens_css = ReadResource(tokens_path);
     const QString components_css = ReadResource(QStringLiteral(":/qss/components.qss"));
     const QString app_css = ReadResource(QStringLiteral(":/qss/app.qss"));
-    const auto tokens = ParseTokens(tokens_css);
+    auto tokens = ParseTokens(tokens_css);
+    QStringList font_families;
+    for (const auto& family : QApplication::font().families()) {
+        font_families.append(QStringLiteral("\"%1\"").arg(family));
+    }
+    tokens.insert(QStringLiteral("font-ui"), font_families.join(QStringLiteral(", ")));
     return SubstituteTokens(components_css + QLatin1Char('\n') + app_css,
                             tokens);
 }

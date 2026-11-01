@@ -25,6 +25,7 @@ if(WIN32)
             crypt32
             bcrypt
             ncrypt
+            dwmapi
     )
 endif()
 

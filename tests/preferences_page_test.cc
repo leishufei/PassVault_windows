@@ -693,6 +693,45 @@ TEST_F(PreferencesPageTest, HeaderTitleMatchesFigmaTypography) {
     EXPECT_EQ(title_font_info.weight(), 600);
 }
 
+TEST_F(PreferencesPageTest, SyncLabelsUseApplicationTypographyInBothThemes) {
+    auto* theme = passvault::ui::ThemeManager::Instance();
+    const auto previous = theme->theme();
+    const QFont previous_font = QApplication::font();
+    page_.resize(840, 640);
+    tabs()->setCurrentIndex(1);
+    page_.show();
+    for (auto value : {passvault::ui::Theme::kLight,
+                       passvault::ui::Theme::kDark}) {
+        theme->ApplyTheme(value);
+        QApplication::processEvents();
+        for (const char* name : {"SyncHeadingTitle", "SyncHeadingDesc",
+                                 "SyncAuthTitle", "SyncAuthDesc",
+                                 "SyncAccountTitle", "SyncAccountEmail",
+                                 "SyncLastTitle", "SyncLastValue",
+                                 "SyncStateText"}) {
+            auto* label = page_.findChild<QLabel*>(QString::fromLatin1(name));
+            EXPECT_NE(label, nullptr) << name;
+            if (!label) continue;
+            label->ensurePolished();
+            EXPECT_EQ(QFontInfo(label->font()).family(),
+                      QFontInfo(QApplication::font()).family()) << name;
+        }
+        const QString capture = qEnvironmentVariable("PASSVAULT_UI_CAPTURE_DIR");
+        if (!capture.isEmpty()) {
+            page_.grab().save(capture + (value == passvault::ui::Theme::kLight
+                                            ? "/sync-light.png" : "/sync-dark.png"));
+        }
+    }
+    QFont application_font = previous_font;
+    application_font.setFamily(QStringLiteral("Arial"));
+    QApplication::setFont(application_font);
+    theme->ApplyTheme(passvault::ui::Theme::kLight);
+    EXPECT_EQ(QFontInfo(page_.findChild<QLabel*>("SyncHeadingTitle")->font()).family(),
+              QFontInfo(QApplication::font()).family());
+    QApplication::setFont(previous_font);
+    theme->ApplyTheme(previous);
+}
+
 TEST_F(PreferencesPageTest, HeaderTypographyBaselineFitsWithoutClipping) {
     auto* title =
         page_.findChild<QLabel*>(QStringLiteral("PreferencesHeaderTitle"));

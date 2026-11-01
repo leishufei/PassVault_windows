@@ -2,8 +2,9 @@
 
 QWidget {
     color: var(--text-primary);
-    font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "Roboto", "Helvetica Neue", "Arial", sans-serif;
+    font-family: var(--font-ui);
     font-size: 13px;
+    font-weight: 400;
 }
 
 QToolTip {
@@ -396,6 +397,15 @@ QSlider::handle:horizontal {
 
 /* Dialog */
 QDialog { background-color: var(--bg-elevated); }
+QDialog[themedDialog="true"] {
+    background: transparent;
+    border: none;
+}
+QFrame#ConfirmationSurface {
+    background-color: var(--bg-canvas);
+    border: 1px solid var(--border-panel);
+    border-radius: 14px;
+}
 
 /* ============================================================
  * Figma component variants (Phase 2 - property-based selectors)
