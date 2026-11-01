@@ -47,3 +47,19 @@ node_modules/
 *.tsbuildinfo
 .env
 *.log
+
+# Local documentation and assistant instructions.
+*.md
+!/README.md
+/docs/
+/doc/
+/figma/
+
+# Local credentials and vault data.
+.env.*
+*.db
+*.db-wal
+*.db-shm
+master.dat
+google_token.dat
+hello_unlock.dat

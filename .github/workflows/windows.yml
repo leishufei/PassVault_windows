@@ -1,0 +1,74 @@
+name: Windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-package:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt and MinGW
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: win64_mingw
+          tools: tools_mingw1310
+          cache: true
+
+      - name: Configure environment
+        run: |
+          "QT_ROOT=$env:QT_ROOT_DIR" >> $env:GITHUB_ENV
+          "MINGW_ROOT=$env:IQTA_TOOLS/mingw1310_64" >> $env:GITHUB_ENV
+          "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          "$env:IQTA_TOOLS/mingw1310_64/bin" >> $env:GITHUB_PATH
+
+      - name: Configure Release without OAuth credentials
+        run: |
+          cmake --preset mingw-x64-release `
+            "-DCMAKE_CXX_COMPILER=$env:MINGW_ROOT/bin/g++.exe" `
+            -DGOOGLE_DESKTOP_CLIENT_ID= -DGOOGLE_DESKTOP_CLIENT_SECRET=
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build
+        run: cmake --build --preset mingw-x64-release --target passvault passvault_tests --parallel 2
+
+      - name: Test
+        run: ctest --preset mingw-x64-release --timeout 60 --output-junit build/test-results.xml
+
+      - name: Package
+        run: ./scripts/package-release.ps1
+
+      - name: Upload application
+        uses: actions/upload-artifact@v4
+        with:
+          name: PassVault-windows-x64
+          path: |
+            build/packages/*/*.zip
+            build/packages/*/*.sha256
+          if-no-files-found: error
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-results
+          path: |
+            build/test-results.xml
+            build/mingw-x64-release/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
