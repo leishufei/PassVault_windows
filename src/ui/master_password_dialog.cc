@@ -56,7 +56,7 @@ MasterPasswordDialog::MasterPasswordDialog(Mode mode, QWidget* parent)
     setModal(true);
     setWindowFlag(Qt::FramelessWindowHint);
     setAttribute(Qt::WA_TranslucentBackground);
-    setFixedWidth(560);
+    setFixedWidth(mode_ == Mode::kUnlock ? 440 : 560);
     BuildUi();
     RefreshThemeAssets();
     connect(ThemeManager::Instance(), &ThemeManager::ThemeChanged, this,
@@ -124,13 +124,13 @@ void MasterPasswordDialog::SetErrorText(const QString& text) {
 
 void MasterPasswordDialog::BuildUi() {
     auto* root = new QVBoxLayout(this);
-    // Leave room around the 440px card for its downward shadow.
+    // Leave room around the card for its downward shadow.
     root->setContentsMargins(60, 60, 60, 84);
     root->setSpacing(0);
 
     auto* card = new QFrame(this);
     card->setObjectName(QStringLiteral("MasterPasswordCard"));
-    card->setFixedWidth(440);
+    card->setFixedWidth(mode_ == Mode::kUnlock ? 320 : 440);
     shadow_ = new QGraphicsDropShadowEffect(card);
     shadow_->setBlurRadius(60);
     shadow_->setOffset(0, 24);
@@ -142,9 +142,11 @@ void MasterPasswordDialog::BuildUi() {
 
     auto* header = new QWidget(card);
     header->setObjectName(QStringLiteral("MasterPasswordHeader"));
-    header->setFixedHeight(60);
+    header->setFixedHeight(mode_ == Mode::kUnlock ? 50 : 60);
     auto* header_layout = new QHBoxLayout(header);
-    header_layout->setContentsMargins(24, 0, 24, 0);
+    const int header_horizontal_margin = mode_ == Mode::kUnlock ? 20 : 24;
+    header_layout->setContentsMargins(header_horizontal_margin, 0,
+                                     header_horizontal_margin, 0);
     header_layout->setSpacing(10);
 
     icon_ = new QLabel(header);
@@ -171,13 +173,23 @@ void MasterPasswordDialog::BuildUi() {
     auto* body = new QWidget(card);
     body->setObjectName(QStringLiteral("MasterPasswordBody"));
     auto* body_layout = new QVBoxLayout(body);
-    body_layout->setContentsMargins(56, 20, 56, 20);
+    if (mode_ == Mode::kUnlock) {
+        body_layout->setContentsMargins(24, 18, 24, 16);
+    } else {
+        body_layout->setContentsMargins(56, 20, 56, 20);
+    }
     body_layout->setSpacing(16);
 
     subtitle_ = new QLabel(SubtitleFor(mode_), body);
     subtitle_->setObjectName(QStringLiteral("DialogSubtitle"));
-    subtitle_->setWordWrap(true);
+    subtitle_->setWordWrap(mode_ != Mode::kUnlock);
     body_layout->addWidget(subtitle_);
+
+    preview_ = new QCheckBox(QStringLiteral("显示密码"), body);
+    preview_->setObjectName(QStringLiteral("PreviewCheckbox"));
+    preview_->setFocusPolicy(Qt::TabFocus);
+    connect(preview_, &QCheckBox::toggled, this,
+            &MasterPasswordDialog::OnTogglePreview);
 
     const auto add_field = [this, body, body_layout](
                                const QString& name, const QString& label_text,
@@ -195,7 +207,16 @@ void MasterPasswordDialog::BuildUi() {
         edit->setPlaceholderText(placeholder);
         edit->setAccessibleName(label_text);
         label->setBuddy(edit);
-        layout->addWidget(label);
+        if (mode_ == Mode::kUnlock) {
+            auto* label_row = new QHBoxLayout();
+            label_row->setContentsMargins(0, 0, 0, 0);
+            label_row->addWidget(label);
+            label_row->addStretch();
+            label_row->addWidget(preview_);
+            layout->addLayout(label_row);
+        } else {
+            layout->addWidget(label);
+        }
         layout->addWidget(edit);
         body_layout->addWidget(field);
         connect(edit, &QLineEdit::textChanged, this,
@@ -230,12 +251,7 @@ void MasterPasswordDialog::BuildUi() {
                                   : QStringLiteral("再次输入主密码"));
     }
 
-    preview_ = new QCheckBox(QStringLiteral("显示密码"), body);
-    preview_->setObjectName(QStringLiteral("PreviewCheckbox"));
-    preview_->setFocusPolicy(Qt::TabFocus);
-    connect(preview_, &QCheckBox::toggled, this,
-            &MasterPasswordDialog::OnTogglePreview);
-    body_layout->addWidget(preview_);
+    if (mode_ != Mode::kUnlock) body_layout->addWidget(preview_);
 
     error_ = new QLabel(body);
     error_->setObjectName(QStringLiteral("FormError"));
@@ -249,7 +265,9 @@ void MasterPasswordDialog::BuildUi() {
     auto* footer = new QWidget(card);
     footer->setObjectName(QStringLiteral("MasterPasswordFooter"));
     auto* buttons_row = new QHBoxLayout(footer);
-    buttons_row->setContentsMargins(24, 16, 24, 16);
+    const int footer_vertical_margin = mode_ == Mode::kUnlock ? 12 : 16;
+    buttons_row->setContentsMargins(24, footer_vertical_margin, 24,
+                                   footer_vertical_margin);
     buttons_row->setSpacing(8);
     buttons_row->addStretch();
 

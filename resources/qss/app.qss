@@ -58,16 +58,16 @@ QMainWindow, #WorkspaceRoot {
     min-height: 28px;
     border-radius: var(--radius-sm);
     color: var(--text-secondary);
-    margin: 0;
+    margin: 0 4px;
 }
 #SidebarSectionList::item:hover, #SidebarCategoryList::item:hover {
-    background-color: var(--primary-hover-surface);
+    background-color: var(--primary-tint);
     color: var(--text-primary);
 }
 #SidebarSectionList::item:selected, #SidebarCategoryList::item:selected {
-    background-color: var(--card-selected);
-    color: var(--text-primary);
-    font-weight: 500;
+    background-color: var(--primary-tint);
+    color: var(--primary-text-on-tint);
+    font-weight: 700;
 }
 #SidebarCategoryList::item {
     min-height: 28px;

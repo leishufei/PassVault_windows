@@ -175,9 +175,10 @@ class SidebarItemDelegate final : public QStyledItemDelegate {
         const bool hovered = option.state.testFlag(QStyle::State_MouseOver);
         auto* theme = ThemeManager::Instance();
         const QColor foreground = theme->Color(
-            selected || hovered ? QStringLiteral("text-primary")
-                                : QStringLiteral("text-secondary"));
-        const QRect content = option.rect.adjusted(12, 0, -12, 0);
+            selected ? QStringLiteral("primary-text-on-tint")
+                     : hovered ? QStringLiteral("text-primary")
+                               : QStringLiteral("text-secondary"));
+        const QRect content = option.rect.adjusted(16, 0, -16, 0);
 
         painter->save();
         painter->setRenderHint(QPainter::Antialiasing, true);
@@ -195,7 +196,7 @@ class SidebarItemDelegate final : public QStyledItemDelegate {
         if (has_count && (count > 0 || index.data(kShowZeroCountRole).toBool())) {
             QFont count_font = option.font;
             count_font.setPixelSize(11);
-            count_font.setWeight(QFont::Medium);
+            count_font.setWeight(selected ? QFont::Bold : QFont::Medium);
             const QFontMetrics count_metrics(count_font);
             const QString count_text = QString::number(count);
             const int badge_width =
@@ -203,20 +204,23 @@ class SidebarItemDelegate final : public QStyledItemDelegate {
             const QRect badge_rect(content.right() - badge_width + 1,
                                    content.center().y() - 9, badge_width, 18);
             painter->setPen(Qt::NoPen);
-            painter->setBrush(theme->Color(QStringLiteral("bg-muted")));
+            painter->setBrush(theme->Color(
+                selected ? QStringLiteral("primary-tint-2")
+                         : QStringLiteral("bg-muted")));
             painter->drawRoundedRect(badge_rect, 9, 9);
             painter->setFont(count_font);
-            painter->setPen(theme->Color(QStringLiteral("muted-8")));
+            painter->setPen(selected ? foreground
+                                     : theme->Color(QStringLiteral("muted-8")));
             painter->drawText(badge_rect, Qt::AlignCenter, count_text);
             text_rect.setRight(badge_rect.left() - 8);
         }
 
         QFont text_font = option.font;
-        if (selected) text_font.setWeight(QFont::Medium);
+        if (selected) text_font.setWeight(QFont::Bold);
         painter->setFont(text_font);
         painter->setPen(foreground);
         painter->drawText(text_rect, Qt::AlignLeft | Qt::AlignVCenter,
-                          option.fontMetrics.elidedText(
+                          QFontMetrics(text_font).elidedText(
                               index.data(Qt::DisplayRole).toString(),
                               Qt::ElideRight, text_rect.width()));
         painter->restore();
