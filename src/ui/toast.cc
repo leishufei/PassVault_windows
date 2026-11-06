@@ -1,15 +1,20 @@
 #include "ui/toast.h"
 
 #include <QEvent>
+#include <QFontMetricsF>
 #include <QGraphicsOpacityEffect>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPropertyAnimation>
 #include <QTimer>
 
+#include <cmath>
+
 namespace passvault::ui {
 
 namespace {
+
+constexpr int kMaxWidth = 480;
 
 const char* LevelObjectName(Toast::Level level) {
     switch (level) {
@@ -100,10 +105,30 @@ bool Toast::eventFilter(QObject* watched, QEvent* event) {
 void Toast::PositionOverParent() {
     QWidget* p = parentWidget();
     if (!p) return;
-    const int max_w = qMax(1, qMin(p->width() - 40, 480));
-    setFixedWidth(qBound(1, sizeHint().width(), max_w));
-    const int content_height = qMax(sizeHint().height(),
-                                    layout()->totalHeightForWidth(width()));
+    // QSS sets the label font and the frame border; measure with them.
+    ensurePolished();
+    label_->ensurePolished();
+    // Sizing from sizeHint() left the wrapping label a few pixels short of
+    // one line (the QSS border and font are not in the hint), so the last
+    // glyph of short messages wrapped. Size to the measured single-line width
+    // and only wrap once the toast reaches its maximum width.
+    const QFontMetricsF metrics(label_->font());
+    qreal text_width = 0;
+    for (const auto& line : label_->text().split(QLatin1Char('\n'))) {
+        text_width = qMax(text_width, metrics.horizontalAdvance(line));
+    }
+    const QMargins frame = contentsMargins();
+    const QMargins padding = layout()->contentsMargins();
+    const int chrome = frame.left() + frame.right() + padding.left() +
+                       padding.right() + label_->contentsMargins().left() +
+                       label_->contentsMargins().right();
+    // +4 covers the 1px QSS border on each side plus glyph rounding.
+    const int natural = static_cast<int>(std::ceil(text_width)) + chrome + 4;
+    const int max_w = qMax(1, qMin(p->width() - 40, kMaxWidth));
+    setFixedWidth(qBound(1, natural, max_w));
+    const int for_width = layout()->totalHeightForWidth(width());
+    const int content_height =
+        for_width > 0 ? for_width : layout()->totalSizeHint().height();
     setFixedHeight(qBound(1, content_height, qMax(1, p->height() - 16)));
     const int x = (p->width() - width()) / 2;
     const int y = qMax(0, p->height() - this->height() - 32);

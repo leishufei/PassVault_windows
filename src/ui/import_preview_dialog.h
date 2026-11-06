@@ -1,8 +1,8 @@
 #pragma once
 
-#include <QDialog>
 
 #include "csv/csv_models.h"
+#include "ui/app_dialog.h"
 
 class QLabel;
 class QTabWidget;
@@ -12,7 +12,7 @@ namespace passvault::ui {
 
 // Reviews a CsvValidationResult in three tabs (insert / update / invalid),
 // mirroring Android's ImportPreviewDialog. Accepting confirms the import.
-class ImportPreviewDialog : public QDialog {
+class ImportPreviewDialog : public AppDialog {
     Q_OBJECT
 
  public:

@@ -13,18 +13,17 @@
 #include <QGraphicsEffect>
 #include <QHash>
 #include <QHBoxLayout>
-#include <QInputDialog>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QListWidgetItem>
-#include <QMessageBox>
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPushButton>
 #include <QResizeEvent>
+#include <QScrollBar>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSizePolicy>
@@ -53,10 +52,12 @@
 #include "storage/password_dao.h"
 #include "sync/sync_manager.h"
 #include "sync/sync_scheduler.h"
+#include "ui/app_dialog.h"
 #include "ui/clipboard_manager.h"
 #include "ui/detail_panel.h"
 #include "ui/elided_label.h"
 #include "ui/editor_panel.h"
+#include "ui/generator_dialog.h"
 #include "ui/icon_loader.h"
 #include "ui/preferences_page.h"
 #include "ui/theme_manager.h"
@@ -86,8 +87,14 @@ constexpr int kSidebarCountRole = Qt::UserRole + 1;
 constexpr int kSidebarSystemRole = Qt::UserRole + 2;
 constexpr int kSidebarIconRole = Qt::UserRole + 3;
 constexpr int kShowZeroCountRole = Qt::UserRole + 5;
+constexpr int kEntryIndexRole = Qt::UserRole + 6;
+// Cards built synchronously on every list refresh; the rest follow the
+// viewport. Covers a maximized 4K window without visible pop-in.
+constexpr int kInitialCardBatch = 40;
+constexpr int kCardBuildMargin = 8;
 
 void SetCardFavorite(QWidget* card, bool favorite) {
+    if (!card) return;
     if (auto* button = card->findChild<QToolButton*>(
             QStringLiteral("PasswordCardFavoriteButton"))) {
         button->setToolTip(favorite ? QStringLiteral("取消收藏") : QStringLiteral("收藏"));
@@ -175,9 +182,8 @@ class SidebarItemDelegate final : public QStyledItemDelegate {
         const bool hovered = option.state.testFlag(QStyle::State_MouseOver);
         auto* theme = ThemeManager::Instance();
         const QColor foreground = theme->Color(
-            selected ? QStringLiteral("primary-text-on-tint")
-                     : hovered ? QStringLiteral("text-primary")
-                               : QStringLiteral("text-secondary"));
+            selected || hovered ? QStringLiteral("text-primary")
+                                : QStringLiteral("text-secondary"));
         const QRect content = option.rect.adjusted(16, 0, -16, 0);
 
         painter->save();
@@ -205,7 +211,7 @@ class SidebarItemDelegate final : public QStyledItemDelegate {
                                    content.center().y() - 9, badge_width, 18);
             painter->setPen(Qt::NoPen);
             painter->setBrush(theme->Color(
-                selected ? QStringLiteral("primary-tint-2")
+                selected ? QStringLiteral("card")
                          : QStringLiteral("bg-muted")));
             painter->drawRoundedRect(badge_rect, 9, 9);
             painter->setFont(count_font);
@@ -216,7 +222,7 @@ class SidebarItemDelegate final : public QStyledItemDelegate {
         }
 
         QFont text_font = option.font;
-        if (selected) text_font.setWeight(QFont::Bold);
+        if (selected) text_font.setWeight(QFont::DemiBold);
         painter->setFont(text_font);
         painter->setPen(foreground);
         painter->drawText(text_rect, Qt::AlignLeft | Qt::AlignVCenter,
@@ -249,6 +255,16 @@ QString RelativeTimeShort(std::int64_t ms_since_epoch) {
     if (days < 30) return QStringLiteral("%1 天前").arg(days);
     return QDateTime::fromMSecsSinceEpoch(ms_since_epoch)
         .toString(QStringLiteral("yyyy-MM-dd"));
+}
+
+// Local edits must always win the next updatedAt comparison, even when the
+// stored value came from a device whose clock runs ahead of this one.
+std::int64_t NextCategoryTimestamp(const model::Category& category) {
+    if (category.updated_at == std::numeric_limits<std::int64_t>::max()) {
+        return category.updated_at;
+    }
+    return std::max(category.updated_at + 1,
+                    QDateTime::currentMSecsSinceEpoch());
 }
 
 QString AvatarInitial(const model::PasswordEntry& entry) {
@@ -505,6 +521,12 @@ QWidget* MainWindow::BuildSidebar() {
     categories_list_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     categories_list_->setItemDelegate(
         new SidebarItemDelegate(categories_list_));
+    connect(categories_list_->itemDelegate(), &QAbstractItemDelegate::closeEditor,
+            this, [this]() {
+                QTimer::singleShot(0, this, [this]() {
+                    if (category_refresh_pending_) RefreshCategoryList();
+                });
+            });
     connect(categories_list_, &QListWidget::itemSelectionChanged, this,
             &MainWindow::OnCategorySelectionChanged);
     layout->addWidget(categories_list_, 1);
@@ -514,6 +536,23 @@ QWidget* MainWindow::BuildSidebar() {
     auto* footer_layout = new QVBoxLayout(footer);
     footer_layout->setContentsMargins(0, 12, 0, 0);
     footer_layout->setSpacing(4);
+
+    auto* generator_button =
+        new QPushButton(QStringLiteral("密码生成器"), footer);
+    generator_button->setObjectName(QStringLiteral("SidebarGeneratorButton"));
+    generator_button->setAccessibleName(QStringLiteral("密码生成器"));
+    generator_button->setToolTip(QStringLiteral("生成随机密码 (Ctrl+G)"));
+    generator_button->setFocusPolicy(Qt::TabFocus);
+    generator_button->setFixedHeight(32);
+    generator_button->setCursor(Qt::PointingHandCursor);
+    generator_button->setIcon(IconLoader::Load(
+        QStringLiteral("key-round"),
+        ThemeManager::Instance()->Color(QStringLiteral("text-secondary")),
+        kIconSize));
+    generator_button->setIconSize(QSize(kIconSize, kIconSize));
+    connect(generator_button, &QPushButton::clicked, this,
+            &MainWindow::OnOpenGenerator);
+    footer_layout->addWidget(generator_button);
 
     sync_button_ = new QPushButton(footer);
     sync_button_->setObjectName(QStringLiteral("SidebarSyncButton"));
@@ -664,14 +703,48 @@ QWidget* MainWindow::BuildWorkspaceHeader() {
 
     more_button_ = new QToolButton(controls);
     more_button_->setObjectName(QStringLiteral("HeaderMoreButton"));
-    more_button_->setToolTip(QStringLiteral("更多操作暂不可用"));
+    more_button_->setToolTip(QStringLiteral("更多操作"));
+    more_button_->setAccessibleName(QStringLiteral("更多操作"));
+    more_button_->setCursor(Qt::PointingHandCursor);
     more_button_->setFixedSize(32, 32);
     more_button_->setIcon(IconLoader::Load(
         QStringLiteral("more-horizontal"),
-        ThemeManager::Instance()->Color(QStringLiteral("text-tertiary")),
+        ThemeManager::Instance()->Color(QStringLiteral("text-secondary")),
         kIconSize));
     more_button_->setIconSize(QSize(kIconSize, kIconSize));
-    more_button_->setEnabled(false);
+    more_button_->setPopupMode(QToolButton::InstantPopup);
+    auto* more_menu = new QMenu(more_button_);
+    more_menu->setObjectName(QStringLiteral("HeaderMoreMenu"));
+    auto* generator_action = more_menu->addAction(QStringLiteral("密码生成器"));
+    generator_action->setObjectName(QStringLiteral("MoreGeneratorAction"));
+    generator_action->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
+    generator_action->setShortcutVisibleInContextMenu(true);
+    // Ctrl+G is handled in keyPressEvent; the menu only displays it.
+    generator_action->setShortcutContext(Qt::WidgetShortcut);
+    connect(generator_action, &QAction::triggered, this,
+            &MainWindow::OnOpenGenerator);
+    more_menu->addSeparator();
+    auto* import_action = more_menu->addAction(QStringLiteral("导入 CSV…"));
+    import_action->setObjectName(QStringLiteral("MoreImportAction"));
+    connect(import_action, &QAction::triggered, this, [this]() {
+        if (!reset_confirmation_active_ && !migration_active_) {
+            emit ImportCsvRequested();
+        }
+    });
+    auto* export_action = more_menu->addAction(QStringLiteral("导出 CSV…"));
+    export_action->setObjectName(QStringLiteral("MoreExportAction"));
+    connect(export_action, &QAction::triggered, this, [this]() {
+        if (!reset_confirmation_active_ && !migration_active_) {
+            emit ExportCsvRequested();
+        }
+    });
+    more_menu->addSeparator();
+    auto* settings_action = more_menu->addAction(QStringLiteral("设置"));
+    settings_action->setObjectName(QStringLiteral("MoreSettingsAction"));
+    connect(settings_action, &QAction::triggered, this, [this]() {
+        central_stack_->setCurrentWidget(preferences_page_);
+    });
+    more_button_->setMenu(more_menu);
     controls_layout->addWidget(more_button_, 0, Qt::AlignVCenter);
 
     header_layout->addWidget(controls, 1);
@@ -845,6 +918,8 @@ QWidget* MainWindow::BuildPasswordListColumn() {
     password_list_->setUniformItemSizes(true);
     password_list_->setItemDelegate(new PasswordItemDelegate(password_list_));
     password_list_->viewport()->installEventFilter(this);
+    connect(password_list_->verticalScrollBar(), &QScrollBar::valueChanged, this,
+            [this](int) { BuildVisibleCards(); });
     connect(password_list_, &QListWidget::itemSelectionChanged, this,
             &MainWindow::OnPasswordSelectionChanged);
     connect(password_list_, &QListWidget::itemClicked, this,
@@ -868,7 +943,14 @@ QWidget* MainWindow::BuildDetailColumn() {
     close_detail->setShortcut(QKeySequence(Qt::Key_Escape));
     close_detail->setShortcutContext(Qt::WidgetWithChildrenShortcut);
     detail_panel_->addAction(close_detail);
-    connect(close_detail, &QAction::triggered, this, &MainWindow::ShowListPane);
+    connect(close_detail, &QAction::triggered, this, [this]() {
+        // The editor drawer sits above the detail panel; Esc closes it first.
+        if (editor_panel_ && editor_panel_->IsOpen()) {
+            editor_panel_->HandleEscape();
+            return;
+        }
+        ShowListPane();
+    });
     connect(detail_panel_, &DetailPanel::EditRequested, this,
             &MainWindow::OnEditRequested);
     connect(detail_panel_, &DetailPanel::CategoryChangeRequested, this,
@@ -883,6 +965,8 @@ QWidget* MainWindow::BuildDetailColumn() {
             &MainWindow::OnCopyUsernameRequested);
     connect(detail_panel_, &DetailPanel::OpenWebsiteRequested, this,
             &MainWindow::OnOpenWebsiteRequested);
+    connect(detail_panel_, &DetailPanel::CopyWebsiteRequested, this,
+            &MainWindow::OnCopyWebsiteRequested);
     connect(detail_panel_, &DetailPanel::FavoriteToggleRequested, this,
             &MainWindow::OnFavoriteToggleRequested);
     return detail_panel_;
@@ -894,6 +978,7 @@ void MainWindow::Reload() {
     QList<model::Category> cat_list;
     for (const auto& c : categories_) cat_list.append(c);
     if (detail_panel_) detail_panel_->SetCategories(cat_list);
+    if (editor_panel_) editor_panel_->SetCategories(cat_list);
     RefreshSectionList();
     RefreshCategoryList();
     RefreshPasswordList();
@@ -917,6 +1002,12 @@ void MainWindow::RefreshThemeAssets() {
                              QStringLiteral("text-tertiary"), 14));
     }
     RefreshSyncButton();
+    if (auto* generator_button = findChild<QPushButton*>(
+            QStringLiteral("SidebarGeneratorButton"))) {
+        generator_button->setIcon(
+            icon(QStringLiteral("key-round"),
+                 QStringLiteral("text-secondary"), kIconSize));
+    }
     if (auto* settings_button = findChild<QPushButton*>(
             QStringLiteral("SidebarSettingsButton"))) {
         settings_button->setIcon(
@@ -946,7 +1037,7 @@ void MainWindow::RefreshThemeAssets() {
     if (auto* button = findChild<QToolButton*>(
             QStringLiteral("HeaderMoreButton"))) {
         button->setIcon(icon(QStringLiteral("more-horizontal"),
-                             QStringLiteral("text-tertiary"), kIconSize));
+                             QStringLiteral("text-secondary"), kIconSize));
     }
     if (auto* button = findChild<QPushButton*>(
             QStringLiteral("ListSortMenu"))) {
@@ -960,9 +1051,13 @@ void MainWindow::RefreshThemeAssets() {
         for (int i = 0; i < password_list_->count(); ++i) {
             auto* item = password_list_->item(i);
             auto* card = password_list_->itemWidget(item);
-            const auto entry = FindEntry(
-                item->data(Qt::UserRole).toLongLong());
-            if (card && entry && !entry->is_deleted) {
+            if (!card) continue;
+            const int index = item->data(kEntryIndexRole).toInt();
+            if (index < 0 || index >= static_cast<int>(current_entries_.size())) {
+                continue;
+            }
+            const auto* entry = &current_entries_[index];
+            if (!entry->is_deleted) {
                 for (const auto& action : {
                          qMakePair("PasswordCardEditButton", "pencil"),
                          qMakePair("PasswordCardCategoryButton", "folder"),
@@ -975,8 +1070,18 @@ void MainWindow::RefreshThemeAssets() {
                     }
                 }
                 SetCardFavorite(card, entry->is_favorite);
+            } else {
+                if (auto* button = card->findChild<QToolButton*>(
+                        QStringLiteral("PasswordCardRestoreButton"))) {
+                    button->setIcon(icon(QStringLiteral("rotate-ccw"),
+                                         QStringLiteral("text-secondary"), 16));
+                }
+                if (auto* button = card->findChild<QToolButton*>(
+                        QStringLiteral("PasswordCardDeleteButton"))) {
+                    button->setIcon(icon(QStringLiteral("trash-2"),
+                                         QStringLiteral("danger"), 16));
+                }
             }
-
         }
     }
 }
@@ -1058,6 +1163,12 @@ void MainWindow::RefreshSectionList() {
 
 void MainWindow::RefreshCategoryList() {
     if (!categories_list_) return;
+    if (auto* editor = categories_list_->viewport()->findChild<QLineEdit*>();
+        editor && editor->isVisible()) {
+        category_refresh_pending_ = true;
+        return;
+    }
+    category_refresh_pending_ = false;
     suppress_selection_ = true;
     categories_list_->clear();
     QHash<std::int64_t, int> counts;
@@ -1343,6 +1454,7 @@ QWidget* MainWindow::CreatePasswordCard(const model::PasswordEntry& entry) {
 void MainWindow::RefreshPasswordList() {
     if (!deps_.password_dao || !password_list_) return;
     suppress_selection_ = true;
+    password_list_->setUpdatesEnabled(false);
     password_list_->clear();
 
     std::vector<model::PasswordEntry> rows;
@@ -1401,7 +1513,8 @@ void MainWindow::RefreshPasswordList() {
 
     password_list_->setUniformItemSizes(search_text_.isEmpty());
     std::optional<std::int64_t> group;
-    for (const auto& e : current_entries_) {
+    for (std::size_t index = 0; index < current_entries_.size(); ++index) {
+        const auto& e = current_entries_[index];
         if (!search_text_.isEmpty() && group != e.category_id) {
             group = e.category_id;
             auto* heading = new QListWidgetItem(CategoryName(e.category_id),
@@ -1412,10 +1525,13 @@ void MainWindow::RefreshPasswordList() {
         }
         auto* item = new QListWidgetItem(password_list_);
         item->setData(Qt::UserRole, QVariant::fromValue<qint64>(e.id));
-        QWidget* card = CreatePasswordCard(e);
+        item->setData(kEntryIndexRole, static_cast<int>(index));
+        item->setData(Qt::AccessibleTextRole,
+                      e.title.isEmpty() ? QStringLiteral("(无标题)") : e.title);
         item->setSizeHint(QSize(0, kCardHeight));
-        password_list_->setItemWidget(item, card);
     }
+    BuildCardsForRows(0, kInitialCardBatch - 1);
+    password_list_->setUpdatesEnabled(true);
 
     list_count_->setText(
         QStringLiteral("%1 项").arg(current_entries_.size()));
@@ -1458,6 +1574,47 @@ void MainWindow::RefreshPasswordList() {
         }
     }
     UpdateResponsiveLayout();
+}
+
+void MainWindow::BuildCardsForRows(int first_row, int last_row) {
+    if (!password_list_ || password_list_->count() == 0) return;
+    first_row = std::max(0, first_row);
+    last_row = std::min(password_list_->count() - 1, last_row);
+    for (int row = first_row; row <= last_row; ++row) {
+        auto* item = password_list_->item(row);
+        if (!item || item->data(kSearchGroupRole).toBool() ||
+            password_list_->itemWidget(item)) {
+            continue;
+        }
+        bool ok = false;
+        const int index = item->data(kEntryIndexRole).toInt(&ok);
+        if (!ok || index < 0 ||
+            index >= static_cast<int>(current_entries_.size())) {
+            continue;
+        }
+        password_list_->setItemWidget(item,
+                                      CreatePasswordCard(current_entries_[index]));
+    }
+}
+
+void MainWindow::BuildVisibleCards() {
+    if (!password_list_ || password_list_->count() == 0) return;
+    // visualItemRect() is a cached geometry lookup, so a linear scan stays
+    // cheap even for thousands of rows; the margin pre-builds the next page.
+    const QRect area = password_list_->viewport()->rect().adjusted(
+        0, -kCardBuildMargin * kCardHeight, 0, kCardBuildMargin * kCardHeight);
+    int first = -1;
+    int last = -1;
+    for (int row = 0; row < password_list_->count(); ++row) {
+        if (!password_list_->visualItemRect(password_list_->item(row))
+                 .intersects(area)) {
+            if (first >= 0) break;
+            continue;
+        }
+        if (first < 0) first = row;
+        last = row;
+    }
+    if (first >= 0) BuildCardsForRows(first, last);
 }
 
 std::optional<model::PasswordEntry> MainWindow::FindEntry(
@@ -1539,14 +1696,25 @@ void MainWindow::OnNewPassword() {
     ShowPasswordCreate();
 }
 
+void MainWindow::OnOpenGenerator() {
+    if (reset_confirmation_active_ || migration_active_) return;
+    if (width() < kSidebarBreakpoint && compact_sidebar_expanded_) {
+        compact_sidebar_expanded_ = false;
+        UpdateResponsiveLayout();
+    }
+    GeneratorDialog dialog(this);
+    dialog.exec();
+}
+
 void MainWindow::OnAddCategory() {
     if (reset_confirmation_active_ || migration_active_) return;
     if (!deps_.category_dao || !deps_.session_key) return;
     bool accepted = false;
-    const QString name = QInputDialog::getText(
+    const QString name = AppDialog::GetText(
                              this, QStringLiteral("新增分类"),
                              QStringLiteral("分类名称"), QLineEdit::Normal,
-                             QString(), &accepted)
+                             QString(), &accepted,
+                             QStringLiteral("例如：工作、社交"))
                              .trimmed();
     if (!accepted || reset_confirmation_active_ || migration_active_ || !deps_.session_key) return;
     if (name.isEmpty()) {
@@ -1606,7 +1774,7 @@ void MainWindow::OnRenameCategory(std::int64_t category_id) {
     auto category = deps_.category_dao->FindById(category_id);
     if (!category || category->is_deleted) return;
     bool accepted = false;
-    const QString name = QInputDialog::getText(
+    const QString name = AppDialog::GetText(
         this, QStringLiteral("重命名分类"), QStringLiteral("分类名称"),
         QLineEdit::Normal, category->name, &accepted).trimmed();
     if (accepted && UpdateCategoryName(category_id, name)) Reload();
@@ -1633,7 +1801,7 @@ bool MainWindow::UpdateCategoryName(std::int64_t category_id, const QString& val
         }
     }
     category->name = name;
-    category->updated_at = QDateTime::currentMSecsSinceEpoch();
+    category->updated_at = NextCategoryTimestamp(*category);
     if (!deps_.category_dao->Update(*category)) {
         Toast::Show(this, QStringLiteral("分类更新失败"), Toast::Level::kError);
         return false;
@@ -1647,23 +1815,20 @@ void MainWindow::OnDeleteCategory(std::int64_t category_id) {
     if (!deps_.session_key || !deps_.category_dao || !deps_.password_dao) return;
     const auto category = deps_.category_dao->FindById(category_id);
     if (!category || category->is_deleted) return;
-    QMessageBox message(QMessageBox::Question, QStringLiteral("删除分类"),
-                        QStringLiteral("删除分类“%1”及其中的所有密码？密码将移入回收站，不会永久删除。")
-                            .arg(category->name),
-                        QMessageBox::Yes | QMessageBox::No, this);
-    message.setTextFormat(Qt::PlainText);
-    message.button(QMessageBox::Yes)->setText(QStringLiteral("删除分类及密码"));
-    message.button(QMessageBox::No)->setText(QStringLiteral("取消"));
-    message.setDefaultButton(QMessageBox::No);
-    message.setEscapeButton(QMessageBox::No);
-    if (message.exec() != QMessageBox::Yes || !deps_.session_key) return;
+    const bool confirmed = AppDialog::Confirm(
+        this, QStringLiteral("删除分类"),
+        QStringLiteral("删除分类“%1”及其中的所有密码？密码将移入回收站，不会永久删除。")
+            .arg(category->name),
+        QStringLiteral("删除分类及密码"), AppDialog::ConfirmKind::kDestructive);
+    if (!confirmed || !deps_.session_key) return;
 
     bool success = false;
     try {
         storage::Transaction transaction(deps_.password_dao->database());
         const auto now = QDateTime::currentMSecsSinceEpoch();
         success = deps_.password_dao->LogicalDeleteByCategory(category_id, now) &&
-                  deps_.category_dao->LogicalDelete(category_id, now) &&
+                  deps_.category_dao->LogicalDelete(
+                      category_id, NextCategoryTimestamp(*category)) &&
                   transaction.Commit();
     } catch (const std::exception&) {
         success = false;
@@ -1683,23 +1848,33 @@ void MainWindow::PersistCategoryOrder() {
     if (suppress_selection_ || !deps_.session_key || !deps_.password_dao ||
         !deps_.category_dao) return;
     bool success = false;
+    bool changed = false;
     try {
         storage::Transaction transaction(deps_.password_dao->database());
-        const auto now = QDateTime::currentMSecsSinceEpoch();
         success = true;
         for (int row = 0; row < categories_list_->count(); ++row) {
             const auto id = categories_list_->item(row)->data(Qt::UserRole).toLongLong();
-            if (!deps_.category_dao->UpdateSortOrder(id, row, now)) {
+            const auto category = std::find_if(
+                categories_.begin(), categories_.end(),
+                [id](const auto& value) { return value.id == id; });
+            // Only touch moved rows: bumping updatedAt on every category would
+            // let this reorder overwrite renames made on other devices.
+            if (category == categories_.end() || category->sort_order == row) {
+                continue;
+            }
+            if (!deps_.category_dao->UpdateSortOrder(
+                    id, row, NextCategoryTimestamp(*category))) {
                 success = false;
                 break;
             }
+            changed = true;
         }
         success = success && transaction.Commit();
     } catch (const std::exception&) {
         success = false;
     }
     if (success) {
-        if (deps_.sync_scheduler) deps_.sync_scheduler->MarkDirty();
+        if (changed && deps_.sync_scheduler) deps_.sync_scheduler->MarkDirty();
     } else {
         Toast::Show(this, QStringLiteral("分类排序保存失败"), Toast::Level::kError);
     }
@@ -1730,6 +1905,18 @@ void MainWindow::OnEditorSaveRequested() {
     if (reset_confirmation_active_ || migration_active_) return;
     if (!editor_panel_ || !editor_panel_->IsOpen() || !deps_.session_key) return;
     auto result = editor_panel_->Result();
+    const auto duplicate = deps_.password_dao->HasDuplicateInCategory(
+        result.entry.category_id, result.entry.title, result.entry.username,
+        editor_entry_id_);
+    if (!duplicate.has_value()) {
+        Toast::Show(this, QStringLiteral("查重失败，请重试"), Toast::Level::kError);
+        return;
+    }
+    if (*duplicate) {
+        Toast::Show(this, QStringLiteral("该分类下已存在相同标题和用户名的密码"),
+                    Toast::Level::kError);
+        return;
+    }
     if (editor_entry_id_ < 0) {
         model::PasswordEntry entry = result.entry;
         entry.uuid = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -1813,13 +2000,13 @@ void MainWindow::DeleteEntries(const std::vector<std::int64_t>& ids) {
         PermanentlyDeleteEntries(ids, false);
         return;
     }
-    auto reply = QMessageBox::question(
-        this, QStringLiteral("删除确认"),
+    const bool confirmed = AppDialog::Confirm(
+        this, QStringLiteral("移至回收站"),
         ids.size() == 1 ? QStringLiteral("确定将该密码移至回收站吗？")
                         : QStringLiteral("确定将选中的 %1 条密码移至回收站吗？")
                               .arg(ids.size()),
-        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-    if (reply != QMessageBox::Yes) return;
+        QStringLiteral("移至回收站"));
+    if (!confirmed) return;
     if (!deps_.session_key) return;
     if (!deps_.password_dao->BulkLogicalDelete(
             ids, QDateTime::currentMSecsSinceEpoch())) {
@@ -1884,14 +2071,15 @@ void MainWindow::PermanentlyDeleteEntries(
         }
     }
     if (targets.empty()) return;
-    const auto reply = QMessageBox::question(
-        this, QStringLiteral("永久删除确认"),
+    const bool confirmed = AppDialog::Confirm(
+        this, empty_trash ? QStringLiteral("清空回收站") : QStringLiteral("永久删除"),
         empty_trash ? QStringLiteral("确定清空整个回收站中的 %1 条密码吗？此操作无法撤销。")
                           .arg(targets.size())
                     : QStringLiteral("确定永久删除所选的 %1 条密码吗？此操作无法撤销。")
                           .arg(targets.size()),
-        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-    if (reply != QMessageBox::Yes || !deps_.session_key) return;
+        empty_trash ? QStringLiteral("清空回收站") : QStringLiteral("永久删除"),
+        AppDialog::ConfirmKind::kDestructive);
+    if (!confirmed || !deps_.session_key) return;
     // Keep the confirmed target set stable across the modal event loop.
     FinishTrashOperation(deps_.password_dao->BulkPermanentlyDelete(
         targets, QDateTime::currentMSecsSinceEpoch()));
@@ -1933,6 +2121,15 @@ void MainWindow::OnCopyUsernameRequested(std::int64_t entry_id) {
     if (!entry || entry->username.isEmpty()) return;
     ClipboardManager::Instance()->CopyPlain(entry->username);
     Toast::Show(this, QStringLiteral("用户名已复制"), Toast::Level::kSuccess);
+}
+
+void MainWindow::OnCopyWebsiteRequested(std::int64_t entry_id) {
+    if (!deps_.session_key) return;
+    auto entry = FindEntry(entry_id);
+    if (!entry) entry = deps_.password_dao->FindById(entry_id);
+    if (!entry || entry->website.isEmpty()) return;
+    ClipboardManager::Instance()->CopyPlain(entry->website);
+    Toast::Show(this, QStringLiteral("网址已复制"), Toast::Level::kSuccess);
 }
 
 void MainWindow::OnOpenWebsiteRequested(std::int64_t entry_id) {
@@ -2001,6 +2198,7 @@ void MainWindow::OnSyncClicked() {
         OnSyncStarted();
         return;
     }
+    manual_sync_pending_ = true;
     OnSyncStarted();
     sync_button_->repaint();
     deps_.sync_scheduler->SyncImmediately();
@@ -2046,8 +2244,10 @@ void MainWindow::OnSyncFinished(sync::SyncManager::StatusKind kind,
     switch (kind) {
         case sync::SyncManager::StatusKind::kSuccess:
             UpdateSyncStatus(kind, QStringLiteral("已同步到云端"));
-            Toast::Show(this, QStringLiteral("同步完成"),
-                        Toast::Level::kSuccess);
+            if (manual_sync_pending_) {
+                Toast::Show(this, QStringLiteral("同步完成"),
+                            Toast::Level::kSuccess);
+            }
             break;
         case sync::SyncManager::StatusKind::kConflict:
             UpdateSyncStatus(kind, QStringLiteral("同步冲突，请稍后重试"));
@@ -2061,6 +2261,7 @@ void MainWindow::OnSyncFinished(sync::SyncManager::StatusKind kind,
                         Toast::Level::kError);
             break;
     }
+    manual_sync_pending_ = false;
     Reload();
 }
 
@@ -2173,7 +2374,13 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
          event->type() == QEvent::KeyPress)) {
         const auto* key = static_cast<QKeyEvent*>(event);
         if (key->key() == Qt::Key_Escape) {
-            if (event->type() == QEvent::KeyPress) workspace_->setFocus();
+            if (event->type() == QEvent::KeyPress) {
+                if (editor_panel_ && editor_panel_->IsOpen()) {
+                    editor_panel_->HandleEscape();
+                } else {
+                    workspace_->setFocus();
+                }
+            }
             event->accept();
             return true;
         }
@@ -2191,6 +2398,10 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
     }
     if (watched == workspace_content_ && event->type() == QEvent::Resize) {
         UpdateResponsiveLayout();
+    }
+    if (password_list_ && watched == password_list_->viewport() &&
+        (event->type() == QEvent::Resize || event->type() == QEvent::Show)) {
+        BuildVisibleCards();
     }
     if (password_list_ && event->type() == QEvent::MouseButtonPress) {
         const auto* mouse = static_cast<QMouseEvent*>(event);
@@ -2245,6 +2456,14 @@ void MainWindow::keyPressEvent(QKeyEvent* event) {
         event->accept();
         return;
     }
+    // Clicking the list while the editor is open moves focus out of the
+    // drawer, so its own Esc shortcut no longer fires; handle it here.
+    if (event->key() == Qt::Key_Escape && editor_panel_ &&
+        editor_panel_->IsOpen()) {
+        editor_panel_->HandleEscape();
+        event->accept();
+        return;
+    }
     if (event->key() == Qt::Key_Escape &&
         (showing_detail_ || !password_list_->selectedItems().isEmpty())) {
         ShowListPane();
@@ -2264,6 +2483,11 @@ void MainWindow::keyPressEvent(QKeyEvent* event) {
     if (event->key() == Qt::Key_N &&
         (event->modifiers() & Qt::ControlModifier)) {
         OnNewPassword();
+        return;
+    }
+    if (event->key() == Qt::Key_G &&
+        (event->modifiers() & Qt::ControlModifier)) {
+        OnOpenGenerator();
         return;
     }
     QMainWindow::keyPressEvent(event);

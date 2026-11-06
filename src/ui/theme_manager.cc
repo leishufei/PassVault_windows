@@ -171,8 +171,10 @@ bool ThemeManager::eventFilter(QObject* watched, QEvent* event) {
     }
     const bool themed_dialog = qobject_cast<QDialog*>(widget) &&
         !qobject_cast<QFileDialog*>(widget);
+    // AppDialog and MasterPasswordDialog draw their own card surface.
     const bool dialog = themed_dialog &&
-        widget->objectName() != QStringLiteral("MasterPasswordDialog");
+        widget->objectName() != QStringLiteral("MasterPasswordDialog") &&
+        !widget->property("appDialog").toBool();
     const bool popup = qobject_cast<QMenu*>(widget) || widget->windowType() == Qt::ToolTip;
     if (event->type() == QEvent::Polish) {
         if (qobject_cast<QCheckBox*>(widget)) widget->setFocusPolicy(Qt::TabFocus);
@@ -295,6 +297,7 @@ Theme ThemeManager::DetectSystemTheme() const {
 
 void ThemeManager::RefreshPalette() {
     effective_theme_ = (theme_ == Theme::kSystem) ? DetectSystemTheme() : theme_;
+    tokens_valid_ = false;
 }
 
 QString ThemeManager::ReadResource(const QString& path) const {
@@ -321,21 +324,31 @@ QString ThemeManager::LoadStyleSheet() const {
                             tokens);
 }
 
+const QHash<QString, QString>& ThemeManager::Tokens() const {
+    if (!tokens_valid_ || tokens_theme_ != effective_theme_) {
+        const QString tokens_path =
+            effective_theme_ == Theme::kLight
+                ? QStringLiteral(":/qss/tokens_light.qss")
+                : QStringLiteral(":/qss/tokens_dark.qss");
+        tokens_ = ParseTokens(ReadResource(tokens_path));
+        colors_.clear();
+        tokens_theme_ = effective_theme_;
+        tokens_valid_ = !tokens_.isEmpty();
+    }
+    return tokens_;
+}
+
 QColor ThemeManager::Color(const QString& token) const {
-    const QString tokens_path =
-        effective_theme_ == Theme::kLight
-            ? QStringLiteral(":/qss/tokens_light.qss")
-            : QStringLiteral(":/qss/tokens_dark.qss");
-    const auto tokens = ParseTokens(ReadResource(tokens_path));
-    return ParseColorValue(tokens.value(token));
+    const auto& tokens = Tokens();
+    const auto cached = colors_.constFind(token);
+    if (cached != colors_.constEnd()) return cached.value();
+    const QColor color = ParseColorValue(tokens.value(token));
+    colors_.insert(token, color);
+    return color;
 }
 
 QString ThemeManager::ColorHex(const QString& token) const {
-    const QString tokens_path =
-        effective_theme_ == Theme::kLight
-            ? QStringLiteral(":/qss/tokens_light.qss")
-            : QStringLiteral(":/qss/tokens_dark.qss");
-    return ParseTokens(ReadResource(tokens_path)).value(token);
+    return Tokens().value(token);
 }
 
 }  // namespace passvault::ui

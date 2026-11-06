@@ -1,6 +1,5 @@
 #include "ui/oauth_wizard_dialog.h"
 
-#include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -11,48 +10,33 @@ namespace passvault::ui {
 
 OAuthWizardDialog::OAuthWizardDialog(oauth::GoogleOAuthClient* client,
                                      QWidget* parent)
-    : QDialog(parent), client_(client) {
+    : AppDialog(QStringLiteral("连接 Google Drive"), parent), client_(client) {
     setObjectName(QStringLiteral("OAuthWizardDialog"));
-    setWindowTitle(QStringLiteral("连接 Google Drive"));
-    setModal(true);
-    setMinimumWidth(480);
-
-    auto* root = new QVBoxLayout(this);
-    root->setSizeConstraint(QLayout::SetFixedSize);
-    root->setContentsMargins(8, 12, 8, 12);
-    root->setSpacing(12);
-
-    auto* title = new QLabel(QStringLiteral("连接 Google Drive"), this);
-    title->setObjectName(QStringLiteral("DialogTitle"));
-    root->addWidget(title);
+    SetIcon(QStringLiteral("cloud"), QStringLiteral("primary"));
+    SetCardWidth(480);
 
     description_ = new QLabel(
         QStringLiteral(
             "点击“开始授权”后，在浏览器中登录 Google 账号，完成后此窗口将自动关闭。"
             "PassVault 仅访问自己创建的云端备份。"),
-        this);
+        body());
     description_->setObjectName(QStringLiteral("DialogSubtitle"));
-    description_->setFixedWidth(432);
     description_->setWordWrap(true);
-    root->addWidget(description_);
+    body_layout()->addWidget(description_);
 
-    status_ = new QLabel(this);
+    status_ = new QLabel(body());
     status_->setObjectName(QStringLiteral("OAuthStatus"));
     status_->setWordWrap(true);
     status_->hide();
-    root->addWidget(status_);
+    body_layout()->addWidget(status_);
 
-    auto* buttons = new QHBoxLayout;
-    cancel_ = new QPushButton(QStringLiteral("取消"), this);
-    connect(cancel_, &QPushButton::clicked, this,
-            &OAuthWizardDialog::OnCancel);
-    start_ = new QPushButton(QStringLiteral("开始授权"), this);
-    start_->setProperty("accent", true);
+    cancel_ = AddButton(QMessageBox::Cancel);
+    start_ = AddButton(QStringLiteral("开始授权"), QMessageBox::ActionRole,
+                       ButtonStyle::kPrimary);
+    // Starting opens the browser; it only happens on an explicit click.
+    disconnect(start_, &QPushButton::clicked, this, nullptr);
     connect(start_, &QPushButton::clicked, this, &OAuthWizardDialog::OnStart);
-    buttons->addStretch();
-    buttons->addWidget(cancel_);
-    buttons->addWidget(start_);
-    root->addLayout(buttons);
+    SetDefaultButton(start_);
 
     if (client_) {
         connect(client_, &oauth::GoogleOAuthClient::AuthorizationSucceeded,
@@ -70,9 +54,11 @@ void OAuthWizardDialog::OnStart() {
     client_->Authorize();
 }
 
-void OAuthWizardDialog::OnCancel() {
-    if (client_) client_->CancelAuthorization();
-    reject();
+void OAuthWizardDialog::OnCancel() { reject(); }
+
+void OAuthWizardDialog::reject() {
+    if (client_ && result() != QDialog::Accepted) client_->CancelAuthorization();
+    AppDialog::reject();
 }
 
 void OAuthWizardDialog::OnSuccess() {

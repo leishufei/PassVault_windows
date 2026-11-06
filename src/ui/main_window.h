@@ -100,10 +100,12 @@ class MainWindow : public QMainWindow {
     void OnCopyPasswordRequested(std::int64_t entry_id);
     void OnCopyUsernameRequested(std::int64_t entry_id);
     void OnOpenWebsiteRequested(std::int64_t entry_id);
+    void OnCopyWebsiteRequested(std::int64_t entry_id);
     void OnFavoriteToggleRequested(std::int64_t entry_id, bool desired);
     void OnEditorSaveRequested();
     void OnEditorCancelRequested();
     void OnCategoryChangeRequested(std::int64_t entry_id);
+    void OnOpenGenerator();
 
  private:
     QWidget* BuildSidebar();
@@ -135,6 +137,10 @@ class MainWindow : public QMainWindow {
     void UpdateSyncStatus(sync::SyncManager::StatusKind kind,
                           const QString& message);
     QWidget* CreatePasswordCard(const model::PasswordEntry& entry);
+    // Card widgets are expensive (about ten child widgets each); only rows in
+    // or near the viewport get one, so switching to a large list stays fast.
+    void BuildVisibleCards();
+    void BuildCardsForRows(int first_row, int last_row);
     std::optional<model::PasswordEntry> FindEntry(std::int64_t id) const;
 
     std::optional<QString> DecryptPassword(
@@ -188,6 +194,12 @@ class MainWindow : public QMainWindow {
     bool suppress_selection_ = false;
     bool showing_detail_ = false;
     bool compact_sidebar_expanded_ = false;
+    // Background syncs stay quiet on success; only a sync the user started
+    // from the sidebar confirms itself with a toast.
+    bool manual_sync_pending_ = false;
+    // A reload (for example after a background sync) must not destroy an
+    // inline category rename that is still being typed.
+    bool category_refresh_pending_ = false;
     enum class SortOrder { kUpdated, kCreated, kTitle };
     SortOrder sort_order_ = SortOrder::kUpdated;
     bool sort_ascending_ = false;

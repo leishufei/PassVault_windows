@@ -25,7 +25,9 @@ namespace passvault::ui {
 
 namespace {
 
-constexpr int kIconButtonSize = 28;
+// Field actions share the value's line box so they sit level with the text.
+constexpr int kIconButtonSize = 24;
+constexpr int kValueLineHeight = kIconButtonSize;
 constexpr int kIconSize = 16;
 constexpr int kHeaderActionSize = 32;
 constexpr int kAvatarSize = 48;
@@ -43,6 +45,7 @@ QToolButton* MakeIconButton(const QString& icon_name, const QString& tooltip) {
     auto* button = new QToolButton();
     button->setObjectName(QStringLiteral("DetailFieldButton"));
     button->setToolTip(tooltip);
+    button->setAccessibleName(tooltip);
     button->setCursor(Qt::PointingHandCursor);
     button->setFixedSize(kIconButtonSize, kIconButtonSize);
     const QColor color =
@@ -110,12 +113,14 @@ QWidget* DetailPanel::BuildEmptyPage() {
     auto* title = MakeLabel(QStringLiteral("选择一条密码查看详情"),
                             QStringLiteral("DetailEmptyText"));
     title->setAlignment(Qt::AlignCenter);
-    layout->addWidget(title, 0, Qt::AlignCenter);
+    // Full row width with centered text: a centered wrapping label would be
+    // sized from its hint and could break a short line early.
+    layout->addWidget(title);
 
     auto* subtitle = MakeLabel(QStringLiteral("侧边选中或新建一条即可开始"),
                                QStringLiteral("DetailEmptyText"));
     subtitle->setAlignment(Qt::AlignCenter);
-    layout->addWidget(subtitle, 0, Qt::AlignCenter);
+    layout->addWidget(subtitle);
 
     layout->addStretch(2);
     return page;
@@ -269,26 +274,28 @@ QWidget* DetailPanel::BuildContentPage() {
                          std::initializer_list<QToolButton**> buttons) {
         auto* row = new QWidget(info_card);
         row->setObjectName(QStringLiteral("DetailCardRow"));
-        row->setMinimumHeight(64);
-        auto* row_layout = new QHBoxLayout(row);
-        row_layout->setContentsMargins(0, 0, 0, 0);
-        row_layout->setSpacing(8);
-
-        auto* col = new QVBoxLayout();
+        auto* col = new QVBoxLayout(row);
         col->setContentsMargins(0, 0, 0, 0);
-        col->setSpacing(8);
+        col->setSpacing(6);
         auto* label = MakeLabel(label_text, QStringLiteral("DetailFieldLabel"));
         col->addWidget(label);
+
+        // Value and its actions form one line: the buttons are exactly the
+        // height of the value's line box and aligned with its first line.
+        auto* value_line = new QHBoxLayout();
+        value_line->setContentsMargins(0, 0, 0, 0);
+        value_line->setSpacing(4);
         value->setTextInteractionFlags(Qt::TextSelectableByMouse);
         auto value_policy = value->sizePolicy();
         value_policy.setHorizontalPolicy(QSizePolicy::Ignored);
         value->setSizePolicy(value_policy);
-        col->addWidget(value);
-        row_layout->addLayout(col, 1);
-
+        value->setMinimumHeight(kValueLineHeight);
+        value->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        value_line->addWidget(value, 1);
         for (QToolButton** btn_ptr : buttons) {
-            row_layout->addWidget(*btn_ptr);
+            value_line->addWidget(*btn_ptr, 0, Qt::AlignTop);
         }
+        col->addLayout(value_line);
         info_layout->addWidget(row);
         return row;
     };
@@ -332,8 +339,13 @@ QWidget* DetailPanel::BuildContentPage() {
     });
     website_value_ = MakeLabel(QString(), QStringLiteral("DetailFieldValueLink"));
     website_value_->setObjectName(QStringLiteral("DetailFieldValueLink"));
-    website_row_ =
-        build_row(QStringLiteral("网址"), website_value_, {&website_open_});
+    website_copy_ = MakeIconButton(QStringLiteral("copy"),
+                                   QStringLiteral("复制网址"));
+    connect(website_copy_, &QToolButton::clicked, this, [this]() {
+        if (entry_) emit CopyWebsiteRequested(entry_->id);
+    });
+    website_row_ = build_row(QStringLiteral("网址"), website_value_,
+                             {&website_open_, &website_copy_});
     website_value_->setTextFormat(Qt::RichText);
     website_value_->setTextInteractionFlags(Qt::LinksAccessibleByMouse | Qt::LinksAccessibleByKeyboard);
     connect(website_value_, &QLabel::linkActivated, this, [this](const QString&) {
@@ -357,10 +369,13 @@ QWidget* DetailPanel::BuildContentPage() {
     auto make_stamp_row = [&](const QString& label_text, QLabel** value_ptr) {
         auto* row = new QHBoxLayout();
         row->setContentsMargins(0, 0, 0, 0);
-        row->addWidget(
-            MakeLabel(label_text, QStringLiteral("DetailStampLabel")));
+        auto* label = MakeLabel(label_text, QStringLiteral("DetailStampLabel"));
+        label->setWordWrap(false);
+        row->addWidget(label);
         row->addStretch(1);
         auto* value = MakeLabel(QString(), QStringLiteral("DetailStampValue"));
+        // Timestamps are single-line metadata; never split date and time.
+        value->setWordWrap(false);
         row->addWidget(value);
         *value_ptr = value;
         stamp_layout->addLayout(row);
@@ -462,6 +477,7 @@ void DetailPanel::RefreshView() {
             .arg(ThemeManager::Instance()->ColorHex(QStringLiteral("primary")),
                  e.website.toHtmlEscaped()));
     website_open_->setEnabled(has_website);
+    website_copy_->setEnabled(has_website);
     if (website_row_) website_row_->show();
     if (website_divider_) website_divider_->show();
 
@@ -561,6 +577,11 @@ void DetailPanel::RefreshThemeAssets() {
     }
     if (website_open_) {
         website_open_->setIcon(icon(QStringLiteral("external-link"),
+                                    QStringLiteral("text-tertiary"),
+                                    kIconSize));
+    }
+    if (website_copy_) {
+        website_copy_->setIcon(icon(QStringLiteral("copy"),
                                     QStringLiteral("text-tertiary"),
                                     kIconSize));
     }

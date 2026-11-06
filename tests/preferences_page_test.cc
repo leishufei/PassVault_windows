@@ -827,6 +827,23 @@ TEST_F(PreferencesPageTest, TabsSwitchBetweenPages) {
     }
 }
 
+TEST_F(PreferencesPageTest, SettingDropdownsUseCompactSharedWidth) {
+    page_.resize(1200, 800);
+    page_.show();
+    QApplication::processEvents();
+    for (auto* combo : {themeCombo(), autoLockCombo(), clipboardCombo()}) {
+        ASSERT_NE(combo, nullptr);
+        SCOPED_TRACE(combo->objectName().toStdString());
+        EXPECT_EQ(combo->width(), themeCombo()->width());
+        EXPECT_LE(combo->width(), 120);
+        for (int i = 0; i < combo->count(); ++i) {
+            // Text inset 12px + arrow area 30px must leave room for every option.
+            EXPECT_LE(combo->fontMetrics().horizontalAdvance(combo->itemText(i)) + 42,
+                      combo->width());
+        }
+    }
+}
+
 TEST_F(PreferencesPageTest, DefaultValuesWhenUnset) {
     QSettings settings;
     settings.remove("session/auto_lock_minutes");

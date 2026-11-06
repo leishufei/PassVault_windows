@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QAction>
 #include <QClipboard>
+#include <QComboBox>
 #include <QColor>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -54,8 +55,10 @@
 #include "sync/sync_manager.h"
 #include "sync/sync_scheduler.h"
 #include "ui/detail_panel.h"
+#include "ui/app_dialog.h"
 #include "ui/clipboard_manager.h"
 #include "ui/editor_panel.h"
+#include "ui/generator_dialog.h"
 #include "ui/main_window.h"
 #include "ui/preferences_page.h"
 #include "ui/theme_manager.h"
@@ -69,6 +72,7 @@ using passvault::storage::CategoryDao;
 using passvault::storage::Database;
 using passvault::storage::EnsureCurrentSchema;
 using passvault::storage::PasswordDao;
+using passvault::ui::AppDialog;
 using passvault::ui::DetailPanel;
 using passvault::ui::EditorPanel;
 using passvault::ui::MainWindow;
@@ -390,15 +394,24 @@ TEST_F(MainWindowTest, AddCategoryButtonIsAvailable) {
     EXPECT_EQ(add_button->toolTip(), QStringLiteral("新增分类"));
 }
 
-TEST_F(MainWindowTest, PlaceholderHeaderActionsAreDisabled) {
+TEST_F(MainWindowTest, HeaderMoreMenuOffersWorkspaceActions) {
     auto* more = window_->findChild<QToolButton*>(
         QStringLiteral("HeaderMoreButton"));
     auto* sort =
         window_->findChild<QPushButton*>(QStringLiteral("ListSortMenu"));
     ASSERT_NE(more, nullptr);
     ASSERT_NE(sort, nullptr);
-    EXPECT_FALSE(more->isEnabled());
+    EXPECT_TRUE(more->isEnabled());
     EXPECT_TRUE(sort->isEnabled());
+    ASSERT_NE(more->menu(), nullptr);
+    for (const char* name : {"MoreGeneratorAction", "MoreImportAction",
+                             "MoreExportAction", "MoreSettingsAction"}) {
+        EXPECT_NE(more->menu()->findChild<QAction*>(QString::fromLatin1(name)),
+                  nullptr) << name;
+    }
+    QSignalSpy exports(window_.get(), &MainWindow::ExportCsvRequested);
+    more->menu()->findChild<QAction*>(QStringLiteral("MoreExportAction"))->trigger();
+    EXPECT_EQ(exports.count(), 1);
 }
 
 TEST_F(MainWindowTest, PasswordCardsUseTargetDensityAndListStateLayer) {
@@ -988,19 +1001,21 @@ TEST_F(MainWindowTest, FavoriteToggleFromDetailPersists) {
     EXPECT_EQ(password_dao_->FindById(id)->is_favorite, !before);
 }
 
-TEST_F(MainWindowTest, DeleteConfirmationDefaultsToNoAndCancelPreservesEntry) {
+TEST_F(MainWindowTest, TrashConfirmationDefaultsToConfirmAndCancelPreservesEntry) {
     passwords()->setCurrentRow(0);
     const std::int64_t id = detail()->entry_id();
     ASSERT_GT(id, 0);
-    bool saw_default_no = false;
+    bool saw_default_yes = false;
     bool saw_truthful_message = false;
 
-    QTimer::singleShot(0, [&saw_default_no, &saw_truthful_message]() {
+    // Moving to the trash can be undone, so Enter confirms it.
+    QTimer::singleShot(0, [&saw_default_yes, &saw_truthful_message]() {
         auto* message =
-            qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+            qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(message, nullptr);
         auto* no_button = message->button(QMessageBox::No);
-        saw_default_no = message->defaultButton() == no_button;
+        saw_default_yes =
+            message->defaultButton() == message->button(QMessageBox::Yes);
         saw_truthful_message =
             message->text() == QStringLiteral("确定将该密码移至回收站吗？");
         ASSERT_NE(no_button, nullptr);
@@ -1010,7 +1025,7 @@ TEST_F(MainWindowTest, DeleteConfirmationDefaultsToNoAndCancelPreservesEntry) {
         ->findChild<QToolButton*>(QStringLiteral("DetailHeaderDeleteButton"))
         ->click();
 
-    EXPECT_TRUE(saw_default_no);
+    EXPECT_TRUE(saw_default_yes);
     EXPECT_TRUE(saw_truthful_message);
     ASSERT_TRUE(password_dao_->FindById(id).has_value());
     EXPECT_FALSE(password_dao_->FindById(id)->is_deleted);
@@ -1025,7 +1040,7 @@ TEST_F(MainWindowTest, DeleteConfirmationLogicallyDeletesEntry) {
 
     QTimer::singleShot(0, []() {
         auto* message =
-            qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+            qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(message, nullptr);
         auto* yes_button = message->button(QMessageBox::Yes);
         ASSERT_NE(yes_button, nullptr);
@@ -1049,7 +1064,7 @@ TEST_F(MainWindowTest, DeleteFailurePreservesDetailAndShowsError) {
 
     QTimer::singleShot(0, []() {
         auto* message =
-            qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+            qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(message, nullptr);
         auto* yes_button = message->button(QMessageBox::Yes);
         ASSERT_NE(yes_button, nullptr);
@@ -1219,9 +1234,33 @@ TEST_F(MainWindowTest, SortMenuSupportsBothDirectionsForEveryField) {
     }
 }
 
+TEST_F(MainWindowTest, SyncRefreshesCategoryNameInOpenEditor) {
+    const auto entries = password_dao_->ListByCategory(work_category_id_);
+    ASSERT_EQ(entries.size(), 1u);
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnEditRequested",
+        Q_ARG(std::int64_t, entries.front().id)));
+    auto* combo = editor()->findChild<QComboBox*>("EditorCategoryCombo");
+    ASSERT_NE(combo, nullptr);
+    EXPECT_EQ(combo->currentText(), QStringLiteral("Work"));
+    auto category = category_dao_->FindById(work_category_id_);
+    ASSERT_TRUE(category);
+    category->name = QStringLiteral("Remote rename");
+    category->updated_at += 1;
+    ASSERT_TRUE(category_dao_->Update(*category));
+    const auto kind = passvault::sync::SyncManager::StatusKind::kSuccess;
+    const QString message;
+    ASSERT_TRUE(QMetaObject::invokeMethod(window_.get(), "OnSyncFinished",
+        QGenericArgument("sync::SyncManager::StatusKind", &kind),
+        QGenericArgument("QString", &message)));
+    EXPECT_EQ(categories()->item(0)->text(), category->name);
+    EXPECT_EQ(combo->currentText(), category->name);
+    EXPECT_EQ(combo->currentData().toLongLong(), work_category_id_);
+    EXPECT_TRUE(editor()->IsOpen());
+}
+
 TEST_F(MainWindowTest, RenameCategoryPersistsWithoutChangingItsPasswords) {
     QTimer::singleShot(0, [] {
-        auto* dialog = qobject_cast<QInputDialog*>(QApplication::activeModalWidget());
+        auto* dialog = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(dialog, nullptr);
         dialog->setTextValue("Renamed");
         dialog->accept();
@@ -1241,9 +1280,9 @@ TEST_F(MainWindowTest, DeleteCategoryTrashesAllItsPasswordsAndPreservesCiphertex
     categories()->setCurrentRow(0);
     passwords()->setCurrentRow(0);
     QTimer::singleShot(0, [] {
-        auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        auto* dialog = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(dialog, nullptr);
-        EXPECT_EQ(dialog->defaultButton(), dialog->button(QMessageBox::No));
+        EXPECT_EQ(dialog->defaultButton(), dialog->button(QMessageBox::Yes));
         EXPECT_TRUE(dialog->text().contains(QStringLiteral("回收站")));
         dialog->button(QMessageBox::Yes)->click();
     });
@@ -1269,7 +1308,7 @@ TEST_F(MainWindowTest, FailedCategoryDeleteRollsBackPasswordDeletion) {
     ASSERT_TRUE(db_->Execute("CREATE TRIGGER fail_category_delete BEFORE UPDATE "
                             "ON categories BEGIN SELECT RAISE(ABORT, 'blocked'); END"));
     QTimer::singleShot(0, [] {
-        auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        auto* dialog = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(dialog, nullptr);
         dialog->button(QMessageBox::Yes)->click();
     });
@@ -1284,7 +1323,7 @@ TEST_F(MainWindowTest, FailedPasswordDeletionPreservesCategoryAndPasswords) {
     ASSERT_TRUE(db_->Execute("CREATE TRIGGER fail_password_delete BEFORE UPDATE "
                             "ON password_entries BEGIN SELECT RAISE(ABORT, 'blocked'); END"));
     QTimer::singleShot(0, [] {
-        auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        auto* dialog = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(dialog, nullptr);
         dialog->button(QMessageBox::Yes)->click();
     });
@@ -1327,7 +1366,7 @@ TEST_F(MainWindowTest, CategoryMutationsScheduleSyncWithoutContactingProvider) {
     window_ = std::make_unique<MainWindow>(deps);
     QSignalSpy scheduled(&scheduler, &passvault::sync::SyncScheduler::SyncScheduled);
     QTimer::singleShot(0, [] {
-        auto* dialog = qobject_cast<QInputDialog*>(QApplication::activeModalWidget());
+        auto* dialog = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(dialog, nullptr);
         dialog->setTextValue("Synced category");
         dialog->accept();
@@ -1335,7 +1374,7 @@ TEST_F(MainWindowTest, CategoryMutationsScheduleSyncWithoutContactingProvider) {
     QMetaObject::invokeMethod(window_.get(), "OnAddCategory");
     EXPECT_EQ(scheduled.count(), 1);
     QTimer::singleShot(0, [] {
-        auto* dialog = qobject_cast<QInputDialog*>(QApplication::activeModalWidget());
+        auto* dialog = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(dialog, nullptr);
         dialog->setTextValue("Renamed work");
         dialog->accept();
@@ -1347,7 +1386,7 @@ TEST_F(MainWindowTest, CategoryMutationsScheduleSyncWithoutContactingProvider) {
     QApplication::processEvents();
     EXPECT_EQ(scheduled.count(), 3);
     QTimer::singleShot(0, [] {
-        auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        auto* dialog = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(dialog, nullptr);
         dialog->button(QMessageBox::Yes)->click();
     });
@@ -1359,7 +1398,7 @@ TEST_F(MainWindowTest, CategoryMutationsScheduleSyncWithoutContactingProvider) {
 
 TEST_F(MainWindowTest, CancelCategoryDeletePreservesCategoryAndPasswords) {
     QTimer::singleShot(0, [] {
-        auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        auto* dialog = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(dialog, nullptr);
         dialog->button(QMessageBox::No)->click();
     });
@@ -1403,7 +1442,7 @@ TEST_F(MainWindowTest, DeleteKeyTrashesAllSelectedAndPreservesCiphertext) {
     const auto second = password_dao_->FindById(
         passwords()->item(1)->data(Qt::UserRole).toLongLong());
     QTimer::singleShot(0, []() {
-        auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        auto* message = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(message, nullptr);
         EXPECT_TRUE(message->text().contains(QStringLiteral("2 条")));
         message->button(QMessageBox::Yes)->click();
@@ -1429,7 +1468,7 @@ TEST_F(MainWindowTest, BatchDeleteFailureAndCancelKeepAllSelections) {
         "WHEN OLD.title = 'GitLab' BEGIN SELECT RAISE(ABORT, 'test'); END"));
     for (const auto answer : {QMessageBox::No, QMessageBox::Yes}) {
         QTimer::singleShot(0, [answer]() {
-            auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+            auto* message = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
             ASSERT_NE(message, nullptr);
             message->button(answer)->click();
         });
@@ -1449,7 +1488,7 @@ TEST_F(MainWindowTest, RowDeleteOnlyTrashesItsOwnRecord) {
     ASSERT_NE(card, nullptr);
     EXPECT_NE(card->findChild<QToolButton*>("PasswordCardDeleteButton"), nullptr);
     QTimer::singleShot(0, []() {
-        auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        auto* message = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(message, nullptr);
         message->button(QMessageBox::Yes)->click();
     });
@@ -1513,7 +1552,7 @@ TEST_F(MainWindowTest, ContextMenuDeletesTheExistingMultipleSelection) {
         ASSERT_NE(menu, nullptr);
         EXPECT_EQ(menu->actions().size(), 3);
         QTimer::singleShot(0, []() {
-            auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+            auto* message = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
             ASSERT_NE(message, nullptr);
             message->button(QMessageBox::Yes)->click();
         });
@@ -1611,10 +1650,10 @@ TEST_F(MainWindowTest, FilteredEmptyTrashConfirmsAllAndCancelPreservesContent) {
     ASSERT_TRUE(clear->isEnabled());
     for (const auto answer : {QMessageBox::No, QMessageBox::Yes}) {
         QTimer::singleShot(0, [answer]() {
-            auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+            auto* message = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
             ASSERT_NE(message, nullptr);
             EXPECT_TRUE(message->text().contains(QStringLiteral("3 条")));
-            EXPECT_EQ(message->defaultButton(), message->button(QMessageBox::No));
+            EXPECT_EQ(message->defaultButton(), message->button(QMessageBox::Yes));
             message->button(answer)->click();
         });
         clear->click();
@@ -1638,7 +1677,7 @@ TEST_F(MainWindowTest, EmptyTrashKeepsEntriesAddedWhileConfirmationIsOpen) {
     auto* clear = window_->findChild<QPushButton*>("EmptyTrashButton");
     ASSERT_NE(clear, nullptr);
     QTimer::singleShot(0, [this]() {
-        auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        auto* message = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(message, nullptr);
         EXPECT_TRUE(message->text().contains(QStringLiteral("3 条")));
         Seed(QStringLiteral("late-entry"), QStringLiteral("synthetic"), false, 0, 6000);
@@ -1690,7 +1729,7 @@ TEST_F(MainWindowTest, TrashControlShiftSelectionAndDeleteKeyRemoveActualSelecti
     ASSERT_EQ(passwords()->selectedItems().size(), 2);
     EXPECT_EQ(detail()->entry_id(), passwords()->item(0)->data(Qt::UserRole).toLongLong());
     QTimer::singleShot(0, []() {
-        auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        auto* message = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(message, nullptr);
         EXPECT_TRUE(message->text().contains(QStringLiteral("2 条")));
         message->button(QMessageBox::Yes)->click();
@@ -1755,7 +1794,7 @@ TEST_F(MainWindowTest, TrashRowActionsScheduleDebouncedSyncAndPreserveUnselected
     auto* remove = card->findChild<QToolButton*>("PasswordCardDeleteButton");
     ASSERT_NE(remove, nullptr);
     QTimer::singleShot(0, []() {
-        auto* message = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        auto* message = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(message, nullptr);
         EXPECT_TRUE(message->text().contains(QStringLiteral("1 条")));
         message->button(QMessageBox::Yes)->click();
@@ -1909,7 +1948,7 @@ TEST_F(MainWindowTest, DetailActionsUseDisplayedEntryWhileSelectionDiffers) {
     EXPECT_EQ(editor()->Result().entry.id, displayed);
     editor()->Close();
     QTimer::singleShot(0, [] {
-        auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        auto* dialog = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(dialog, nullptr);
         dialog->button(QMessageBox::Yes)->click();
     });
@@ -2106,7 +2145,7 @@ TEST_F(MainWindowTest, RemovingOtherEntryPreservesDisplayedDetailAndTemporaryEye
     const auto other_id =
         passwords()->item(1)->data(Qt::UserRole).toLongLong();
     QTimer::singleShot(0, [] {
-        auto* dialog = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
+        auto* dialog = qobject_cast<AppDialog*>(QApplication::activeModalWidget());
         ASSERT_NE(dialog, nullptr);
         dialog->button(QMessageBox::Yes)->click();
     });
@@ -2363,4 +2402,54 @@ TEST_F(MainWindowTest, UnfavoriteImmediatelyRemovesRowFromFavorites) {
     EXPECT_FALSE(password_dao_->FindById(id)->is_favorite);
     EXPECT_EQ(passwords()->count(), 0);
     EXPECT_EQ(sections()->item(1)->data(kSidebarCountRole).toInt(), 0);
+}
+
+TEST_F(MainWindowTest, SidebarGeneratorOpensStandaloneGenerator) {
+    auto* button = window_->findChild<QPushButton*>("SidebarGeneratorButton");
+    ASSERT_NE(button, nullptr);
+    bool opened = false;
+    QTimer::singleShot(0, [&opened] {
+        auto* dialog = qobject_cast<passvault::ui::GeneratorDialog*>(
+            QApplication::activeModalWidget());
+        ASSERT_NE(dialog, nullptr);
+        opened = !dialog->password().isEmpty();
+        dialog->reject();
+    });
+    button->click();
+    EXPECT_TRUE(opened);
+}
+
+TEST_F(MainWindowTest, LargeListsOnlyBuildCardsNearTheViewport) {
+    window_->show();
+    QApplication::processEvents();
+    for (int i = 0; i < 300; ++i) {
+        Seed(QStringLiteral("Bulk %1").arg(i), QStringLiteral("user"), false, 0,
+             10000 + i);
+    }
+    window_->Reload();
+    ASSERT_EQ(passwords()->count(), 303);
+    int built = 0;
+    for (int row = 0; row < passwords()->count(); ++row) {
+        if (passwords()->itemWidget(passwords()->item(row))) ++built;
+    }
+    EXPECT_GT(built, 0);
+    EXPECT_LT(built, 100);
+    passwords()->scrollToItem(passwords()->item(passwords()->count() - 1));
+    QApplication::processEvents();
+    EXPECT_NE(passwords()->itemWidget(passwords()->item(passwords()->count() - 1)),
+              nullptr);
+}
+
+TEST_F(MainWindowTest, EscapeClosesEditorAfterClickingAnotherPassword) {
+    window_->resize(1280, 800);
+    window_->show();
+    QApplication::processEvents();
+    newButton()->click();
+    ASSERT_TRUE(editor()->IsOpen());
+    QTest::mouseClick(passwords()->viewport(), Qt::LeftButton, Qt::NoModifier,
+                      passwords()->visualItemRect(passwords()->item(1)).center());
+    QApplication::processEvents();
+    ASSERT_TRUE(editor()->IsOpen());
+    QTest::keyClick(passwords(), Qt::Key_Escape);
+    EXPECT_FALSE(editor()->IsOpen());
 }

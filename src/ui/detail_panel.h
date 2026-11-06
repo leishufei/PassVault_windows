@@ -46,6 +46,7 @@ class DetailPanel : public QFrame {
     void CopyPasswordRequested(std::int64_t entry_id);
     void CopyUsernameRequested(std::int64_t entry_id);
     void OpenWebsiteRequested(std::int64_t entry_id);
+    void CopyWebsiteRequested(std::int64_t entry_id);
     void FavoriteToggleRequested(std::int64_t entry_id, bool desired);
 
  private:
@@ -88,6 +89,7 @@ class DetailPanel : public QFrame {
     QWidget* website_row_ = nullptr;
     QLabel* website_value_ = nullptr;
     QToolButton* website_open_ = nullptr;
+    QToolButton* website_copy_ = nullptr;
 
     QLabel* created_value_ = nullptr;
     QLabel* updated_value_ = nullptr;

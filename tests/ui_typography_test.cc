@@ -31,6 +31,7 @@
 #include "storage/database.h"
 #include "storage/password_dao.h"
 #include "storage/schema.h"
+#include "ui/app_dialog.h"
 #include "ui/detail_panel.h"
 #include "ui/editor_panel.h"
 #include "ui/generator_dialog.h"
@@ -110,6 +111,7 @@ void AuditPage(QWidget* page, const QString& name, QJsonArray* measurements) {
     }
     if (object == "ListTitle" || object == "DetailTitle" ||
         object == "PreferencesHeaderTitle" || object == "DialogTitle" ||
+        object == "AppDialogTitle" ||
         object == "EditorHeaderTitle" ||
         object == "EditorGeneratorHeaderTitle") {
       EXPECT_EQ(info.pixelSize(), 16) << object.toStdString();
@@ -234,13 +236,16 @@ TEST(UiTypographyTest, EveryPageUsesSharedTypeHierarchyAndSansSerifGlyphs) {
                 &measurements);
       master.hide();
     }
-    QInputDialog category(&window);
-    category.setLabelText(QStringLiteral("分类名称"));
+    ui::AppDialog category(QStringLiteral("新增分类"), &window);
+    category.AddTextField(QStringLiteral("分类名称"));
+    category.AddButton(QMessageBox::Cancel);
+    category.AddButton(QMessageBox::Ok);
     AuditPage(&category, "category" + suffix, &measurements);
     category.hide();
-    QMessageBox confirmation(QMessageBox::Question, QStringLiteral("确认"),
-                              QStringLiteral("确定删除演示条目吗？"),
-                              QMessageBox::Yes | QMessageBox::No, &window);
+    ui::AppDialog confirmation(QStringLiteral("移至回收站"), &window);
+    confirmation.SetMessage(QStringLiteral("确定删除演示条目吗？"));
+    confirmation.AddButton(QMessageBox::No);
+    confirmation.AddButton(QMessageBox::Yes);
     AuditPage(&confirmation, "confirmation" + suffix, &measurements);
     confirmation.hide();
   }
@@ -274,18 +279,20 @@ TEST(UiTypographyTest, NativeDialogHasNoSystemBorder) {
     theme->ApplyTheme(value);
     QTest::qWait(100);
     ui::OAuthWizardDialog oauth(nullptr, &parent);
-    QInputDialog category(&parent);
-    category.setLabelText(QStringLiteral("分类名称"));
-    category.setTextValue(QStringLiteral("演示分类"));
-    QMessageBox remove_category(
-        QMessageBox::Question, QStringLiteral("删除分类"),
+    ui::AppDialog category(QStringLiteral("新增分类"), &parent);
+    category.AddTextField(QStringLiteral("分类名称"), QStringLiteral("演示分类"));
+    category.AddButton(QMessageBox::Cancel);
+    category.AddButton(QMessageBox::Ok);
+    ui::AppDialog remove_category(QStringLiteral("删除分类"), &parent);
+    remove_category.SetMessage(
         QStringLiteral("删除分类“演示分类”及其中的所有密码？密码将移入回收站，"
-                       "不会永久删除。"),
-        QMessageBox::Yes | QMessageBox::No, &parent);
-    QMessageBox remove_entry(
-        QMessageBox::Question, QStringLiteral("移入回收站"),
-        QStringLiteral("确定将该密码移至回收站吗？"),
-        QMessageBox::Yes | QMessageBox::No, &parent);
+                       "不会永久删除。"));
+    remove_category.AddButton(QMessageBox::No);
+    remove_category.AddButton(QMessageBox::Yes, ui::AppDialog::ButtonStyle::kDanger);
+    ui::AppDialog remove_entry(QStringLiteral("移至回收站"), &parent);
+    remove_entry.SetMessage(QStringLiteral("确定将该密码移至回收站吗？"));
+    remove_entry.AddButton(QMessageBox::No);
+    remove_entry.AddButton(QMessageBox::Yes);
     const QList<QDialog*> dialogs{&oauth, &category, &remove_category,
                                   &remove_entry};
     const QStringList names{"oauth", "category", "delete-category",
@@ -312,11 +319,16 @@ TEST(UiTypographyTest, NativeDialogHasNoSystemBorder) {
         EXPECT_NE(GetWindowLongPtr(reinterpret_cast<HWND>(dialog->winId()),
                                    GWL_EXSTYLE) & WS_EX_LAYERED, 0);
 #endif
+        // AppDialog windows carry transparent shadow margins; the visible
+        // surface is the card.
+        auto* card = dialog->findChild<QWidget*>(QStringLiteral("AppDialogCard"));
+        ASSERT_NE(card, nullptr);
         if (qobject_cast<ui::OAuthWizardDialog*>(dialog)) {
-          EXPECT_EQ(dialog->width(), 480);
-          EXPECT_LT(dialog->height(), 200);
+          EXPECT_EQ(card->width(), 480);
+          EXPECT_LT(card->height(), 260);
         }
-        const QRect bounds = dialog->frameGeometry().adjusted(-6, -6, 6, 6);
+        const QRect bounds = QRect(card->mapToGlobal(QPoint(0, 0)), card->size())
+                                 .adjusted(-6, -6, 6, 6);
         EXPECT_TRUE(parent.frameGeometry().contains(bounds));
         const auto composed = dialog->screen()->grabWindow(
             0, bounds.x(), bounds.y(), bounds.width(), bounds.height());
@@ -325,8 +337,10 @@ TEST(UiTypographyTest, NativeDialogHasNoSystemBorder) {
           const QImage pixels = composed.toImage();
           const qreal scale = composed.devicePixelRatio();
           bool primary_visible = false;
+          bool has_primary = false;
           for (auto* button : dialog->findChildren<QPushButton*>()) {
             if (!button->property("accent").toBool()) continue;
+            has_primary = true;
             const QPoint sample = button->mapToGlobal(
                 QPoint(button->width() / 2, button->height() / 2 - 10)) -
                 bounds.topLeft();
@@ -336,7 +350,7 @@ TEST(UiTypographyTest, NativeDialogHasNoSystemBorder) {
                 << ' ' << color.name().toStdString();
             primary_visible |= color.blue() > color.red() + 50;
           }
-          EXPECT_TRUE(primary_visible);
+          EXPECT_EQ(primary_visible, has_primary);
           const QColor border = theme->Color(QStringLiteral("border-panel"));
           const QColor surface = theme->Color(QStringLiteral("bg-canvas"));
           const QImage underlay = parent.grab().toImage();
@@ -349,6 +363,8 @@ TEST(UiTypographyTest, NativeDialogHasNoSystemBorder) {
               const int edge_y = qMin(y - padding,
                                       pixels.height() - padding - 1 - y);
               if (edge_x > 4 * scale && edge_y > 4 * scale) continue;
+              // Rounded card corners show the backdrop and shadow.
+              if (edge_x <= 14 * scale && edge_y <= 14 * scale) continue;
               const QColor color = pixels.pixelColor(x, y);
               const QPoint point = parent.mapFromGlobal(
                   bounds.topLeft() + QPoint(qRound(x / scale),

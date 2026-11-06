@@ -431,6 +431,86 @@ TEST_F(SyncManagerTest, FullReadsPreserveCategoryReferenceInUploadedPayload) {
     EXPECT_TRUE(found_category);
 }
 
+TEST_F(SyncManagerTest, CloudCategoryRenameUpdatesNameAndPreservesPasswordCategory) {
+    manager_->set_provider(&provider_);
+    Category category;
+    category.uuid = QStringLiteral("rename-category");
+    category.name = QStringLiteral("Old name");
+    category.created_at = QDateTime::currentMSecsSinceEpoch();
+    category.updated_at = category.created_at;
+    const auto id = cat_dao_->Insert(category);
+    ASSERT_TRUE(id);
+    auto entry = MakeEntry(74, QStringLiteral("synthetic"), category.updated_at);
+    entry.category_id = *id;
+    ASSERT_TRUE(pwd_dao_->Insert(entry));
+    ASSERT_TRUE(manager_->PerformSync().success);
+    auto cloud = DecodeCloud(provider_);
+    ASSERT_TRUE(cloud);
+    ASSERT_EQ(cloud->categories.size(), 1u);
+    cloud->categories.front().name = QStringLiteral("Android rename");
+    cloud->categories.front().updated_at += 1000;
+    const auto backup = CloudCryptoService::EncryptForCloud(
+        cloud->ToJsonBytes(), std::string_view(kMasterPassword));
+    ASSERT_TRUE(backup);
+    provider_.SetCloudDirectly(backup->ToJsonBytes(), QStringLiteral("remote-rename"));
+    ASSERT_TRUE(manager_->PerformSync().success);
+    const auto renamed = cat_dao_->FindByUuid(category.uuid);
+    ASSERT_TRUE(renamed);
+    EXPECT_EQ(renamed->id, *id);
+    EXPECT_EQ(renamed->name, QStringLiteral("Android rename"));
+    EXPECT_EQ(renamed->updated_at, cloud->categories.front().updated_at);
+    const auto preserved = pwd_dao_->FindByUuid(entry.uuid);
+    ASSERT_TRUE(preserved);
+    EXPECT_EQ(preserved->category_id, *id);
+    EXPECT_EQ(preserved->updated_at, entry.updated_at);
+}
+
+TEST_F(SyncManagerTest, LocalCategoryRenameDuringCloudReadIsKeptAndUploaded) {
+    manager_->set_provider(&provider_);
+    Category category;
+    category.uuid = QStringLiteral("reentry-category");
+    category.name = QStringLiteral("Before");
+    category.created_at = 1000;
+    category.updated_at = 1000;
+    const auto id = cat_dao_->Insert(category);
+    ASSERT_TRUE(id);
+    ASSERT_TRUE(manager_->PerformSync().success);
+
+    // The network read runs a nested event loop; an inline rename committed
+    // right before clicking sync lands here, after the local snapshot.
+    provider_.on_read = [this, id] {
+        auto current = cat_dao_->FindById(*id);
+        ASSERT_TRUE(current);
+        current->name = QStringLiteral("After");
+        current->updated_at += 1;
+        ASSERT_TRUE(cat_dao_->Update(*current));
+    };
+    ASSERT_TRUE(manager_->PerformSync().success);
+
+    const auto local = cat_dao_->FindById(*id);
+    ASSERT_TRUE(local);
+    EXPECT_EQ(local->name, QStringLiteral("After"));
+    const auto cloud = DecodeCloud(provider_);
+    ASSERT_TRUE(cloud);
+    ASSERT_EQ(cloud->categories.size(), 1u);
+    EXPECT_EQ(cloud->categories.front().name, QStringLiteral("After"));
+}
+
+TEST_F(SyncManagerTest, CategoryWriteFailureStopsBeforeUpload) {
+    manager_->set_provider(&provider_);
+    Category category;
+    category.uuid = QStringLiteral("write-failure-category");
+    category.name = QStringLiteral("Category");
+    ASSERT_TRUE(cat_dao_->Insert(category));
+    ASSERT_TRUE(db_->Execute(
+        "CREATE TRIGGER fail_category_write BEFORE INSERT ON categories "
+        "BEGIN SELECT RAISE(ABORT,'injected'); END"));
+    const auto result = manager_->PerformSync();
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(result.message, QStringLiteral("保存同步分类失败"));
+    EXPECT_EQ(provider_.upload_count(), 0);
+}
+
 TEST_F(SyncManagerTest, NoProviderFailsFast) {
     QSignalSpy started(manager_.get(), &SyncManager::SyncStarted);
     QSignalSpy finished(manager_.get(), &SyncManager::SyncFinished);

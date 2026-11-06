@@ -49,6 +49,9 @@ class PasswordDao {
 
     int CountDuplicate(const QString& title, const QString& username,
                        std::int64_t exclude_id);
+    std::optional<bool> HasDuplicateInCategory(
+        std::int64_t category_id, const QString& title, const QString& username,
+        std::int64_t exclude_id);
 
     bool MigrateCategory(std::int64_t old_category_id,
                          std::int64_t new_category_id);

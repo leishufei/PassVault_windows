@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <QHash>
 #include <QObject>
 #include <QString>
 
@@ -45,10 +46,18 @@ class ThemeManager : public QObject {
     Theme DetectSystemTheme() const;
     void RefreshPalette();
     QString ReadResource(const QString& path) const;
+    // Parsed tokens of the effective theme. Color() runs on every paint and
+    // every card build, so the token file is parsed once per theme only.
+    const QHash<QString, QString>& Tokens() const;
 
     Theme theme_ = Theme::kSystem;
     Theme effective_theme_ = Theme::kDark;
     bool applying_theme_ = false;
+
+    mutable QHash<QString, QString> tokens_;
+    mutable QHash<QString, QColor> colors_;
+    mutable Theme tokens_theme_ = Theme::kSystem;
+    mutable bool tokens_valid_ = false;
 };
 
 }  // namespace passvault::ui

@@ -294,6 +294,39 @@ TEST_F(PasswordDaoTest, FindByPackageNameExactMatch) {
     EXPECT_EQ(out[0].app_package_name, QStringLiteral("com.foo"));
 }
 
+TEST_F(PasswordDaoTest, CategoryDuplicateIgnoresWebsiteSelfAndTombstones) {
+    auto entry = MakeEntry(1);
+    const auto id = dao_->Insert(entry);
+    ASSERT_TRUE(id);
+    EXPECT_EQ(dao_->HasDuplicateInCategory(0, entry.title, entry.username, -1), true);
+    EXPECT_EQ(dao_->HasDuplicateInCategory(0, entry.title, entry.username, *id), false);
+    EXPECT_EQ(dao_->HasDuplicateInCategory(1, entry.title, entry.username, -1), false);
+    EXPECT_EQ(dao_->HasDuplicateInCategory(
+                  0, QStringLiteral("other"), entry.username, -1), false);
+    EXPECT_EQ(dao_->HasDuplicateInCategory(
+                  0, entry.title, QStringLiteral("other"), -1), false);
+
+    auto duplicate = entry;
+    duplicate.uuid = QStringLiteral("duplicate");
+    duplicate.website = QStringLiteral("https://different.example");
+    const auto duplicate_id = dao_->Insert(duplicate);
+    ASSERT_TRUE(duplicate_id);
+    EXPECT_EQ(dao_->HasDuplicateInCategory(0, entry.title, entry.username, *id), true);
+    ASSERT_TRUE(dao_->LogicalDelete(*duplicate_id, 1800000000000LL));
+    EXPECT_EQ(dao_->HasDuplicateInCategory(0, entry.title, entry.username, *id), false);
+
+    entry.id = *id;
+    entry.username.clear();
+    ASSERT_TRUE(dao_->Update(entry));
+    EXPECT_EQ(dao_->HasDuplicateInCategory(0, entry.title, QString(), -1), true);
+}
+
+TEST_F(PasswordDaoTest, CategoryDuplicateReportsReadFailure) {
+    ASSERT_TRUE(db_->Execute("DROP TABLE password_entries"));
+    EXPECT_FALSE(dao_->HasDuplicateInCategory(
+        0, QStringLiteral("title"), QStringLiteral("user"), -1).has_value());
+}
+
 TEST_F(PasswordDaoTest, CountDuplicateIgnoresSelfAndTombstonesAndEmpty) {
     auto e1 = MakeEntry(1);
     e1.title = QStringLiteral("dup");

@@ -60,14 +60,20 @@ QMainWindow, #WorkspaceRoot {
     color: var(--text-secondary);
     margin: 0 4px;
 }
+/* Navigation stays neutral gray (tokens: blue is reserved for actions). */
 #SidebarSectionList::item:hover, #SidebarCategoryList::item:hover {
-    background-color: var(--primary-tint);
+    background-color: var(--bg-hover);
     color: var(--text-primary);
 }
 #SidebarSectionList::item:selected, #SidebarCategoryList::item:selected {
-    background-color: var(--primary-tint);
-    color: var(--primary-text-on-tint);
-    font-weight: 700;
+    background-color: var(--card-selected);
+    color: var(--text-primary);
+    font-weight: 600;
+}
+#SidebarCategoryList QLineEdit {
+    min-height: 26px;
+    max-height: 26px;
+    padding: 0 8px;
 }
 #SidebarCategoryList::item {
     min-height: 28px;
@@ -104,7 +110,7 @@ QMainWindow, #WorkspaceRoot {
     border-top: 1px solid var(--border-sidebar-2);
 }
 
-#SidebarSettingsButton, #SidebarSyncButton {
+#SidebarSettingsButton, #SidebarSyncButton, #SidebarGeneratorButton {
     background: transparent;
     color: var(--text-secondary);
     border: 1px solid transparent;
@@ -122,14 +128,17 @@ QMainWindow, #WorkspaceRoot {
 #SidebarSyncButton[state="conflict"] {
     color: var(--warn-text);
 }
-#SidebarSettingsButton:hover:enabled, #SidebarSyncButton:hover:enabled {
+#SidebarSettingsButton:hover:enabled, #SidebarSyncButton:hover:enabled,
+#SidebarGeneratorButton:hover:enabled {
     background: var(--primary-hover-surface);
     color: var(--text-primary);
 }
-#SidebarSettingsButton[keyboardFocus="true"]:focus, #SidebarSyncButton[keyboardFocus="true"]:focus {
+#SidebarSettingsButton[keyboardFocus="true"]:focus, #SidebarSyncButton[keyboardFocus="true"]:focus,
+#SidebarGeneratorButton[keyboardFocus="true"]:focus {
     border-color: var(--primary-focus-border);
 }
-#SidebarSettingsButton:pressed:enabled, #SidebarSyncButton:pressed:enabled {
+#SidebarSettingsButton:pressed:enabled, #SidebarSyncButton:pressed:enabled,
+#SidebarGeneratorButton:pressed:enabled {
     background: var(--bg-muted);
 }
 
@@ -217,7 +226,7 @@ QMainWindow, #WorkspaceRoot {
     border: 1px solid transparent;
     border-radius: var(--radius-md);
     padding: 0;
-    color: var(--text-tertiary);
+    color: var(--text-secondary);
     min-width: 32px;
     max-width: 32px;
     min-height: 32px;
@@ -225,7 +234,9 @@ QMainWindow, #WorkspaceRoot {
 }
 #HeaderMoreButton:hover {
     background: var(--bg-hover);
+    color: var(--text-primary);
 }
+#HeaderMoreButton::menu-indicator { image: none; width: 0; }
 
 #ListTitleRow { background: transparent; }
 #ListTitle {
@@ -534,16 +545,17 @@ QMainWindow, #WorkspaceRoot {
     background: transparent;
 }
 
+/* Same height as the value line (DetailPanel kValueLineHeight). */
 #DetailFieldButton {
     background: transparent;
     color: var(--text-tertiary);
     border: none;
     border-radius: var(--radius-sm);
     padding: 0;
-    min-width: 28px;
-    max-width: 28px;
-    min-height: 28px;
-    max-height: 28px;
+    min-width: 24px;
+    max-width: 24px;
+    min-height: 24px;
+    max-height: 24px;
 }
 #DetailFieldButton:hover {
     background: var(--primary-hover-surface-3);
@@ -876,16 +888,19 @@ QMainWindow, #WorkspaceRoot {
 }
 
 #EditorGeneratorGroupTitle,
-#EditorGeneratorOptionsTitle {
+#EditorGeneratorOptionsTitle,
+#GeneratorGroupTitle {
     color: var(--text-primary);
     font-size: 13px;
     font-weight: 600;
 }
 
-#EditorGeneratorPreviewCard {
+#EditorGeneratorPreviewCard, #GeneratorPreviewCard {
     background-color: var(--soft-bg-sync);
     border: 1px solid var(--border-panel);
     border-radius: 10px;
+}
+#EditorGeneratorPreviewCard {
     margin-bottom: 24px;
 }
 
@@ -897,18 +912,42 @@ QMainWindow, #WorkspaceRoot {
     font-size: 13px;
 }
 
-#EditorGeneratorRefresh {
+#EditorGeneratorRefresh, #GeneratorRefresh, #GeneratorCopy {
     background: transparent;
-    border: none;
+    border: 1px solid transparent;
     border-radius: 6px;
     padding: 0;
 }
 
-#EditorGeneratorRefresh:hover {
-    background-color: var(--primary-hover-surface);
+/* The preview card is already --soft-bg-sync (same value as
+ * --primary-hover-surface), so hover uses the action tint to stay visible. */
+#EditorGeneratorRefresh:hover, #GeneratorRefresh:hover, #GeneratorCopy:hover {
+    background-color: var(--primary-tint);
+}
+#EditorGeneratorRefresh:pressed, #GeneratorRefresh:pressed, #GeneratorCopy:pressed {
+    background-color: var(--primary-tint-2);
+}
+#EditorGeneratorRefresh[keyboardFocus="true"]:focus {
+    border-color: var(--focus-ring);
+}
+#GeneratorRefresh[keyboardFocus="true"]:focus,
+#GeneratorCopy[keyboardFocus="true"]:focus {
+    border-color: var(--focus-ring);
 }
 
-#EditorGeneratorLengthValue {
+/* Beats the generic "#AppDialogBody QLineEdit" input rule. */
+#AppDialogBody #GeneratorPreview {
+    background: transparent;
+    color: var(--text-primary);
+    border: none;
+    padding: 0;
+    min-height: 28px;
+    max-height: 28px;
+    font-family: "Consolas", "Liberation Mono", "Menlo", monospace;
+    font-size: 14px;
+}
+
+#EditorGeneratorLengthValue, #GeneratorLengthValue {
     background-color: var(--primary-tint);
     color: var(--primary);
     border-radius: 5px;
@@ -917,11 +956,11 @@ QMainWindow, #WorkspaceRoot {
     font-weight: 600;
 }
 
-#EditorGeneratorLengthSlider {
+#EditorGeneratorLengthSlider, #GeneratorLengthSlider {
     margin-top: 12px;
 }
 
-#EditorGeneratorHint {
+#EditorGeneratorHint, #GeneratorHint {
     color: var(--text-tertiary);
     font-size: 13px;
 }
@@ -935,13 +974,29 @@ QMainWindow, #WorkspaceRoot {
     margin-bottom: 8px;
 }
 
-#EditorGeneratorOption {
+#EditorGeneratorOption, #GeneratorOption {
     background: transparent;
     border-radius: 10px;
 }
 
-#EditorGeneratorOption:hover {
+#EditorGeneratorOption:hover, #GeneratorOption:hover {
     background-color: var(--bg-hover);
+}
+
+#GeneratorDivider {
+    background-color: var(--border-card);
+    border: none;
+}
+
+#GeneratorStrength QFrame[strength-segment="true"][filled="true"] {
+    background-color: var(--primary-strength-bar);
+}
+
+#GeneratorStatus {
+    color: var(--success-text);
+    font-size: 12px;
+    background: transparent;
+    margin-top: 8px;
 }
 
 #EditorGeneratorError {
@@ -1225,55 +1280,65 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
     spacing: 8px;
 }
 
-/* ---------- Master password dialogs ---------- */
+/* ---------- Dialog surface ----------
+ * One spec for every popup (AppDialog and MasterPasswordDialog): dimmed
+ * backdrop, 14px card with hairline border, header with 32px icon tile and
+ * 16px/600 title, body, footer with right-aligned 30px buttons. */
 
-#MasterPasswordDialog { background: transparent; }
-#MasterPasswordBackdrop { background-color: var(--dialog-backdrop); }
-#MasterPasswordCard {
+#MasterPasswordDialog, QDialog[appDialog="true"] { background: transparent; }
+#MasterPasswordBackdrop, #AppDialogBackdrop { background-color: var(--dialog-backdrop); }
+#MasterPasswordCard, #AppDialogCard {
     background-color: var(--card);
     border: 1px solid var(--border-panel);
     border-radius: 14px;
 }
-#MasterPasswordHeader {
+#MasterPasswordHeader, #AppDialogHeader {
     background: transparent;
     border-bottom: 1px solid var(--border-section-3);
 }
-#MasterPasswordIcon {
+#MasterPasswordIcon, #AppDialogIcon {
     background-color: var(--soft-bg);
     border: 1px solid var(--border-section);
     border-radius: 8px;
 }
-#MasterPasswordDialog #DialogTitle {
+#MasterPasswordDialog #DialogTitle, #AppDialogTitle {
     background: transparent;
     color: var(--text-primary);
     font-size: 16px;
     font-weight: 600;
     letter-spacing: -0.25px;
 }
-#MasterPasswordClose {
+#MasterPasswordClose, #AppDialogClose {
+    background: transparent;
     padding: 0;
     border: 1px solid transparent;
     border-radius: 6px;
 }
-#MasterPasswordClose:hover {
+#MasterPasswordClose:hover, #AppDialogClose:hover {
     background-color: var(--bg-hover);
 }
-#MasterPasswordClose[keyboardFocus="true"]:focus {
+#MasterPasswordClose[keyboardFocus="true"]:focus,
+#AppDialogClose[keyboardFocus="true"]:focus {
     border-color: var(--focus-ring);
 }
-#MasterPasswordBody { background: transparent; }
+#MasterPasswordBody, #AppDialogBody, #AppDialogField { background: transparent; }
+#AppDialogMessage {
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
 #MasterPasswordDialog #DialogSubtitle {
     background: transparent;
     color: var(--text-tertiary);
     font-size: 13px;
 }
-#MasterPasswordFieldLabel {
+#MasterPasswordFieldLabel, #AppDialogFieldLabel {
     background: transparent;
     color: var(--text-secondary);
     font-size: 12px;
     font-weight: 500;
 }
-#MasterPasswordDialog QLineEdit {
+#MasterPasswordDialog QLineEdit, #AppDialogBody QLineEdit {
     background-color: var(--input-bg);
     color: var(--text-primary);
     border: 1px solid var(--border-input);
@@ -1283,7 +1348,7 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
     max-height: 30px;
     font-size: 13px;
 }
-#MasterPasswordDialog QLineEdit:focus {
+#MasterPasswordDialog QLineEdit:focus, #AppDialogBody QLineEdit:focus {
     border-color: var(--focus-ring);
 }
 #MasterPasswordDialog #PreviewCheckbox {
@@ -1293,18 +1358,19 @@ QTabWidget#PreferencesTabs QTabBar::tab:selected {
 #MasterPasswordDialog #PreviewCheckbox::indicator:focus {
     border-color: var(--focus-ring);
 }
-#MasterPasswordFooter {
+#MasterPasswordFooter, #AppDialogFooter {
     background: transparent;
     border-top: 1px solid var(--border-drawer-inner);
 }
-#MasterPasswordFooter QPushButton {
+#MasterPasswordFooter QPushButton, #AppDialogFooter QPushButton {
     padding: 0 18px;
     min-height: 30px;
     max-height: 30px;
     border-radius: 6px;
     font-size: 13px;
 }
-#MasterPasswordDialog QPushButton[keyboardFocus="true"]:focus {
+#MasterPasswordDialog QPushButton[keyboardFocus="true"]:focus,
+QDialog[appDialog="true"] QPushButton[keyboardFocus="true"]:focus {
     border-color: var(--focus-ring);
 }
 

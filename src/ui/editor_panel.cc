@@ -1,5 +1,6 @@
 #include "ui/editor_panel.h"
 
+#include <QAbstractButton>
 #include <QAbstractItemView>
 #include <QCheckBox>
 #include <QColor>
@@ -86,13 +87,20 @@ EditorPanel::EditorPanel(QWidget* parent) : QFrame(parent) {
 
     auto* esc = new QShortcut(QKeySequence(Qt::Key_Escape), this);
     esc->setContext(Qt::WidgetWithChildrenShortcut);
-    connect(esc, &QShortcut::activated, this, [this]() {
-        if (pages_ && pages_->currentWidget() == generator_page_) {
-            OnHideGenerator();
-            return;
-        }
-        OnCancelClicked();
-    });
+    connect(esc, &QShortcut::activated, this, &EditorPanel::HandleEscape);
+    // Enter submits from single-line fields (see keyPressEvent); the notes
+    // box keeps Enter for new lines, so Ctrl+Enter submits from anywhere.
+    for (const auto key : {Qt::Key_Return, Qt::Key_Enter}) {
+        auto* submit = new QShortcut(QKeySequence(Qt::CTRL | key), this);
+        submit->setContext(Qt::WidgetWithChildrenShortcut);
+        connect(submit, &QShortcut::activated, this, [this]() {
+            if (pages_ && pages_->currentWidget() == generator_page_) {
+                OnApplyGeneratedPassword();
+            } else {
+                OnSaveClicked();
+            }
+        });
+    }
 
     if (parent) parent->installEventFilter(this);
 }
@@ -363,6 +371,10 @@ QWidget* EditorPanel::BuildOverviewPage() {
     website_input_->setObjectName(QStringLiteral("EditorWebsiteInput"));
     website_input_->setPlaceholderText(QStringLiteral("https://..."));
     website_input_->setFixedHeight(32);
+    connect(website_input_, &QLineEdit::editingFinished, this, [this]() {
+        const QString normalized = NormalizeWebsite(website_input_->text());
+        if (normalized != website_input_->text()) website_input_->setText(normalized);
+    });
     add_field(QStringLiteral("网址"), website_input_);
 
     notes_input_ = new QTextEdit(container);
@@ -452,6 +464,8 @@ QWidget* EditorPanel::BuildGeneratorPage() {
                                    QStringLiteral("accent"), 16));
     refresh->setIconSize(QSize(16, 16));
     refresh->setToolTip(QStringLiteral("重新生成"));
+    refresh->setAccessibleName(QStringLiteral("重新生成"));
+    refresh->setCursor(Qt::PointingHandCursor);
     refresh->setFixedSize(28, 28);
     connect(refresh, &QToolButton::clicked, this,
             &EditorPanel::RegeneratePassword);
@@ -553,16 +567,6 @@ QWidget* EditorPanel::BuildGeneratorPage() {
     footer_layout->setContentsMargins(24, 16, 24, 16);
     footer_layout->setSpacing(8);
     footer_layout->addStretch(1);
-    auto* regenerate = new QPushButton(QStringLiteral("重新生成"), footer);
-    regenerate->setObjectName(QStringLiteral("EditorGeneratorRegenerate"));
-    regenerate->setProperty("flat", true);
-    regenerate->setIcon(LoadEditorIcon(QStringLiteral("refresh-cw"),
-                                      QStringLiteral("muted-3"), 14));
-    regenerate->setIconSize(QSize(14, 14));
-    regenerate->setFixedHeight(32);
-    connect(regenerate, &QPushButton::clicked, this,
-            &EditorPanel::RegeneratePassword);
-    footer_layout->addWidget(regenerate);
     auto* apply = new QPushButton(QStringLiteral("使用此密码"), footer);
     apply->setObjectName(QStringLiteral("EditorGeneratorApply"));
     apply->setProperty("accent", true);
@@ -809,17 +813,12 @@ void EditorPanel::RefreshThemeAssets() {
                   QStringLiteral("x"), QStringLiteral("muted-7"), 16);
     set_tool_icon(QStringLiteral("EditorGeneratorRefresh"),
                   QStringLiteral("refresh-cw"), QStringLiteral("accent"), 16);
-    if (auto* regenerate = findChild<QPushButton*>(
-            QStringLiteral("EditorGeneratorRegenerate"))) {
-        regenerate->setIcon(LoadEditorIcon(
-            QStringLiteral("refresh-cw"), QStringLiteral("muted-3"), 14));
-    }
 }
 
 EditorPanel::DecryptedEntry EditorPanel::Result() const {
     DecryptedEntry out = entry_;
     out.entry.title = title_input_->text().trimmed();
-    out.entry.website = website_input_->text().trimmed();
+    out.entry.website = NormalizeWebsite(website_input_->text());
     out.entry.username = username_input_->text();
     out.entry.notes = notes_input_->toPlainText();
     out.entry.category_id = category_combo_->currentData().toLongLong();
@@ -917,14 +916,48 @@ void EditorPanel::OnSaveClicked() {
 
 void EditorPanel::OnCancelClicked() { emit CancelRequested(); }
 
+void EditorPanel::HandleEscape() {
+    if (pages_ && pages_->currentWidget() == generator_page_) {
+        OnHideGenerator();
+        return;
+    }
+    OnCancelClicked();
+}
+
+QString EditorPanel::NormalizeWebsite(const QString& website) {
+    QString value = website.trimmed();
+    while (value.endsWith(QLatin1Char('/'))) {
+        const QString shorter = value.left(value.size() - 1);
+        // Keep a bare scheme such as "https://" intact.
+        if (shorter.endsWith(QLatin1Char(':')) ||
+            shorter.endsWith(QStringLiteral(":/"))) {
+            break;
+        }
+        value = shorter;
+    }
+    return value;
+}
+
 void EditorPanel::keyPressEvent(QKeyEvent* event) {
     if (event->key() == Qt::Key_Escape) {
-        if (pages_ && pages_->currentWidget() == generator_page_) {
-            OnHideGenerator();
-            event->accept();
-            return;
+        HandleEscape();
+        event->accept();
+        return;
+    }
+    // Line edits and closed combo boxes pass Enter on to the panel; a focused
+    // button is activated instead, so Enter on "取消" never saves.
+    if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) &&
+        !(event->modifiers() & ~Qt::KeypadModifier)) {
+        QWidget* focus = focusWidget();
+        if (focus && isAncestorOf(focus) &&
+            (qobject_cast<QPushButton*>(focus) ||
+             qobject_cast<QToolButton*>(focus))) {
+            static_cast<QAbstractButton*>(focus)->click();
+        } else if (pages_ && pages_->currentWidget() == generator_page_) {
+            OnApplyGeneratedPassword();
+        } else {
+            OnSaveClicked();
         }
-        OnCancelClicked();
         event->accept();
         return;
     }

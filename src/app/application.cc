@@ -7,7 +7,6 @@
 #include <QDebug>
 #include <QDir>
 #include <QFileDialog>
-#include <QInputDialog>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
@@ -44,6 +43,7 @@
 #include "sync/google_drive_provider.h"
 #include "sync/sync_manager.h"
 #include "sync/sync_scheduler.h"
+#include "ui/app_dialog.h"
 #include "ui/clipboard_manager.h"
 #include "ui/import_preview_dialog.h"
 #include "ui/main_window.h"
@@ -85,7 +85,7 @@ class Application::Impl {
 
     int Run() {
         if (!instance_lock_.TryLock()) {
-            QMessageBox::warning(nullptr, QStringLiteral("PassVault 已在运行"),
+            ui::AppDialog::Warning(nullptr, QStringLiteral("PassVault 已在运行"),
                 QStringLiteral("同一 Windows 用户只能运行一个 PassVault 实例。请关闭其他安装副本后重试。"));
             return 1;
         }
@@ -128,19 +128,19 @@ class Application::Impl {
         try {
             database_ = storage::Database::Open(reset_.paths().DataFile("passvault.db"));
         } catch (const std::exception&) {
-            QMessageBox::critical(nullptr, QStringLiteral("启动失败"),
+            ui::AppDialog::Critical(nullptr, QStringLiteral("启动失败"),
                                   QStringLiteral("无法打开数据库。"));
             return false;
         }
         if (!database_) {
-            QMessageBox::critical(nullptr, QStringLiteral("启动失败"),
+            ui::AppDialog::Critical(nullptr, QStringLiteral("启动失败"),
                                    QStringLiteral("无法打开数据库。"));
             return false;
         }
         try {
             storage::EnsureCurrentSchema(*database_);
         } catch (const std::exception& e) {
-            QMessageBox::critical(nullptr, QStringLiteral("启动失败"),
+            ui::AppDialog::Critical(nullptr, QStringLiteral("启动失败"),
                                    QString::fromUtf8(e.what()));
             return false;
         }
@@ -195,7 +195,7 @@ class Application::Impl {
 
         if (master_manager_->IsInitialized() && token_store_->Exists() &&
             !password_change_->SaveBinding(master_password::CloudBinding::kBound)) {
-            QMessageBox::critical(nullptr, QStringLiteral("启动失败"),
+            ui::AppDialog::Critical(nullptr, QStringLiteral("启动失败"),
                                   QStringLiteral("无法保存云端绑定历史。"));
             return false;
         }
@@ -215,14 +215,14 @@ class Application::Impl {
                 const QString pwd = dlg.NewPassword();
                 auto payload = master_manager_->SetInitial(pwd.toStdString());
                 if (!payload.has_value()) {
-                    if (QMessageBox::warning(nullptr, QStringLiteral("初始化失败"),
+                    if (ui::AppDialog::Warning(nullptr, QStringLiteral("初始化失败"),
                             QStringLiteral("无法保存主密码。请重试或退出。"),
                             QMessageBox::Retry | QMessageBox::Close,
                             QMessageBox::Close) == QMessageBox::Retry) continue;
                     return false;
                 }
                 while (!password_change_->SaveBinding(master_password::CloudBinding::kLocal)) {
-                    if (QMessageBox::warning(nullptr, QStringLiteral("初始化失败"),
+                    if (ui::AppDialog::Warning(nullptr, QStringLiteral("初始化失败"),
                             QStringLiteral("无法记录保险库状态。请重试或退出。"),
                             QMessageBox::Retry | QMessageBox::Close,
                             QMessageBox::Close) != QMessageBox::Retry) return false;
@@ -243,7 +243,7 @@ class Application::Impl {
             auto payload =
                 master_manager_->VerifyLocal(dlg.NewPassword().toStdString());
             if (!payload.has_value()) {
-                QMessageBox::warning(
+                ui::AppDialog::Warning(
                     nullptr, QStringLiteral("解锁失败"),
                     master_manager_->last_error() == master_password::VerifyError::kWrongPassword
                         ? QStringLiteral("主密码不正确，请重试。")
@@ -374,7 +374,7 @@ class Application::Impl {
                               }
                               if (!password_change_->SaveBinding(
                                       master_password::CloudBinding::kBound)) {
-                                  QMessageBox::warning(page, QStringLiteral("连接失败"),
+                                  ui::AppDialog::Warning(page, QStringLiteral("连接失败"),
                                                        QStringLiteral("无法保存云端绑定历史。"));
                                   return;
                               }
@@ -435,6 +435,12 @@ class Application::Impl {
                           runtime_context_.get(), [this, page]() { ImportCsv(page); });
         QObject::connect(page, &ui::PreferencesPage::ExportCsvRequested,
                           runtime_context_.get(), [this, page]() { ExportCsv(page); });
+        // Same actions from the workspace "more" menu; results show over the
+        // workspace instead of the hidden settings page.
+        QObject::connect(window_.get(), &ui::MainWindow::ImportCsvRequested,
+                          runtime_context_.get(), [this]() { ImportCsv(window_.get()); });
+        QObject::connect(window_.get(), &ui::MainWindow::ExportCsvRequested,
+                          runtime_context_.get(), [this]() { ExportCsv(window_.get()); });
         QObject::connect(page, &ui::PreferencesPage::AutoLockChanged,
                           runtime_context_.get(), [this](int minutes) {
                               auto_lock_->SetTimeoutMs(minutes * 60 * 1000);
@@ -450,11 +456,15 @@ class Application::Impl {
         return UnlockAfterPasswordRecovery(
             *password_change_, drive_provider_.get(),
             [this](const QString& message) {
-                QMessageBox prompt(QMessageBox::Warning, QStringLiteral("恢复主密码迁移"),
-                                   message, QMessageBox::NoButton);
-                auto* retry = prompt.addButton(QStringLiteral("重试"), QMessageBox::AcceptRole);
-                auto* login = prompt.addButton(QStringLiteral("重新登录云端"), QMessageBox::ActionRole);
-                prompt.addButton(QStringLiteral("退出"), QMessageBox::RejectRole);
+                ui::AppDialog prompt(QStringLiteral("恢复主密码迁移"));
+                prompt.SetTone(ui::AppDialog::Tone::kWarning);
+                prompt.SetMessage(message);
+                prompt.AddButton(QStringLiteral("退出"), QMessageBox::RejectRole);
+                auto* login = prompt.AddButton(
+                    QStringLiteral("重新登录云端"), QMessageBox::ActionRole,
+                    ui::AppDialog::ButtonStyle::kSecondary);
+                auto* retry = prompt.AddButton(QStringLiteral("重试"), QMessageBox::AcceptRole);
+                prompt.SetDefaultButton(retry);
                 prompt.exec();
                 if (prompt.clickedButton() == retry) return true;
                 if (prompt.clickedButton() == login) {
@@ -471,18 +481,21 @@ class Application::Impl {
         using master_password::CloudBinding;
         auto binding = password_change_->ReadBinding();
         if (binding == CloudBinding::kError) {
-            QMessageBox::warning(parent, QStringLiteral("修改失败"),
+            ui::AppDialog::Warning(parent, QStringLiteral("修改失败"),
                                  QStringLiteral("读取云端绑定历史失败。"));
             return false;
         }
         if (binding == CloudBinding::kUnknown) {
-            QMessageBox prompt(QMessageBox::Question, QStringLiteral("确认保险库历史"),
-                QStringLiteral("此旧保险库没有云端绑定记录。请选择它的使用历史；"
-                               "曾绑定云端的保险库必须联网核对后才能改密。"),
-                QMessageBox::NoButton, parent);
-            auto* local = prompt.addButton(QStringLiteral("一直仅在本地使用"), QMessageBox::AcceptRole);
-            auto* bound = prompt.addButton(QStringLiteral("曾绑定云端"), QMessageBox::ActionRole);
-            prompt.addButton(QMessageBox::Cancel);
+            ui::AppDialog prompt(QStringLiteral("确认保险库历史"), parent);
+            prompt.SetTone(ui::AppDialog::Tone::kQuestion);
+            prompt.SetMessage(QStringLiteral("此旧保险库没有云端绑定记录。请选择它的使用历史；"
+                                             "曾绑定云端的保险库必须联网核对后才能改密。"));
+            prompt.AddButton(QMessageBox::Cancel);
+            auto* bound = prompt.AddButton(QStringLiteral("曾绑定云端"), QMessageBox::ActionRole,
+                                           ui::AppDialog::ButtonStyle::kSecondary);
+            auto* local = prompt.AddButton(QStringLiteral("一直仅在本地使用"), QMessageBox::AcceptRole);
+            prompt.SetDefaultButton(local);
+            prompt.SetCardWidth(480);
             prompt.exec();
             if (prompt.clickedButton() == local) binding = CloudBinding::kLocal;
             else if (prompt.clickedButton() == bound) binding = CloudBinding::kBound;
@@ -490,7 +503,7 @@ class Application::Impl {
             if (!password_change_->SaveBinding(binding)) return false;
         }
         if (binding == CloudBinding::kBound && !token_store_->Exists()) {
-            QMessageBox::information(parent, QStringLiteral("需要重新登录"),
+            ui::AppDialog::Information(parent, QStringLiteral("需要重新登录"),
                 QStringLiteral("此保险库曾绑定云端，请先在设置中重新登录，再重试修改主密码。"));
             return false;
         }
@@ -539,7 +552,7 @@ class Application::Impl {
             if (result.outcome == Outcome::kCompleted) {
                 ui::Toast::Show(parent, result.message, ui::Toast::Level::kSuccess);
             } else {
-                QMessageBox::warning(parent, QStringLiteral("主密码未改变"), result.message);
+                ui::AppDialog::Warning(parent, QStringLiteral("主密码未改变"), result.message);
             }
         }
     }
@@ -552,7 +565,7 @@ class Application::Impl {
         if (path.isEmpty()) return;
         QFile f(path);
         if (!f.open(QIODevice::ReadOnly)) {
-            QMessageBox::warning(parent, QStringLiteral("导入失败"),
+            ui::AppDialog::Warning(parent, QStringLiteral("导入失败"),
                                   QStringLiteral("无法读取文件。"));
             return;
         }
@@ -609,14 +622,14 @@ class Application::Impl {
         const auto* session_key =
             session::SessionManager::Instance()->session_key();
         if (!session_key) {
-            QMessageBox::warning(parent, QStringLiteral("导出失败"),
+            ui::AppDialog::Warning(parent, QStringLiteral("导出失败"),
                                   QStringLiteral("保险库当前未解锁。"));
             return;
         }
         auto entries = csv::CsvExporter::CollectEntries(
             *password_dao_, *category_dao_, *session_key);
         if (!entries.has_value()) {
-            QMessageBox::warning(
+            ui::AppDialog::Warning(
                 parent, QStringLiteral("导出失败"),
                 QStringLiteral("存在无法解密的密码，未生成导出文件。"));
             return;
@@ -624,18 +637,18 @@ class Application::Impl {
 
         QSaveFile f(path);
         if (!f.open(QIODevice::WriteOnly)) {
-            QMessageBox::warning(parent, QStringLiteral("导出失败"),
+            ui::AppDialog::Warning(parent, QStringLiteral("导出失败"),
                                   QStringLiteral("无法写入文件。"));
             return;
         }
         const int exported_count = entries->size();
         if (!csv::CsvExporter::Export(&f, std::move(*entries))) {
-            QMessageBox::warning(parent, QStringLiteral("导出失败"),
+            ui::AppDialog::Warning(parent, QStringLiteral("导出失败"),
                                   QStringLiteral("写入过程中出错。"));
             return;
         }
         if (!f.commit()) {
-            QMessageBox::warning(parent, QStringLiteral("导出失败"),
+            ui::AppDialog::Warning(parent, QStringLiteral("导出失败"),
                                   QStringLiteral("无法提交导出文件。"));
             return;
         }
@@ -682,7 +695,7 @@ class Application::Impl {
     void RequestLocalReset() {
         if (reset_confirming_ || resetting_ || QApplication::activeModalWidget()) return;
         if (!reset_.Eligible(ResetEligibility())) {
-            QMessageBox::warning(window_.get(), QStringLiteral("暂时无法清理"),
+            ui::AppDialog::Warning(window_.get(), QStringLiteral("暂时无法清理"),
                 QStringLiteral("请先完成同步、登录或主密码迁移，保持保险库解锁后重试。"));
             return;
         }
@@ -694,18 +707,24 @@ class Application::Impl {
         bool started = false;
         {
             bool accepted = false;
-            QString password = QInputDialog::getText(window_.get(),
+            QString password = ui::AppDialog::GetText(window_.get(),
                 QStringLiteral("验证当前主密码"), QStringLiteral("请输入当前主密码以清除本地数据"),
                 QLineEdit::Password, QString(), &accepted);
             if (accepted && !exit_requested_ && session::SessionManager::Instance()->IsUnlocked()) {
-                const auto answer = QMessageBox::warning(window_.get(),
-                    QStringLiteral("最终确认清除本地数据"),
-                    QStringLiteral("将清除当前安装的本地保险库、此 Windows 用户共享的登录凭据和本应用设置。"
+                ui::AppDialog confirm(QStringLiteral("最终确认清除本地数据"), window_.get());
+                confirm.SetTone(ui::AppDialog::Tone::kDanger);
+                confirm.SetCardWidth(480);
+                confirm.SetMessage(QStringLiteral("将清除当前安装的本地保险库、此 Windows 用户共享的登录凭据和本应用设置。"
                         "未同步的新增、修改、删除及草稿会永久丢失；没有云备份将无法恢复。"
                         "云端备份保持不变，本次不会自动同步。恢复需要原账号及对应云备份密码。"
                         "旧短密码备份存在恢复限制；本次不提供云恢复入口。"
-                        "完成后将在当前进程返回首次设置。确定继续？"),
-                    QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
+                        "完成后将在当前进程返回首次设置。确定继续？"));
+                confirm.AddButton(QMessageBox::Cancel);
+                confirm.AddButton(QMessageBox::Yes, ui::AppDialog::ButtonStyle::kDanger)
+                    ->setText(QStringLiteral("清除本地数据"));
+                confirm.SetDefaultButton(QMessageBox::Yes);
+                confirm.exec();
+                const auto answer = confirm.ResultButton();
                 if (answer == QMessageBox::Yes && !exit_requested_) {
                     started = reset_.Begin(ResetEligibility(), true, [this, &password]() {
                         auto bytes = password.toUtf8();
@@ -714,7 +733,7 @@ class Application::Impl {
                         bytes.fill('\0');
                         return verified.has_value() && reset_.Eligible(ResetEligibility());
                     });
-                    if (!started) QMessageBox::warning(window_.get(), QStringLiteral("未清除数据"),
+                    if (!started) ui::AppDialog::Warning(window_.get(), QStringLiteral("未清除数据"),
                         QStringLiteral("当前主密码验证或本地记录检查失败，数据保持原状。"));
                 }
             }
@@ -780,7 +799,7 @@ class Application::Impl {
             const auto intent = reset_.Inspect();
             if (intent == LocalReset::Intent::kOtherInstallation ||
                 intent == LocalReset::Intent::kInvalid) {
-                QMessageBox::critical(nullptr, QStringLiteral("清理尚未完成"),
+                ui::AppDialog::Critical(nullptr, QStringLiteral("清理尚未完成"),
                     intent == LocalReset::Intent::kOtherInstallation
                         ? QStringLiteral("另一个安装副本的清理尚未完成。请回到原安装副本完成清理。")
                         : QStringLiteral("本地清理标记损坏或无法读取。为保护数据，已阻止启动。"));
@@ -788,7 +807,7 @@ class Application::Impl {
             }
             QSettings settings;
             if (reset_.Resume(settings, [this]() { return ReleaseRuntime(); })) return true;
-            const auto answer = QMessageBox::warning(nullptr, QStringLiteral("清理尚未完成"),
+            const auto answer = ui::AppDialog::Warning(nullptr, QStringLiteral("清理尚未完成"),
                 QStringLiteral("部分本地数据可能已清除。请重试以继续完成，或退出后从本安装副本继续；无法返回原保险库。"),
                 QMessageBox::Retry | QMessageBox::Close, QMessageBox::Close);
             if (answer != QMessageBox::Retry) return false;

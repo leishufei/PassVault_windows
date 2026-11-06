@@ -1,16 +1,17 @@
 #include <gtest/gtest.h>
 
+#include <QApplication>
 #include <QCheckBox>
-#include <QDialogButtonBox>
+#include <QClipboard>
+#include <QFrame>
 #include <QLabel>
 #include <QLineEdit>
-#include <QProgressBar>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QSlider>
-#include <QSpinBox>
 #include <QString>
 
+#include "ui/clipboard_manager.h"
 #include "ui/generator_dialog.h"
 
 namespace {
@@ -24,15 +25,14 @@ class GeneratorDialogTest : public ::testing::Test {
     QSlider* slider() {
         return dlg_.findChild<QSlider*>(QStringLiteral("GeneratorLengthSlider"));
     }
-    QSpinBox* spin() {
-        return dlg_.findChild<QSpinBox*>(QStringLiteral("GeneratorLengthSpin"));
+    QLabel* lengthValue() {
+        return dlg_.findChild<QLabel*>(QStringLiteral("GeneratorLengthValue"));
     }
-    QLineEdit* preview() { return dlg_.findChild<QLineEdit*>(); }
+    QLineEdit* preview() {
+        return dlg_.findChild<QLineEdit*>(QStringLiteral("GeneratorPreview"));
+    }
     QLabel* error() {
         return dlg_.findChild<QLabel*>(QStringLiteral("FormError"));
-    }
-    QProgressBar* strength() {
-        return dlg_.findChild<QProgressBar*>(QStringLiteral("StrengthBar"));
     }
     QCheckBox* upper() {
         return dlg_.findChild<QCheckBox*>(QStringLiteral("GeneratorUpper"));
@@ -46,37 +46,41 @@ class GeneratorDialogTest : public ::testing::Test {
     QCheckBox* symbol() {
         return dlg_.findChild<QCheckBox*>(QStringLiteral("GeneratorSymbol"));
     }
-    QPushButton* acceptButton() {
-        auto* box = dlg_.findChild<QDialogButtonBox*>();
-        if (!box) return nullptr;
-        for (auto* b : box->buttons()) {
-            if (box->buttonRole(b) == QDialogButtonBox::AcceptRole)
-                return qobject_cast<QPushButton*>(b);
+    QPushButton* copyButton() {
+        return dlg_.findChild<QPushButton*>(QStringLiteral("GeneratorCopyButton"));
+    }
+    int filledSegments() {
+        int filled = 0;
+        for (auto* frame : dlg_.findChildren<QFrame*>()) {
+            if (frame->property("strength-segment").toBool() &&
+                frame->property("filled").toBool()) {
+                ++filled;
+            }
         }
-        return nullptr;
+        return filled;
     }
 };
 
 TEST_F(GeneratorDialogTest, DefaultGeneratesPasswordOfDefaultLength) {
     ASSERT_NE(preview(), nullptr);
-    EXPECT_EQ(preview()->text().length(), 16);
+    EXPECT_EQ(preview()->text().length(), GeneratorDialog::kDefaultLength);
+    EXPECT_TRUE(preview()->isReadOnly());
 }
 
-TEST_F(GeneratorDialogTest, SliderAndSpinStayInSync) {
+TEST_F(GeneratorDialogTest, LengthRangeMatchesEditorGenerator) {
     ASSERT_NE(slider(), nullptr);
-    ASSERT_NE(spin(), nullptr);
-    slider()->setValue(24);
-    EXPECT_EQ(spin()->value(), 24);
-    spin()->setValue(12);
-    EXPECT_EQ(slider()->value(), 12);
+    EXPECT_EQ(slider()->minimum(), 8);
+    EXPECT_EQ(slider()->maximum(), 32);
 }
 
-TEST_F(GeneratorDialogTest, ChangingLengthChangesPasswordLength) {
+TEST_F(GeneratorDialogTest, ChangingLengthChangesPasswordLengthAndLabel) {
     slider()->setValue(32);
     EXPECT_EQ(preview()->text().length(), 32);
+    ASSERT_NE(lengthValue(), nullptr);
+    EXPECT_EQ(lengthValue()->text(), QStringLiteral("32"));
 }
 
-TEST_F(GeneratorDialogTest, UncheckingAllCharTypesShowsErrorAndClearsPreview) {
+TEST_F(GeneratorDialogTest, UncheckingAllCharTypesShowsErrorAndDisablesCopy) {
     upper()->setChecked(false);
     lower()->setChecked(false);
     number()->setChecked(false);
@@ -84,22 +88,35 @@ TEST_F(GeneratorDialogTest, UncheckingAllCharTypesShowsErrorAndClearsPreview) {
     EXPECT_TRUE(preview()->text().isEmpty());
     ASSERT_NE(error(), nullptr);
     EXPECT_FALSE(error()->text().isEmpty());
+    ASSERT_NE(copyButton(), nullptr);
+    EXPECT_FALSE(copyButton()->isEnabled());
+    EXPECT_EQ(filledSegments(), 0);
 }
 
-TEST_F(GeneratorDialogTest, AcceptStoresPreviewAsPassword) {
+TEST_F(GeneratorDialogTest, CopyUsesClipboardAndKeepsDialogOpen) {
     const QString pw = preview()->text();
     ASSERT_FALSE(pw.isEmpty());
-    auto* ok = acceptButton();
-    ASSERT_NE(ok, nullptr);
     QSignalSpy accepted(&dlg_, &QDialog::accepted);
-    ok->click();
+    QSignalSpy rejected(&dlg_, &QDialog::rejected);
+    ASSERT_NE(copyButton(), nullptr);
+    copyButton()->click();
+    EXPECT_EQ(QApplication::clipboard()->text(), pw);
     EXPECT_EQ(dlg_.password(), pw);
-    EXPECT_EQ(accepted.count(), 1);
+    EXPECT_EQ(accepted.count(), 0);
+    EXPECT_EQ(rejected.count(), 0);
+    passvault::ui::ClipboardManager::Instance()->ClearSensitive();
 }
 
-TEST_F(GeneratorDialogTest, StrengthBarReflectsGeneratedPassword) {
-    ASSERT_NE(strength(), nullptr);
-    EXPECT_GT(strength()->value(), 0);
+TEST_F(GeneratorDialogTest, CloseButtonRejects) {
+    QSignalSpy rejected(&dlg_, &QDialog::rejected);
+    auto* close = dlg_.button(QMessageBox::Close);
+    ASSERT_NE(close, nullptr);
+    close->click();
+    EXPECT_EQ(rejected.count(), 1);
+}
+
+TEST_F(GeneratorDialogTest, StrengthMeterReflectsGeneratedPassword) {
+    EXPECT_GT(filledSegments(), 0);
 }
 
 }  // namespace

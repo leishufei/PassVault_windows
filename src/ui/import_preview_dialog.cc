@@ -1,6 +1,5 @@
 #include "ui/import_preview_dialog.h"
 
-#include <QDialogButtonBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -41,21 +40,14 @@ void FinishTree(QTreeWidget* tree, const QString& empty_text) {
 
 ImportPreviewDialog::ImportPreviewDialog(csv::CsvValidationResult result,
                                          QWidget* parent)
-    : QDialog(parent), result_(std::move(result)) {
+    : AppDialog(QStringLiteral("导入预览"), parent), result_(std::move(result)) {
     setObjectName(QStringLiteral("ImportPreviewDialog"));
-    setWindowTitle(QStringLiteral("导入预览"));
-    setModal(true);
-    resize(760, 520);
+    SetIcon(QStringLiteral("folder-open"), QStringLiteral("primary"));
+    SetCardWidth(720);
 
-    auto* root = new QVBoxLayout(this);
-    root->setContentsMargins(24, 24, 24, 24);
-    root->setSpacing(14);
+    auto* root = body_layout();
 
-    auto* title = new QLabel(QStringLiteral("导入预览"), this);
-    title->setObjectName(QStringLiteral("DialogTitle"));
-    root->addWidget(title);
-
-    summary_ = new QLabel(this);
+    summary_ = new QLabel(body());
     summary_->setObjectName(QStringLiteral("DialogSubtitle"));
     summary_->setWordWrap(true);
     summary_->setText(
@@ -72,7 +64,7 @@ ImportPreviewDialog::ImportPreviewDialog(csv::CsvValidationResult result,
     }
     root->addWidget(summary_);
 
-    auto* notice = new QLabel(this);
+    auto* notice = new QLabel(body());
     notice->setObjectName(QStringLiteral("ImportPreviewNotice"));
     notice->setWordWrap(true);
     if (result_.total_rows == 0) {
@@ -88,8 +80,9 @@ ImportPreviewDialog::ImportPreviewDialog(csv::CsvValidationResult result,
     notice->setVisible(!notice->text().isEmpty());
     root->addWidget(notice);
 
-    auto* tabs = new QTabWidget(this);
+    auto* tabs = new QTabWidget(body());
     tabs->setObjectName(QStringLiteral("ImportPreviewTabs"));
+    tabs->setMinimumHeight(300);
     BuildInsertTab(tabs);
     BuildUpdateTab(tabs);
     BuildInvalidTab(tabs);
@@ -100,19 +93,13 @@ ImportPreviewDialog::ImportPreviewDialog(csv::CsvValidationResult result,
     }
     root->addWidget(tabs, 1);
 
-    auto* box = new QDialogButtonBox(this);
-    auto* cancel = box->addButton(QStringLiteral("取消"),
-                                  QDialogButtonBox::RejectRole);
+    auto* cancel = AddButton(QMessageBox::Cancel);
     cancel->setObjectName(QStringLiteral("ImportCancelButton"));
-    cancel->setDefault(true);
-    auto* confirm = box->addButton(QStringLiteral("确认导入"),
-                                   QDialogButtonBox::AcceptRole);
-    confirm->setProperty("accent", true);
+    auto* confirm = AddButton(QStringLiteral("确认导入"), QMessageBox::AcceptRole);
     confirm->setObjectName(QStringLiteral("ImportConfirmButton"));
     confirm->setEnabled(changes > 0);
-    connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
-    connect(confirm, &QPushButton::clicked, this, &QDialog::accept);
-    root->addWidget(box);
+    // Enter confirms once there is something to import; otherwise it closes.
+    SetDefaultButton(changes > 0 ? confirm : cancel);
 }
 
 void ImportPreviewDialog::BuildInsertTab(QTabWidget* tabs) {

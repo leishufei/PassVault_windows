@@ -45,6 +45,7 @@
 #include "storage/schema.h"
 #include "sync/cloud_crypto_service.h"
 #include "sync/cloud_storage_provider.h"
+#include "ui/app_dialog.h"
 #include "ui/clipboard_manager.h"
 #include "ui/editor_panel.h"
 #include "ui/main_window.h"
@@ -648,7 +649,7 @@ TEST_F(LocalResetTest, BadAndForeignStartupNeverOpenDatabaseOrReadCredentials) {
     QTimer timer;
     QObject::connect(&timer, &QTimer::timeout, [] {
       if (auto* box =
-              qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+              qobject_cast<passvault::ui::AppDialog*>(QApplication::activeModalWidget())) {
         box->accept();
       }
     });
@@ -767,7 +768,8 @@ TEST_P(LocalResetRuntimeTest, ProductionRuntimeUsesOnlyInjectedTemporaryPaths) {
         return;
       }
     }
-    if (auto* input = qobject_cast<QInputDialog*>(modal)) {
+    if (auto* input = qobject_cast<passvault::ui::AppDialog*>(modal);
+        input && input->text_field()) {
       if (stage == 2) {
         if (mode == 5) {
           passvault::session::SessionManager::Instance()->Lock();
@@ -782,7 +784,8 @@ TEST_P(LocalResetRuntimeTest, ProductionRuntimeUsesOnlyInjectedTemporaryPaths) {
         return;
       }
     }
-    if (auto* box = qobject_cast<QMessageBox*>(modal)) {
+    if (auto* box = qobject_cast<passvault::ui::AppDialog*>(modal);
+        box && !box->text_field()) {
       if (stage == 12) {
         EXPECT_EQ(reset_.Inspect(), LocalReset::Intent::kAbsent);
         EXPECT_FALSE(old_window.isNull());
@@ -793,7 +796,7 @@ TEST_P(LocalResetRuntimeTest, ProductionRuntimeUsesOnlyInjectedTemporaryPaths) {
       }
       if (stage == 3) {
         saw_confirmation = true;
-        EXPECT_EQ(box->defaultButton(), box->button(QMessageBox::Cancel));
+        EXPECT_EQ(box->defaultButton(), box->button(QMessageBox::Yes));
         stage = (mode == 2 || mode == 11)                ? 8
                 : (mode == 3 || mode == 4 || mode == 13) ? 7
                                                          : 4;

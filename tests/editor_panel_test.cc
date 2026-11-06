@@ -192,6 +192,54 @@ TEST_F(EditorPanelTest, ResultReflectsEditedFields) {
     EXPECT_EQ(r.entry.notes, QStringLiteral("a note"));
 }
 
+TEST(EditorPanelWebsiteTest, NormalizeDropsTrailingSlashesOnly) {
+    EXPECT_EQ(EditorPanel::NormalizeWebsite(QStringLiteral("https://www.adspower.net/")),
+              QStringLiteral("https://www.adspower.net"));
+    EXPECT_EQ(EditorPanel::NormalizeWebsite(QStringLiteral("  https://a.com/path//  ")),
+              QStringLiteral("https://a.com/path"));
+    EXPECT_EQ(EditorPanel::NormalizeWebsite(QStringLiteral("example.com")),
+              QStringLiteral("example.com"));
+    EXPECT_EQ(EditorPanel::NormalizeWebsite(QStringLiteral("https://")),
+              QStringLiteral("https://"));
+    EXPECT_TRUE(EditorPanel::NormalizeWebsite(QString()).isEmpty());
+}
+
+TEST_F(EditorPanelTest, WebsiteTrailingSlashIsRemovedFromFieldAndResult) {
+    panel_.OpenForCreate();
+    websiteInput()->setText(QStringLiteral("https://www.adspower.net/"));
+    EXPECT_EQ(panel_.Result().entry.website, QStringLiteral("https://www.adspower.net"));
+    emit websiteInput()->editingFinished();
+    EXPECT_EQ(websiteInput()->text(), QStringLiteral("https://www.adspower.net"));
+}
+
+TEST_F(EditorPanelTest, EnterInFieldSavesButNotInNotesOrOnCancel) {
+    panel_.OpenForCreate();
+    titleInput()->setText(QStringLiteral("Title"));
+    usernameInput()->setText(QStringLiteral("user"));
+    QSignalSpy saved(&panel_, &EditorPanel::SaveRequested);
+    QSignalSpy cancelled(&panel_, &EditorPanel::CancelRequested);
+    QTest::keyClick(usernameInput(), Qt::Key_Return);
+    EXPECT_EQ(saved.count(), 1);
+    QTest::keyClick(websiteInput(), Qt::Key_Enter, Qt::KeypadModifier);
+    EXPECT_EQ(saved.count(), 2);
+    QTest::keyClick(notesInput(), Qt::Key_Return);
+    EXPECT_EQ(saved.count(), 2);
+    EXPECT_TRUE(notesInput()->toPlainText().contains(QLatin1Char('\n')));
+    cancelButton()->setFocus();
+    QTest::keyClick(cancelButton(), Qt::Key_Return);
+    EXPECT_EQ(saved.count(), 2);
+    EXPECT_EQ(cancelled.count(), 1);
+}
+
+TEST_F(EditorPanelTest, GeneratorPageHasNoFooterRegenerateButton) {
+    auto* page = panel_.findChild<QWidget*>(QStringLiteral("EditorGeneratorPage"));
+    ASSERT_NE(page, nullptr);
+    EXPECT_EQ(page->findChild<QPushButton*>(QStringLiteral("EditorGeneratorRegenerate")),
+              nullptr);
+    EXPECT_NE(page->findChild<QToolButton*>(QStringLiteral("EditorGeneratorRefresh")),
+              nullptr);
+}
+
 TEST_F(EditorPanelTest, SaveWithValidFieldsEmitsSignal) {
     panel_.OpenForCreate();
     titleInput()->setText(QStringLiteral("Title"));

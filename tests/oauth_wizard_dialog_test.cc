@@ -86,8 +86,11 @@ TEST_F(OAuthWizardDialogTest, DescriptionUsesSharedTypographyAndTransparentCorne
                   QFontInfo(QApplication::font()).family());
         EXPECT_EQ(QFontInfo(description->font()).pixelSize(), 13);
         EXPECT_EQ(dialog_->grab().toImage().pixelColor(0, 0).alpha(), 0);
-        EXPECT_EQ(dialog_->grab().toImage().pixelColor(dialog_->width() / 2, 12),
-                  theme->Color(QStringLiteral("bg-canvas")));
+        auto* card = dialog_->findChild<QWidget*>(QStringLiteral("AppDialogCard"));
+        ASSERT_NE(card, nullptr);
+        EXPECT_EQ(dialog_->grab().toImage().pixelColor(
+                      card->geometry().center().x(), card->geometry().top() + 12),
+                  theme->Color(QStringLiteral("card")));
         const QString capture = qEnvironmentVariable("PASSVAULT_UI_CAPTURE_DIR");
         if (!capture.isEmpty()) {
             dialog_->grab().save(capture + (value == passvault::ui::Theme::kLight
@@ -172,8 +175,17 @@ TEST(OAuthWizardDialogNullTest, NullClientStaysIdle) {
     EXPECT_TRUE(StatusLabel(&dialog)->text().isEmpty());
 }
 
-TEST_F(OAuthWizardDialogTest, MinimumWidthIsFigma) {
-    EXPECT_EQ(dialog_->minimumWidth(), 480);
+TEST_F(OAuthWizardDialogTest, CardWidthIsFigma) {
+    auto* card = dialog_->findChild<QWidget*>(QStringLiteral("AppDialogCard"));
+    ASSERT_NE(card, nullptr);
+    EXPECT_EQ(card->minimumWidth(), 480);
+    EXPECT_EQ(card->maximumWidth(), 480);
+}
+
+TEST_F(OAuthWizardDialogTest, EscapeAlsoStopsClientAuthorization) {
+    dialog_->reject();
+    EXPECT_EQ(client_->cancel_count, 1);
+    EXPECT_EQ(dialog_->result(), int(QDialog::Rejected));
 }
 
 }  // namespace

@@ -257,8 +257,17 @@ SyncManager::DoSyncOutcome SyncManager::DoSyncOnce(const QString& remote_name) {
     }
 
     // 4. Apply merged categories
+    // The local snapshot was taken before the network read, whose event loop
+    // can run UI edits (for example an inline rename committed just before the
+    // sync button was clicked). Never overwrite a row that became newer than
+    // the merged value; it is uploaded from the final state below instead.
+    bool categories_changed_during_sync = false;
     for (const auto& item : cat_merge.merged) {
         auto existing = cat_dao_->FindByUuid(item.uuid);
+        if (existing && existing->updated_at > item.updated_at) {
+            categories_changed_during_sync = true;
+            continue;
+        }
         Category c;
         c.id = existing ? existing->id : 0;
         c.uuid = item.uuid;
@@ -269,7 +278,9 @@ SyncManager::DoSyncOutcome SyncManager::DoSyncOnce(const QString& remote_name) {
         c.created_at = item.created_at;
         c.updated_at = item.updated_at;
         c.is_deleted = item.is_deleted;
-        cat_dao_->Insert(c);
+        if (!cat_dao_->Insert(c)) {
+            return {DoSyncStatus::kFatal, QStringLiteral("保存同步分类失败")};
+        }
     }
 
     // Reload categories, rebuild uuid -> id map
@@ -437,6 +448,7 @@ SyncManager::DoSyncOutcome SyncManager::DoSyncOnce(const QString& remote_name) {
 
     // 9. Upload if needed
     const bool need_upload = cat_merge.has_local_changes ||
+                             categories_changed_during_sync ||
                              pw_merge.has_local_changes || markers_changed ||
                              *dedup_changed ||
                              !cloud_payload;

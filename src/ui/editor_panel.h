@@ -46,6 +46,13 @@ class EditorPanel : public QFrame {
 
     DecryptedEntry Result() const;
     void ApplyGeneratedPassword(const QString& password);
+    // Esc behaviour shared with MainWindow, which forwards Esc here when the
+    // panel is open but keyboard focus has moved elsewhere (e.g. the list).
+    void HandleEscape();
+
+    // Trims the address and drops trailing "/" ("https://a.com/" ->
+    // "https://a.com") without touching a bare scheme such as "https://".
+    static QString NormalizeWebsite(const QString& website);
 
  signals:
     void SaveRequested();

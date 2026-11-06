@@ -422,6 +422,25 @@ int PasswordDao::CountDuplicate(const QString& title, const QString& username,
     return 0;
 }
 
+std::optional<bool> PasswordDao::HasDuplicateInCategory(
+    std::int64_t category_id, const QString& title, const QString& username,
+    std::int64_t exclude_id) {
+    try {
+        Statement stmt(db_.handle(),
+                       "SELECT EXISTS(SELECT 1 FROM password_entries WHERE "
+                       "categoryId = ? AND title = ? AND username = ? "
+                       "AND isDeleted = 0 AND id != ?)");
+        stmt.BindInt64(1, category_id);
+        stmt.BindText(2, title);
+        stmt.BindText(3, username);
+        stmt.BindInt64(4, exclude_id);
+        if (stmt.Step()) return stmt.ColumnInt(0) != 0;
+    } catch (const std::exception& ex) {
+        qWarning() << "PasswordDao::HasDuplicateInCategory failed:" << ex.what();
+    }
+    return std::nullopt;
+}
+
 bool PasswordDao::MigrateCategory(std::int64_t old_category_id,
                                   std::int64_t new_category_id) {
     try {

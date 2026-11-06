@@ -34,6 +34,9 @@ constexpr int kIconBoxSize = 32;
 constexpr int kIconGlyphSize = 18;
 constexpr int kSyncCardGap = 16;
 constexpr int kSyncCardPad = 16;
+// One width for every settings dropdown: fits the longest option ("跟随系统")
+// plus the 12px text inset and 30px arrow area, instead of stretching wide.
+constexpr int kSettingComboWidth = 112;
 
 int LoadInt(const char* key, int fallback) {
     return QSettings().value(QString::fromLatin1(key), fallback).toInt();
@@ -275,7 +278,7 @@ QWidget* PreferencesPage::BuildGeneralTab() {
             break;
         }
     }
-    theme_combo_->setMinimumWidth(160);
+    theme_combo_->setFixedWidth(kSettingComboWidth);
     connect(theme_combo_,
             static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
             this, [this](int idx) {
@@ -301,7 +304,7 @@ QWidget* PreferencesPage::BuildGeneralTab() {
     if (auto_lock_index < 0) auto_lock_index = 0;
     auto_lock_combo_->setCurrentIndex(auto_lock_index);
     SaveInt(kAutoLockKey, auto_lock_combo_->currentData().toInt());
-    auto_lock_combo_->setMinimumWidth(140);
+    auto_lock_combo_->setFixedWidth(kSettingComboWidth);
     connect(auto_lock_combo_, &QComboBox::currentIndexChanged, this,
             [this](int) {
                 const int minutes = auto_lock_combo_->currentData().toInt();
@@ -342,7 +345,7 @@ QWidget* PreferencesPage::BuildGeneralTab() {
     if (clipboard_index < 0) clipboard_index = 1;
     clipboard_combo_->setCurrentIndex(clipboard_index);
     SaveInt(kClipboardKey, clipboard_combo_->currentData().toInt());
-    clipboard_combo_->setMinimumWidth(140);
+    clipboard_combo_->setFixedWidth(kSettingComboWidth);
     connect(clipboard_combo_, &QComboBox::currentIndexChanged, this,
             [this](int) {
                 const int seconds = clipboard_combo_->currentData().toInt();

@@ -5,6 +5,7 @@
 #include <QDialogButtonBox>
 #include <QLabel>
 #include <QHeaderView>
+#include <QPushButton>
 #include <QSignalSpy>
 #include <QStringList>
 #include <QTabWidget>
@@ -66,12 +67,10 @@ QTabWidget* Tabs(const ImportPreviewDialog& d) {
 
 QAbstractButton* RoleButton(const ImportPreviewDialog& d,
                             QDialogButtonBox::ButtonRole role) {
-    auto* box = d.findChild<QDialogButtonBox*>();
-    if (!box) return nullptr;
-    for (auto* b : box->buttons()) {
-        if (box->buttonRole(b) == role) return b;
-    }
-    return nullptr;
+    // The dialog uses the shared AppDialog footer instead of a button box.
+    return d.findChild<QPushButton*>(role == QDialogButtonBox::AcceptRole
+                                         ? QStringLiteral("ImportConfirmButton")
+                                         : QStringLiteral("ImportCancelButton"));
 }
 
 TEST(ImportPreviewDialogTest, SummaryReflectsCounts) {

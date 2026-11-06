@@ -13,6 +13,8 @@
 #include <QScrollBar>
 #include <QToolButton>
 
+#include <utility>
+
 #include "model/password_entry.h"
 #include "ui/detail_panel.h"
 #include "ui/elided_label.h"
@@ -52,7 +54,7 @@ T* NthNamed(const DetailPanel& p, const char* name, int n) {
 }
 
 // DetailFieldButton QToolButtons in order: [0] username-copy, [1] password-toggle,
-// [2] password-copy, [3] website-open.
+// [2] password-copy, [3] website-open, [4] website-copy.
 // The favorite action is the only QToolButton named DetailHeaderButton.
 
 PasswordEntry MakeEntry() {
@@ -104,6 +106,46 @@ class DetailPanelTest : public ::testing::Test {
         return NthNamed<QToolButton>(panel_, "DetailFieldButton", 1);
     }
 };
+
+TEST_F(DetailPanelTest, WebsiteRowOffersCopyNextToOpen) {
+    panel_.SetEntry(MakeEntry(), QStringLiteral("secret"));
+    auto* open = openWebsiteButton();
+    auto* copy = NthNamed<QToolButton>(panel_, "DetailFieldButton", 4);
+    ASSERT_NE(open, nullptr);
+    ASSERT_NE(copy, nullptr);
+    EXPECT_EQ(copy->toolTip(), QStringLiteral("复制网址"));
+    EXPECT_TRUE(copy->isEnabled());
+    EXPECT_EQ(copy->parentWidget(), open->parentWidget());
+    QSignalSpy copied(&panel_, &DetailPanel::CopyWebsiteRequested);
+    copy->click();
+    ASSERT_EQ(copied.count(), 1);
+    EXPECT_EQ(copied.at(0).at(0).toLongLong(), 77);
+
+    auto entry = MakeEntry();
+    entry.website.clear();
+    panel_.SetEntry(entry, QStringLiteral("secret"));
+    EXPECT_FALSE(copy->isEnabled());
+}
+
+TEST_F(DetailPanelTest, FieldButtonsShareTheValueLine) {
+    panel_.resize(400, 700);
+    panel_.show();
+    panel_.SetEntry(MakeEntry(), QStringLiteral("secret"));
+    QApplication::processEvents();
+    const std::pair<QLabel*, QToolButton*> rows[] = {
+        {usernameValue(), usernameCopy()},
+        {passwordValue(), copyPasswordButton()},
+        {websiteValue(), openWebsiteButton()},
+    };
+    for (const auto& [value, button] : rows) {
+        ASSERT_NE(value, nullptr);
+        ASSERT_NE(button, nullptr);
+        EXPECT_EQ(button->height(), value->height());
+        const QPoint value_top = value->mapTo(&panel_, QPoint(0, 0));
+        const QPoint button_top = button->mapTo(&panel_, QPoint(0, 0));
+        EXPECT_EQ(button_top.y(), value_top.y());
+    }
+}
 
 TEST_F(DetailPanelTest, SetEntryPopulatesAndHasEntry) {
     panel_.SetEntry(MakeEntry(), QStringLiteral("secret"));

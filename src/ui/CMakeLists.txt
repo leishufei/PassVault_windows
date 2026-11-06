@@ -9,6 +9,8 @@ target_sources(passvault PRIVATE
     clipboard_manager.cc
     toast.h
     toast.cc
+    app_dialog.h
+    app_dialog.cc
     global_hotkey.h
     global_hotkey.cc
     master_password_dialog.h

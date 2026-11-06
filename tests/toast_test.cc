@@ -111,6 +111,26 @@ TEST(ToastTest, LongTextWrapsAtAvailableWidth) {
     EXPECT_GE(label->height(), label->heightForWidth(label->width()));
 }
 
+TEST(ToastTest, ShortMessagesStayOnOneLine) {
+    QWidget parent;
+    parent.resize(1000, 600);
+    parent.show();
+    for (const QString& text :
+         {QStringLiteral("密码已复制，15 秒后清除"), QStringLiteral("用户名已复制"),
+          QStringLiteral("该分类下已存在相同标题和用户名的密码"),
+          QStringLiteral("已导入 12 条，更新 3 条")}) {
+        SCOPED_TRACE(text.toStdString());
+        Toast::Show(&parent, text);
+        QApplication::processEvents();
+        auto* label = parent.findChild<QLabel*>(QStringLiteral("ToastText"));
+        ASSERT_NE(label, nullptr);
+        EXPECT_GE(label->contentsRect().width(),
+                  label->fontMetrics().horizontalAdvance(text));
+        EXPECT_LT(label->height(), 2 * label->fontMetrics().lineSpacing());
+        QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    }
+}
+
 TEST(ToastTest, MessagesAreRenderedAsPlainText) {
     QWidget parent;
     parent.resize(400, 300);

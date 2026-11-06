@@ -1,7 +1,8 @@
 #pragma once
 
-#include <QDialog>
 #include <QString>
+
+#include "ui/app_dialog.h"
 
 class QLabel;
 class QPushButton;
@@ -16,7 +17,7 @@ namespace passvault::ui {
 //   1. show intent + start button
 //   2. wait for AuthorizationSucceeded / AuthorizationFailed signals
 //   3. close on success, allow retry on failure
-class OAuthWizardDialog : public QDialog {
+class OAuthWizardDialog : public AppDialog {
     Q_OBJECT
 
  public:
@@ -31,6 +32,10 @@ class OAuthWizardDialog : public QDialog {
     void OnCancel();
     void OnSuccess();
     void OnFailure(const QString& message);
+
+ public slots:
+    // Esc and the header close button must also stop the browser flow.
+    void reject() override;
 
  private:
     oauth::GoogleOAuthClient* client_;
